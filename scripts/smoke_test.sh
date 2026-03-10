@@ -42,8 +42,6 @@ check "/attended" "200"
 # Auth-required pages (redirect without cookie)
 check "/venues" "307" "/venues (unauth→307)"
 check "/search" "307" "/search (unauth→307)"
-check "/budget" "307" "/budget (unauth→307)"
-check "/travel" "307" "/travel (unauth→307)"
 check "/profile" "307" "/profile (unauth→307)"
 
 # API endpoints (unauthenticated → 401)
@@ -59,7 +57,7 @@ if [ -n "$TEST_EMAIL" ]; then
   echo "-- Authenticated (email: $TEST_EMAIL) --"
 
   # Create/ensure user exists and get their token
-  TOKEN=$(/workspace/.venv/bin/python - <<PYEOF
+  TOKEN=$(PYTHONPATH=/workspace/src:/workspace/.venv/lib/python3.14/site-packages /home/claude/.local/share/uv/python/cpython-3.14.3-linux-x86_64-gnu/bin/python3.14 - <<PYEOF
 import sys
 sys.path.insert(0, '/workspace/src')
 from recom.config import Settings
@@ -78,7 +76,7 @@ PYEOF
   else
     echo "  INFO token=${TOKEN}"
     # All auth pages should now return 200
-    for path in /venues /search /budget /travel /profile /taste; do
+    for path in /venues /search /profile /taste; do
       check "$path" "200" "$path (authed)" "$TOKEN"
     done
 

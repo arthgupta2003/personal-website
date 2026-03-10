@@ -98,7 +98,7 @@ def test_unauthenticated(page: Page, base: str):
         check(f"{label} has nav", page.locator("nav").count() > 0)
 
     # Auth-required pages redirect
-    for path in ["/venues", "/search", "/budget", "/travel", "/profile"]:
+    for path in ["/venues", "/search", "/profile"]:
         resp = page.goto(base + path, wait_until="domcontentloaded")
         page.wait_for_timeout(1000)
         final_url = page.url
@@ -137,15 +137,13 @@ def test_authenticated(page: Page, base: str, token: str):
 
     # All nav links present
     nav_html = page.locator("nav").inner_html()
-    for link in ["Search", "Venues", "Budget", "Travel", "Taste"]:
+    for link in ["Search", "Venues", "Taste"]:
         check(f"nav has {link}", link in nav_html, f"nav: {nav_html[:300]!r}")
 
     # Auth pages load without errors AND have consistent nav
     for path, label in [
         ("/venues", "/venues"),
         ("/search", "/search"),
-        ("/budget", "/budget"),
-        ("/travel", "/travel"),
         ("/profile", "/profile"),
         ("/taste", "/taste"),
     ]:
@@ -160,14 +158,6 @@ def test_authenticated(page: Page, base: str, token: str):
         nav_bg = page.evaluate("getComputedStyle(document.querySelector('nav')).backgroundColor")
         check(f"{label} nav is dark (not unstyled)", nav_bg not in ("rgba(0, 0, 0, 0)", ""),
               f"nav bg={nav_bg!r}")
-
-    # Travel page: no JS errors from f-string collision
-    page.goto(base + "/travel")
-    page.wait_for_timeout(1000)
-    errors: list[str] = []
-    page.on("pageerror", lambda e: errors.append(str(e)))
-    page.wait_for_timeout(500)
-    check("/travel no JS errors", len(errors) == 0, "; ".join(errors))
 
     # RSVP buttons visible on home
     page.goto(base + "/", wait_until="domcontentloaded")

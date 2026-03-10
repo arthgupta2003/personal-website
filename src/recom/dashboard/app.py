@@ -57,23 +57,25 @@ def _maybe_set_cookie(request: Request, response: Response, user: dict | None) -
 def render_nav(user: dict | None = None) -> str:
     if user:
         name = user.get("name") or user.get("email", "")
-        token = user.get("user_token", "")
         is_admin = user.get("id") == 1
-        admin_link = '<a href="/admin" class="nav-link" style="font-size:12px;color:#9ca3af">Admin</a>' if is_admin else ""
+        admin_overflow = '<a href="/admin" class="nav-overflow-item">Admin</a>' if is_admin else ""
         return f"""<nav class="app-nav"><div class="app-nav-inner">
           <a href="/" class="app-logo">recom</a>
           <a href="/" class="nav-link">Events</a>
-          <a href="/search" class="nav-link">Search</a>
           <a href="/groups" class="nav-link">Groups</a>
-          <a href="/attended" class="nav-link">History</a>
-          <a href="/taste" class="nav-link">Taste</a>
-          <a href="/venues" class="nav-link">Venues</a>
-          <a href="/budget" class="nav-link">Budget</a>
-          <a href="/travel" class="nav-link">Travel</a>
+          <a href="/search" class="nav-link">Search</a>
           <a href="/profile" class="nav-link">Profile</a>
+          <div class="nav-overflow">
+            <button class="nav-overflow-btn" onclick="this.nextElementSibling.classList.toggle('open')" aria-label="More">···</button>
+            <div class="nav-overflow-menu">
+              <a href="/attended" class="nav-overflow-item">History</a>
+              <a href="/taste" class="nav-overflow-item">Taste</a>
+              <a href="/venues" class="nav-overflow-item">Venues</a>
+              {admin_overflow}
+            </div>
+          </div>
           <div class="nav-divider"></div>
           <span style="font-size:13px;color:rgba(255,255,255,.7);font-weight:500;">{name}</span>
-          {admin_link}
         </div></nav>"""
     return """<nav class="app-nav"><div class="app-nav-inner">
       <a href="/" class="app-logo">recom</a>
@@ -142,6 +144,14 @@ LAYOUT_STYLE = """<!DOCTYPE html>
   .interests-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
   .interest-tag { padding: 4px 12px; border-radius: 16px; background: #ede9fe; color: #5b21b6; font-size: 13px; }
   .cost-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 12px; margin: 10px 0; }
+  /* --- Overflow nav menu --- */
+  .nav-overflow { position: relative; }
+  .nav-overflow-btn { background: none; border: none; color: rgba(255,255,255,.6); font-size: 18px; font-weight: 700; cursor: pointer; padding: 6px 10px; border-radius: 8px; line-height: 1; letter-spacing: 2px; transition: all .15s; }
+  .nav-overflow-btn:hover { background: rgba(255,255,255,.1); color: white; }
+  .nav-overflow-menu { display: none; position: absolute; right: 0; top: calc(100% + 6px); background: #1a1a2e; border: 1px solid rgba(255,255,255,.15); border-radius: 10px; min-width: 140px; z-index: 200; padding: 6px 0; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .nav-overflow-menu.open { display: block; }
+  .nav-overflow-item { display: block; padding: 8px 16px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,.7); text-decoration: none; transition: all .12s; }
+  .nav-overflow-item:hover { background: rgba(255,255,255,.08); color: white; text-decoration: none; }
   @media (max-width: 640px) {
     .app-nav a.nav-link { font-size: 13px; padding: 6px 8px; }
     .app-content { padding: 16px 12px 32px; }
@@ -204,6 +214,13 @@ document.querySelectorAll('.nav-link').forEach(a => {
       (href !== '/' && path.startsWith(href)))
     a.classList.add('active');
 });
+// Close overflow menu when clicking outside
+document.addEventListener('click', function(e) {
+  const menu = document.querySelector('.nav-overflow-menu');
+  if (menu && !menu.closest('.nav-overflow').contains(e.target)) {
+    menu.classList.remove('open');
+  }
+});
 </script>
 </div><!-- .app-content -->
 </body></html>"""
@@ -224,27 +241,15 @@ def score_badge(score: float | None) -> str:
     return f'<span class="badge {cls}">{s:.0f}</span>'
 
 
-@app.get("/admin/email-preview", response_class=HTMLResponse)
-async def email_preview(run_id: int | None = None):
-    """Preview the weekly digest email without sending it."""
-    from recom.email.composer import compose_email
-    from recom.models import RankedEvent, Event, EventSource, InterestProfile
-    from datetime import datetime, timezone
+def _build_ranked_events_from_run(run_id: int):
+    """Helper: reconstruct RankedEvent list from a DB run_id."""
+    import re as _re
+    from datetime import datetime
+    from recom.models import RankedEvent, Event, EventSource
 
     db = get_db()
-    settings = Settings()
-
-    # Resolve run
-    if run_id is None:
-        runs = db.get_runs()
-        if not runs:
-            return HTMLResponse("<h1>No runs yet</h1>")
-        run_id = runs[0]["id"]
-
     raw_events = db.get_run_events(run_id)
-
-    # Reconstruct RankedEvent objects from DB rows
-    ranked: list[RankedEvent] = []
+    ranked = []
     for row in raw_events:
         if not row.get("keep"):
             continue
@@ -254,14 +259,10 @@ async def email_preview(run_id: int | None = None):
                 source_enum = EventSource(src)
             except ValueError:
                 source_enum = EventSource.EVENTBRITE
-
-            import re as _re
             raw_desc = row.get("description") or ""
             clean_desc = _re.sub(r'<[^>]+>', '', raw_desc).replace("&nbsp;", " ").strip()
-
             start_raw = row.get("start_time")
             start_time = datetime.fromisoformat(start_raw) if start_raw else None
-
             ev = Event(
                 id=row.get("event_id", ""),
                 source=source_enum,
@@ -283,12 +284,62 @@ async def email_preview(run_id: int | None = None):
             ))
         except Exception:
             pass
+    return ranked
 
+
+@app.get("/admin/email-preview", response_class=HTMLResponse)
+async def email_preview_index(request: Request):
+    """Admin: show all email preview links."""
+    current_user = _get_current_user(request)
+    if not current_user or current_user.get("id") != 1:
+        return RedirectResponse("/login")
+    body = """
+    <h1>Email Preview</h1>
+    <div class="card" style="max-width:500px;">
+        <p style="color:#6b7280;margin-bottom:16px;">Preview and test outgoing emails without sending them via SMTP.</p>
+        <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:10px;">
+            <li><a href="/admin/email-preview/daily" style="color:#2563eb;font-weight:600;">Weekly Digest Email</a>
+                <span style="color:#9ca3af;font-size:13px;margin-left:8px;">— rendered from latest run</span></li>
+            <li><a href="/admin/email-preview/tonight" style="color:#2563eb;font-weight:600;">Tonight Email</a>
+                <span style="color:#9ca3af;font-size:13px;margin-left:8px;">— last minute daily digest</span></li>
+        </ul>
+    </div>
+    """
+    return HTMLResponse(_layout("Email Preview", body, current_user))
+
+
+@app.get("/admin/email-preview/daily", response_class=HTMLResponse)
+async def email_preview_daily(request: Request):
+    """Admin: render the weekly digest email inline."""
+    import html as _html
+    from datetime import datetime
+    from recom.models import InterestProfile
+
+    current_user = _get_current_user(request)
+    if not current_user or current_user.get("id") != 1:
+        return RedirectResponse("/login")
+
+    db = get_db()
+    settings = Settings()
+
+    run = db.get_user_latest_run(current_user["id"])
+    if not run:
+        runs = db.get_runs()
+        run = runs[0] if runs else None
+    if not run:
+        return HTMLResponse(_layout("Email Preview: Daily", "<h1>No runs yet</h1>", current_user))
+
+    run_id = run["id"]
+    from recom.models import RankedEvent
+    ranked = _build_ranked_events_from_run(run_id)
+    ranked_kept = [r for r in ranked if r.keep and r.score >= 25]
+
+    profile = db.get_cached_interest_profile(max_age_days=30) or InterestProfile()
     week_of = datetime.now().strftime("%B %-d, %Y")
-    profile = InterestProfile()
 
-    _, html = compose_email(
-        ranked_events=ranked,
+    from recom.email.composer import compose_email
+    subject, html_body = compose_email(
+        ranked_events=ranked_kept,
         profile=profile,
         week_of=week_of,
         total_cost=0.0,
@@ -297,7 +348,178 @@ async def email_preview(run_id: int | None = None):
         dashboard_url=settings.dashboard_url,
         run_id=run_id,
     )
-    return HTMLResponse(html)
+
+    escaped = _html.escape(html_body)
+    body = f"""
+    <h1>Email Preview: Weekly Digest</h1>
+    <div class="card" style="margin-bottom:16px;">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Subject line:</div>
+        <h2 style="font-size:18px;font-weight:700;color:#1e293b;">{_html.escape(subject)}</h2>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">HTML body preview:</div>
+        <iframe srcdoc="{escaped}" style="width:100%;height:700px;border:1px solid #e2e8f0;border-radius:6px;"></iframe>
+    </div>
+    <div class="card" style="max-width:400px;">
+        <h3 style="margin:0 0 8px;font-size:15px;">Send test to me</h3>
+        <form onsubmit="sendTest(event)">
+            <input type="hidden" name="type" value="daily">
+            <button type="submit" style="padding:8px 20px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;">Send Test Email</button>
+            <span id="sendMsg" style="margin-left:10px;font-size:13px;"></span>
+        </form>
+    </div>
+    <script>
+    async function sendTest(e) {{
+        e.preventDefault();
+        const msg = document.getElementById('sendMsg');
+        msg.textContent = 'Sending...';
+        msg.style.color = '#6b7280';
+        try {{
+            const r = await fetch('/admin/email-preview/send-test', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{type: 'daily'}})
+            }});
+            const d = await r.json();
+            if (d.ok) {{
+                msg.textContent = 'Sent!';
+                msg.style.color = '#16a34a';
+            }} else {{
+                msg.textContent = d.error || 'Error sending';
+                msg.style.color = '#dc2626';
+            }}
+        }} catch(err) {{
+            msg.textContent = 'Network error';
+            msg.style.color = '#dc2626';
+        }}
+    }}
+    </script>
+    """
+    resp = HTMLResponse(_layout("Email Preview: Daily", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/admin/email-preview/tonight", response_class=HTMLResponse)
+async def email_preview_tonight(request: Request):
+    """Admin: preview last-minute tonight email."""
+    import html as _html
+    from datetime import datetime
+
+    current_user = _get_current_user(request)
+    if not current_user or current_user.get("id") != 1:
+        return RedirectResponse("/login")
+
+    db = get_db()
+    settings = Settings()
+
+    run = db.get_user_latest_run(current_user["id"])
+    if not run:
+        runs = db.get_runs()
+        run = runs[0] if runs else None
+
+    try:
+        from recom.email.composer import compose_daily_email
+        has_tonight = True
+    except ImportError:
+        has_tonight = False
+
+    if not run or not has_tonight:
+        body = """
+        <h1>Email Preview: Tonight</h1>
+        <div class="card"><p style="color:#6b7280;">No runs available or tonight email composer not found.</p></div>
+        """
+        return HTMLResponse(_layout("Email Preview: Tonight", body, current_user))
+
+    run_id = run["id"]
+    ranked = _build_ranked_events_from_run(run_id)
+    today = datetime.now()
+    result = compose_daily_email(
+        ranked_events=ranked,
+        target_date=today,
+        dashboard_url=settings.dashboard_url,
+        user_token=current_user.get("user_token", ""),
+    )
+
+    if result is None:
+        body = """
+        <h1>Email Preview: Tonight</h1>
+        <div class="card"><p style="color:#6b7280;">No events for today in the latest run.</p></div>
+        """
+        return HTMLResponse(_layout("Email Preview: Tonight", body, current_user))
+
+    subject, html_body = result
+    escaped = _html.escape(html_body)
+    body = f"""
+    <h1>Email Preview: Tonight</h1>
+    <div class="card" style="margin-bottom:16px;">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Subject line:</div>
+        <h2 style="font-size:18px;font-weight:700;color:#1e293b;">{_html.escape(subject)}</h2>
+    </div>
+    <div class="card">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">HTML body preview:</div>
+        <iframe srcdoc="{escaped}" style="width:100%;height:600px;border:1px solid #e2e8f0;border-radius:6px;"></iframe>
+    </div>
+    """
+    resp = HTMLResponse(_layout("Email Preview: Tonight", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.post("/admin/email-preview/send-test")
+async def email_preview_send_test(request: Request):
+    """Admin: send a test email to the admin user."""
+    current_user = _get_current_user(request)
+    if not current_user or current_user.get("id") != 1:
+        return JSONResponse({"ok": False, "error": "Unauthorized"}, status_code=403)
+
+    try:
+        body = await request.json()
+        email_type = body.get("type", "daily")
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid request"}, status_code=400)
+
+    settings = Settings()
+    if not settings.smtp_user or not settings.smtp_password:
+        return JSONResponse({"ok": False, "error": "SMTP not configured (SMTP_USER / SMTP_PASSWORD missing)"})
+
+    try:
+        from datetime import datetime
+        from recom.models import InterestProfile
+        from recom.email.composer import compose_email
+        from recom.email.sender import send_email
+
+        db = get_db()
+        run = db.get_user_latest_run(current_user["id"])
+        if not run:
+            runs = db.get_runs()
+            run = runs[0] if runs else None
+        if not run:
+            return JSONResponse({"ok": False, "error": "No runs available"})
+
+        ranked = _build_ranked_events_from_run(run["id"])
+        ranked_kept = [r for r in ranked if r.keep and r.score >= 25]
+        profile = db.get_cached_interest_profile(max_age_days=30) or InterestProfile()
+        week_of = datetime.now().strftime("%B %-d, %Y")
+
+        subject, html_body = compose_email(
+            ranked_events=ranked_kept,
+            profile=profile,
+            week_of=week_of,
+            total_cost=0.0,
+            tokens_in=0,
+            tokens_out=0,
+            dashboard_url=settings.dashboard_url,
+            run_id=run["id"],
+        )
+        subject = f"[TEST] {subject}"
+        send_email(
+            subject=subject,
+            html_body=html_body,
+            settings=settings,
+            to=current_user["email"],
+        )
+        return JSONResponse({"ok": True})
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)})
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -3085,227 +3307,6 @@ Events:
         })
 
     return JSONResponse({"results": results})
-
-
-@app.get("/budget", response_class=HTMLResponse)
-async def budget_page(request: Request, response: Response):
-    """Monthly spending overview and free event mix."""
-    current_user = _get_current_user(request)
-    if not current_user:
-        return RedirectResponse("/login")
-    db = get_db()
-    spend_data = db.get_monthly_spend(current_user["id"])
-    this_month = spend_data.get("this_month", 0.0)
-    this_month_count = spend_data.get("this_month_count", 0)
-    free_count = spend_data.get("free_count", 0)
-    paid_count = spend_data.get("paid_count", 0)
-    recent = spend_data.get("recent", [])
-
-    rows_html = ""
-    for r in recent:
-        title = r.get("title", "")[:50]
-        dt = r.get("attended_at", "")[:10] if r.get("attended_at") else ""
-        amt = r.get("spent_amount")
-        amt_str = f"${amt:.2f}" if amt else "Free"
-        rows_html += f"<tr><td>{title}</td><td>{dt}</td><td>{amt_str}</td></tr>"
-
-    free_pct = round(free_count / max(1, free_count + paid_count) * 100)
-
-    resp = HTMLResponse(_layout("Budget", f"""
-    <h1>Spending</h1>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;">
-        <div class="card" style="text-align:center;">
-            <div style="font-size:28px;font-weight:800;color:#1e293b;">${this_month:.2f}</div>
-            <div style="font-size:13px;color:#6b7280;">spent this month</div>
-        </div>
-        <div class="card" style="text-align:center;">
-            <div style="font-size:28px;font-weight:800;color:#1e293b;">{this_month_count}</div>
-            <div style="font-size:13px;color:#6b7280;">events this month</div>
-        </div>
-        <div class="card" style="text-align:center;">
-            <div style="font-size:28px;font-weight:800;color:#16a34a;">{free_pct}%</div>
-            <div style="font-size:13px;color:#6b7280;">free events</div>
-        </div>
-    </div>
-    <div class="card">
-        <h3 style="margin:0 0 12px;">Log spending</h3>
-        <p style="font-size:13px;color:#6b7280;margin-bottom:12px;">After attending an event, add what you spent (optional).</p>
-        <table style="width:100%;border-collapse:collapse;font-size:14px;">
-            <thead><tr style="border-bottom:2px solid #f1f5f9;">
-                <th style="text-align:left;padding:8px;">Event</th>
-                <th style="text-align:left;padding:8px;">Date</th>
-                <th style="text-align:left;padding:8px;">Spent</th>
-            </tr></thead>
-            <tbody>{rows_html if rows_html else '<tr><td colspan="3" style="color:#9ca3af;padding:8px;">No attended events yet.</td></tr>'}</tbody>
-        </table>
-    </div>
-    <div class="card" style="margin-top:16px;">
-        <h3 style="margin:0 0 8px;">Log spending for an event</h3>
-        <form id="spendForm" style="display:flex;gap:8px;flex-wrap:wrap;">
-            <input id="spendEventId" placeholder="Event ID" style="padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:180px;">
-            <input id="spendAmt" type="number" step="0.01" min="0" placeholder="Amount ($)" style="padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:120px;">
-            <button type="button" onclick="logSpend()" style="padding:8px 16px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Log</button>
-        </form>
-        <div id="spendMsg" style="margin-top:8px;font-size:13px;color:#16a34a;"></div>
-    </div>
-    <script>
-    async function logSpend() {{
-        const eid = document.getElementById('spendEventId').value.trim();
-        const amt = parseFloat(document.getElementById('spendAmt').value) || 0;
-        if (!eid) {{ document.getElementById('spendMsg').textContent = 'Enter event ID'; return; }}
-        const r = await fetch('/api/attend/spend', {{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{event_id:eid,spent_amount:amt}})}});
-        const d = await r.json();
-        document.getElementById('spendMsg').textContent = d.ok ? 'Saved!' : (d.error || 'Error');
-        if (d.ok) setTimeout(()=>location.reload(), 1000);
-    }}
-    </script>
-    """, current_user))
-    return _maybe_set_cookie(request, resp, current_user)
-
-
-@app.post("/api/attend/spend")
-async def api_attend_spend(request: Request):
-    """Log spending amount for an attended event."""
-    current_user = _get_current_user(request)
-    if not current_user:
-        return JSONResponse({"error": "Not authenticated"}, status_code=401)
-    try:
-        body = await request.json()
-        event_id = body.get("event_id", "")
-        spent = float(body.get("spent_amount") or 0)
-    except Exception:
-        return JSONResponse({"error": "Invalid request"}, status_code=400)
-    db = get_db()
-    db.conn.execute(
-        "UPDATE attended SET spent_amount = ? WHERE user_id = ? AND event_id = ?",
-        (spent, current_user["id"], event_id),
-    )
-    db.conn.commit()
-    return JSONResponse({"ok": True})
-
-
-@app.post("/api/travel")
-async def api_travel(request: Request):
-    """Save a travel plan for multi-city mode."""
-    current_user = _get_current_user(request)
-    if not current_user:
-        return JSONResponse({"error": "Not authenticated"}, status_code=401)
-    try:
-        body = await request.json()
-        city = (body.get("city") or "").strip()
-        start_date = (body.get("start_date") or "").strip()
-        end_date = (body.get("end_date") or "").strip()
-        lat = body.get("lat")
-        lon = body.get("lon")
-        if not city or not start_date or not end_date:
-            return JSONResponse({"error": "city, start_date, end_date required"}, status_code=400)
-    except Exception:
-        return JSONResponse({"error": "Invalid request"}, status_code=400)
-    db = get_db()
-    db.conn.execute(
-        """INSERT OR REPLACE INTO travel_plans (user_id, city, lat, lon, start_date, end_date)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (current_user["id"], city, lat, lon, start_date, end_date),
-    )
-    db.conn.commit()
-    return JSONResponse({"ok": True, "city": city})
-
-
-@app.delete("/api/travel/{plan_id}")
-async def api_travel_delete(plan_id: int, request: Request):
-    """Delete a travel plan."""
-    current_user = _get_current_user(request)
-    if not current_user:
-        return JSONResponse({"error": "Not authenticated"}, status_code=401)
-    db = get_db()
-    db.conn.execute(
-        "DELETE FROM travel_plans WHERE id = ? AND user_id = ?",
-        (plan_id, current_user["id"]),
-    )
-    db.conn.commit()
-    return JSONResponse({"ok": True})
-
-
-@app.get("/travel", response_class=HTMLResponse)
-async def travel_page(request: Request, response: Response):
-    """Travel mode — add trips to get city-specific event recommendations."""
-    current_user = _get_current_user(request)
-    if not current_user:
-        return RedirectResponse("/login")
-    db = get_db()
-    plans = db.conn.execute(
-        "SELECT * FROM travel_plans WHERE user_id = ? ORDER BY start_date",
-        (current_user["id"],),
-    ).fetchall()
-    plans = [dict(p) for p in plans]
-
-    rows_html = ""
-    for p in plans:
-        rows_html += f"""<tr>
-            <td style="padding:10px;">{p['city']}</td>
-            <td style="padding:10px;">{p['start_date']}</td>
-            <td style="padding:10px;">{p['end_date']}</td>
-            <td style="padding:10px;"><button onclick="deletePlan({p['id']})"
-                style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:13px;">Delete</button></td>
-        </tr>"""
-
-    resp = HTMLResponse(_layout("Travel Mode", f"""
-    <h1>Travel Mode</h1>
-    <p style="color:#6b7280;margin-bottom:20px;">Going somewhere? Add your travel dates to get local event recommendations for that city on your next pipeline run.</p>
-    <div class="card" style="max-width:600px;margin-bottom:20px;">
-        <h3 style="margin:0 0 12px;">Add trip</h3>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
-            <div>
-                <label style="font-size:12px;color:#6b7280;">City</label>
-                <input id="tCity" placeholder="New York, NY"
-                       style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box;">
-            </div>
-            <div>
-                <label style="font-size:12px;color:#6b7280;">From</label>
-                <input id="tStart" type="date"
-                       style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box;">
-            </div>
-            <div>
-                <label style="font-size:12px;color:#6b7280;">To</label>
-                <input id="tEnd" type="date"
-                       style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box;">
-            </div>
-        </div>
-        <button onclick="addTrip()"
-                style="padding:8px 20px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;">Add Trip</button>
-        <span id="tMsg" style="margin-left:12px;font-size:13px;color:#16a34a;"></span>
-    </div>
-    <div class="card" style="max-width:600px;">
-        <h3 style="margin:0 0 12px;">Upcoming trips</h3>
-        <table style="width:100%;border-collapse:collapse;font-size:14px;">
-            <thead><tr style="border-bottom:2px solid #f1f5f9;">
-                <th style="text-align:left;padding:8px;">City</th>
-                <th style="text-align:left;padding:8px;">From</th>
-                <th style="text-align:left;padding:8px;">To</th>
-                <th></th>
-            </tr></thead>
-            <tbody id="tBody">{rows_html if rows_html else '<tr><td colspan="4" style="color:#9ca3af;padding:8px;">No trips planned.</td></tr>'}</tbody>
-        </table>
-    </div>
-    <script>
-    async function addTrip() {{
-        const city = document.getElementById('tCity').value.trim();
-        const start = document.getElementById('tStart').value;
-        const end = document.getElementById('tEnd').value;
-        if (!city || !start || !end) {{ document.getElementById('tMsg').textContent = 'All fields required'; return; }}
-        const r = await fetch('/api/travel', {{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{city,start_date:start,end_date:end}})}});
-        const d = await r.json();
-        document.getElementById('tMsg').textContent = d.ok ? `Added ${{d.city}}!` : (d.error || 'Error');
-        if (d.ok) setTimeout(()=>location.reload(), 800);
-    }}
-    async function deletePlan(id) {{
-        if (!confirm('Delete this trip?')) return;
-        await fetch(`/api/travel/${{id}}`, {{method:'DELETE'}});
-        location.reload();
-    }}
-    </script>
-    """, current_user))
-    return _maybe_set_cookie(request, resp, current_user)
 
 
 @app.get("/group/create", response_class=HTMLResponse)

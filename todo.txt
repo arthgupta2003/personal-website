@@ -1,0 +1,1545 @@
+# Recom TODO — Worker Agent Task Queue
+# Format: [timestamp] TASK: description
+# Status: DONE / IN_PROGRESS / DONE
+
+# ============================================================
+# [2026-03-09 22:30] TASK: Add RSVP links to per-user iCal feed
+# ============================================================
+# File: src/recom/dashboard/app.py
+#
+# In the per-user feed endpoint GET /u/{token}/feed.ics (line ~2390),
+# append one-click RSVP links to each event's DESCRIPTION field:
+#
+#   \n\nRSVP Going: {dashboard_url}/api/rsvp-link?event_id={eid}&status=going&u={token}&title={url_encoded_title}
+#   RSVP Maybe: {dashboard_url}/api/rsvp-link?event_id={eid}&status=maybe&u={token}&title={url_encoded_title}
+#
+# - Get dashboard_url from Settings()
+# - URL-encode the event title with urllib.parse.quote_plus
+# - The /api/rsvp-link endpoint already exists
+# - Only the per-user feed gets RSVP links (it's the only one with a token)
+# - Main /feed.ics and group feeds: no user token available, skip
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 22:30] TASK: Add university event sources (batch)
+# ============================================================
+# File: src/recom/sources/ (new files per source or grouped)
+#
+# Recon results — here's what each school uses:
+#
+# LOCALIST API (JSON, easy — one scraper pattern covers all):
+#   - Northeastern: https://calendar.northeastern.edu/api/2/events (~324 events)
+#   - MassArt: https://calendar.massart.edu/api/2/events (~30 events)
+#   Localist API docs: https://developer.localist.com/doc/api
+#   Params: pp=100, start=YYYY-MM-DD, end=YYYY-MM-DD, page=N
+#
+# TRUMBA (JSON/iCal — reuse existing Harvard pattern):
+#   - Tufts: trumba.com/calendars/tufts.rss or .json (~60 events)
+#   - Brandeis: trumba.com/calendars/brandeis-university (.ics/.json)
+#   - Wellesley: trumba.com/calendars/wellesley-college-public-calendar-of-events (.json)
+#
+# CUSTOM JSON API:
+#   - BU: bu.edu/calendar/rpc/events.json.php (~8 events, low volume)
+#
+# WORDPRESS / The Events Calendar (REST API):
+#   - Emerson: today.emerson.edu/wp-json/tribe/views/v2/html
+#     Also has iCal: webcal://today.emerson.edu/?post_type=tribe_events&ical=1
+#
+# SCRAPING REQUIRED (JS-rendered, lower priority):
+#   - Berklee: berklee.edu/BPC/calendar (~27 concerts, Drupal + AJAX)
+#     Worth it for free concert content but needs Playwright/Selenium
+#
+# ICS FEED:
+#   - Babson: engage.babson.edu/ics_helper
+#
+# Implementation order (highest value first):
+# 1. Write one Localist scraper, use for Northeastern + MassArt
+# 2. Reuse Harvard Trumba pattern for Tufts, Brandeis, Wellesley
+# 3. BU custom JSON (quick, small)
+# 4. Emerson iCal feed (trivial)
+# 5. Berklee scraping (needs JS rendering, do last)
+# 6. Babson ICS (trivial)
+#
+# Each source needs: fetch function, normalize to Event model, add to pipeline,
+# add to source_stats tracking.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 22:30] TASK: Add museum/arts venue event sources
+# ============================================================
+# Currently underrepresented. Add:
+#   - ICA Boston (icaboston.org/events)
+#   - MFA Boston (mfa.org/events)
+#   - Isabella Stewart Gardner Museum (gardnermuseum.org/calendar)
+#   - MIT List Visual Arts Center (listart.mit.edu/events)
+#   - Harvard Art Museums (harvardartmuseums.org/visit/calendar)
+#   - Peabody Essex Museum (pem.org/events)
+#   - Boston Children's Museum, Museum of Science
+#
+# Also pop-up / ephemeral sources:
+#   - SoWa Open Market (seasonal)
+#   - Boston Night Market
+#   - Time Out Boston / Eater Boston (new openings, pop-ups)
+#
+# Recon each URL, find API/feed/scrape method, implement.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 22:30] TASK: Cost optimization for larger event pool
+# ============================================================
+# Current: ~1100 events = 29 ranking batches = ~$2.50/run with Sonnet
+# Adding universities + museums could push to 2000+ events = ~$5/run
+#
+# Solution: two-pass ranking pipeline
+# 1. PASS 1 (Haiku, cheap): quick relevance filter on all events
+#    - Send events in large batches (100+)
+#    - Simple prompt: "Score 0-100 relevance to this interest profile. Return only events scoring >30."
+#    - Cost: ~$0.30 for 2000 events
+#    - Expected output: ~200-400 events survive
+#
+# 2. PASS 2 (Sonnet, current quality): full detailed ranking on survivors only
+#    - Current detailed prompt with all sub-scores (interest, social, urgency, etc.)
+#    - Cost: ~$0.80 for 300 events
+#    - Total: ~$1.10 vs $5.00 = 4.5x cheaper
+#
+# Implementation:
+# - Add a pre_filter_events() function in ranker
+# - Use claude-haiku-4-5 for pass 1
+# - Track pass 1 costs separately in cost breakdown
+# - Config: pre_filter_model, pre_filter_threshold
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 22:30] TASK: Elo Taste Discovery System
+# ============================================================
+# Build a daily Elo ranking system that forces user to compare activity
+# archetypes ("live jazz vs MIT lecture"), building a taste fingerprint
+# that feeds into event recommendation scoring.
+#
+# Data model (db.py) — add two tables:
+#   taste_items: (id, user_id, label, category, elo_rating DEFAULT 1500,
+#                 matchups_count DEFAULT 0, created_at)
+#     UNIQUE(user_id, label)
+#   taste_matchups: (id, user_id, item_a_id, item_b_id, winner_id NULL=equal,
+#                    created_at)
+#
+# DB methods:
+#   - get_taste_items(user_id) -> list sorted by Elo desc
+#   - get_next_matchup(user_id) -> pick two closest-Elo items (most informative)
+#     Prioritize items with 0 matchups
+#   - record_matchup(user_id, item_a_id, item_b_id, winner_id) -> Elo update K=32
+#   - seed_taste_items(user_id) -> insert ~25 default archetypes
+#
+# Seed archetypes:
+#   Live music (small venue), Concerts (big venue), Jazz/blues,
+#   DJ/electronic night, Comedy show, Theater/improv, Art exhibition,
+#   Film screening, Tech/AI talk, Science lecture, Book club/reading,
+#   Board game night, Trivia night, Outdoor group fitness,
+#   Climbing/bouldering, Yoga/meditation, Running club, Cooking class,
+#   Pottery/maker class, Food pop-up/tasting, Wine/cocktail bar,
+#   Coffee shop hangout, Networking event, Volunteer work, Dance class,
+#   Walking tour, Museum visit, Hackathon
+#
+# Elo formula:
+#   expected_w = 1 / (1 + 10^((loser_rating - winner_rating) / 400))
+#   new_winner = winner_rating + K * (1 - expected_w)
+#   new_loser = loser_rating + K * (0 - (1 - expected_w))
+#   For "equal": use 0.5 instead of 1/0
+#
+# API endpoints (app.py):
+#   GET  /api/taste/next           -> returns next matchup JSON
+#   POST /api/taste/vote           -> {item_a_id, item_b_id, winner_id}, returns updated Elos
+#   GET  /api/taste/rank           -> full taste stack JSON
+#   GET  /taste                    -> web page: taste stack with Elo bars + inline vote widget
+#   GET  /api/taste/vote-link?a=&b=&winner=&u= -> GET-based vote for email, shows confirmation
+#
+# Email (sender.py):
+#   send_daily_matchup(email, token, item_a, item_b, dashboard_url, settings)
+#   Subject: "Quick: Jazz night or climbing gym?"
+#   Body: two items + three GET-link buttons [A] [B] [Equal]
+#
+# Ranking integration:
+#   After computing event scores, map event category/vibe to closest taste_item.
+#   Top-5 Elo items: +10 to event score. Bottom-5: -5.
+#   Additive, not replacement.
+#
+# Scheduling:
+#   scripts/send_daily_taste.py — cron daily 9am weekdays
+#   Gets user, calls get_next_matchup, sends email.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 22:30] TASK: Impressions tracking + exposure-aware ranking for non-events
+# ============================================================
+# Problem: clubs/classes/experiences need repeated exposure (7-8 times)
+# before someone acts. Current pipeline treats them as "already seen" = stale.
+#
+# Data model (db.py) — new table:
+#   impressions: (id, user_id, event_id, run_id, channel TEXT 'email'/'calendar'/'web',
+#                 shown_at, clicked INTEGER DEFAULT 0, acted INTEGER DEFAULT 0)
+#
+# New table for explicit steering:
+#   steering: (id, user_id, target_type TEXT 'event_id'/'keyword'/'category'/'source',
+#              target_value TEXT, action TEXT 'more'/'less'/'block'/'pause'/'done',
+#              expires_at TEXT NULL, created_at)
+#
+# Ranking changes:
+#   For event_type in (club, class, experience):
+#   - Do NOT filter as "already seen"
+#   - Exposure score: 1-3 impressions = boost, 4-7 = neutral, 8+ = demote
+#   - Clicked but didn't act = boost
+#   - Vary match_reason framing each time it surfaces
+#
+# Steering integration:
+#   block -> filter out entirely
+#   more -> +15 score bonus
+#   less -> -15 penalty
+#   pause -> filter until expires_at
+#   done -> filter permanently
+#
+# Email action links per recommendation:
+#   [More like this] [Not for me] [I did this]
+#   -> GET /api/steer?target=keyword&value=climbing&action=more&u=TOKEN
+#
+# API endpoint:
+#   GET /api/steer?target_type=&target_value=&action=&u= -> records steering, shows confirmation
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 22:30] TASK: AI-powered natural language event search
+# ============================================================
+# One endpoint that lets user query their own event DB in natural language.
+#
+# POST /api/search {query: "jazz tonight", user_token: "..."}
+# GET  /search     web page with search box
+#
+# Implementation (simple, no vector DB needed):
+# 1. Pull all kept events from latest run
+# 2. Send events + query to Claude Haiku as context
+# 3. Prompt: "Here are N events. The user wants: '{query}'.
+#    Return top 5 matches as JSON with event_id and one-line reason."
+# 4. Return matched events with reasons
+#
+# Cost: ~$0.05 per query with Haiku (dataset is small enough to brute force)
+# Could also add the user's taste profile as context for personalized results.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 22:45] TASK: Outdoor/nature day trip recommendations
+# ============================================================
+# Non-urgent, "anytime" category. Hikes, parks, day trips within
+# ~1hr of Cambridge. These are perfect for the repeated-exposure
+# drip system — show a different hike each week until one sticks.
+#
+# Data sources:
+#   - AllTrails API or scrape (trails near 02139, difficulty, distance, ratings)
+#   - DCR (MA Dept of Conservation & Recreation) — state parks/reservations
+#     mass.gov/dcr — has events too (ranger walks, guided hikes)
+#   - AMC (Appalachian Mountain Club) — organized group hikes, trips
+#     outdoors.org/activities/ — structured event listings
+#   - Mass Audubon — nature walks, birding, wildlife sanctuaries
+#     massaudubon.org/programs
+#   - Trustees of Reservations — properties + events
+#     thetrustees.org/explore/
+#   - National Park Service — Boston Harbor Islands, Minuteman NHP
+#   - TrailLink / Rails-to-Trails — bike trails
+#
+# Nearby spots to seed (known good):
+#   - Middlesex Fells (user liked this)
+#   - Blue Hills Reservation
+#   - Walden Pond
+#   - Minute Man NHP (Lexington/Concord trail)
+#   - Boston Harbor Islands (ferry from downtown)
+#   - Halibut Point State Park (Rockport, ~1hr)
+#   - Mt Monadnock (NH, ~1.5hr, classic day hike)
+#   - Breakheart Reservation
+#   - Lynn Woods
+#   - World's End (Hingham)
+#
+# Data model:
+#   event_type = 'outdoor' (new type alongside event/club/class/experience)
+#   These have no start_time — they're always available
+#   Seasonal awareness: some trails are seasonal (harbor islands ferry),
+#   some are better in fall (foliage), some in spring (wildflowers)
+#
+# Ranking considerations:
+#   - Weather-aware: boost outdoor recs on nice forecast days
+#     (could pull weather API — OpenWeatherMap free tier)
+#   - Distance/drive time from user's zip code
+#   - Difficulty level matching (if user did Fells, suggest similar moderate hikes)
+#   - "You liked Middlesex Fells" -> similar: Blue Hills, Breakheart, Lynn Woods
+#   - Group-friendly flag: good for bringing friends vs solo
+#
+# Email integration:
+#   Weekly digest gets a "Weekend Outside" section with 1-2 outdoor picks
+#   rotated via the impressions/exposure system.
+#   Include: trail name, distance from you, difficulty, photo, one-line hook
+#
+# Stretch: integrate with Strava/Apple Health if user connects —
+#   know their fitness level, suggest appropriate difficulty.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 22:50] TASK: Weekday vs weekend awareness in ranking + display
+# ============================================================
+# User works 9-5. Recommendations should respect that.
+#
+# Core constraint: user is busy 9-5 Mon-Fri. All recommendations
+# should be filtered/ranked through this lens.
+#
+# Ranking prompt change:
+#   Add to the Claude ranking prompt context:
+#   "The user works 9-5 Mon-Fri. They can only attend:
+#    - Weekday evenings (after 6pm)
+#    - Weekends (all day)
+#    - Lunch hour (12-1pm) only if very close and quick
+#    Hard-filter anything Mon-Fri 9am-5pm unless score >85.
+#    Weekday evening events should be close/convenient (< 20 min).
+#    Weekend events can be further out (day trips OK)."
+#
+# Pre-filter (before sending to Claude, saves tokens):
+#   Parse start_time. If Mon-Fri and between 9am-5pm -> skip unless
+#   the event is online or explicitly "lunch" in title.
+#   This alone could cut 30-40% of events before ranking.
+#
+# Email digest sections:
+#   "This Week" — evening + weekend events, sorted by day
+#   "Worth Trying" — non-time-bound stuff (clubs, classes, hikes)
+#   No need to label "weeknight" vs "weekend" — just show them
+#   in chronological order. The filtering already ensures everything
+#   shown is attendable.
+#
+# Calendar feed:
+#   Same filter — don't put weekday daytime events in the feed.
+#   Keeps the calendar clean and trustworthy ("if it's on my calendar,
+#   I could actually go").
+#
+# Data model: no changes. Just ranking logic + pre-filter + email template.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: Attended feedback loop
+# ============================================================
+# Currently attendance is tracked but never fed back into recommendations.
+#
+# After marking "attended", prompt for:
+#   - Rating: 1-5 stars
+#   - "Would you go again?" yes/no
+#   - "Who'd you go with?" (optional, links to group members)
+#
+# Feed back into system:
+#   - Star ratings adjust Elo taste items for matching categories
+#     (attended jazz show, rated 5 stars -> boost jazz Elo)
+#   - Low ratings -> steer "less" for that category/venue automatically
+#   - Surface patterns: "You went to 3 jazz shows this month"
+#
+# UI: after clicking "I went" on an event, show a quick 1-tap
+# rating widget (5 stars or thumbs up/down). Keep it fast.
+# Same pattern for email: "How was Jazz Night? [loved it] [meh] [bad]"
+# as GET links to /api/rate?event_id=X&rating=5&u=TOKEN
+#
+# Data model: attended table already has rating + notes columns.
+# Just need the UI/email prompts to populate them, plus the
+# feedback-to-Elo/steering integration.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: Seasonality engine
+# ============================================================
+# Boston is radically different Jan vs July. Inject season awareness.
+#
+# Add to ranking prompt context:
+#   Current season, current month, current weather conditions.
+#   "It's March in Boston — still cold. Prioritize indoor events.
+#    Spring is coming: start surfacing outdoor options for April."
+#
+# Seasonal boosts:
+#   Summer: outdoor concerts, harbor islands, rooftop bars, beer gardens
+#   Fall: foliage hikes, apple picking, Halloween events, cider
+#   Winter: museum exhibitions, indoor concerts, cooking classes, cozy bars
+#   Spring: cherry blossoms, farmers markets, outdoor running clubs
+#
+# Implementation:
+#   - Add current month/season to the ranking prompt (trivial)
+#   - For outdoor/nature recs: tag with best_season metadata
+#   - Weather API integration (OpenWeatherMap free tier):
+#     Pull 7-day forecast, inject into ranking prompt
+#     "Saturday forecast: 72F sunny" -> boost outdoor events Saturday
+#     "Rain all weekend" -> boost indoor options
+#   - Could be as simple as a weather_context string prepended to prompt
+#
+# No new data model needed. Just prompt engineering + optional weather API call.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: "Friends are going" as top ranking signal
+# ============================================================
+# Currently friend RSVPs show as a banner on the calendar page.
+# They should be the #1 ranking signal — this is how real decisions work.
+#
+# When a group-mate RSVPs "going":
+#   - That event should jump to top of your feed/email
+#   - friend_score in ranking should dominate other signals
+#   - "Alice is going" is worth more than a 90 interest_score
+#
+# Implementation:
+#   - In the ranker, after initial scoring, check RSVPs from group-mates
+#   - Any event with a friend "going" gets +25 bonus (massive boost)
+#   - Any event with a friend "maybe" gets +10
+#   - Re-sort after applying friend boost
+#   - In email: put "Friends are going" events in their own section at top
+#   - In calendar feed: prepend friend names to event title
+#     "[Alice going] Jazz Night at Lilypad"
+#
+# This turns the product from "here's stuff you might like" into
+# "here's stuff you might like AND your friends are going to."
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: Event deduplication across sources
+# ============================================================
+# "Jazz Night at Lilypad" shows up on Eventbrite, Do617, AND Boston Calendar.
+# Currently counted as 3 separate events, inflating numbers and wasting
+# ranking tokens.
+#
+# Fuzzy matching strategy:
+#   1. Normalize: lowercase, strip punctuation, remove common words
+#   2. Match on: title similarity (>80% fuzzy match) + same date + same venue
+#   3. Merge: keep highest-quality description, preserve all source URLs
+#   4. Run dedup AFTER scraping, BEFORE ranking
+#
+# Implementation:
+#   - Use difflib.SequenceMatcher or rapidfuzz for title similarity
+#   - Match criteria: title_similarity > 0.8 AND same date AND
+#     (same venue OR venue_similarity > 0.7)
+#   - Merged event keeps: best description (longest), all source URLs,
+#     lowest price (if differs), union of categories
+#   - Track which sources had the event (useful for source quality metrics)
+#
+# Expected impact: probably 15-20% reduction in event count,
+# which directly saves ranking costs.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: "Last minute tonight" push notification
+# ============================================================
+# It's 4pm Friday, you have no plans. Get a quick ping with
+# 3 things happening tonight you'd like.
+#
+# Implementation:
+#   scripts/send_tonight.py — cron at 4pm Fri + Sat
+#   1. Check if user has any RSVPs for tonight -> if yes, skip
+#   2. Pull events from latest run where start_time is tonight (6pm-11pm)
+#   3. Pick top 3 by score
+#   4. Send short email:
+#      Subject: "No plans tonight? Here are 3 ideas"
+#      Body: 3 events, each with title + time + venue + one-tap RSVP link
+#
+# Could also trigger on any evening where user has no RSVPs,
+# not just Fri/Sat. Configurable frequency to avoid spam.
+#
+# Email should be ultra-short — scannable in 5 seconds from phone.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: Budget / spending awareness
+# ============================================================
+# Track event spending over time. Mix in free stuff to balance.
+#
+# Data model: add spent_amount REAL to attended table (optional field).
+# After marking attended, optionally log what you spent.
+#
+# Dashboard/email features:
+#   - "You spent $120 on events this month"
+#   - "3 of your 5 events were free"
+#   - Ensure each weekly digest includes at least 2 free options
+#     (MIT lectures, museum free nights, park events, library events)
+#   - Tag events as free/paid in the ranking output
+#
+# Ranking: add a diversity constraint — don't recommend 5 expensive
+# events in a row. Ensure mix of free + paid in weekly picks.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: Venue taste profile
+# ============================================================
+# Track which venues you attend. Build venue preferences over time.
+#
+# Implementation:
+#   - Extract venue from attended events (location_name field)
+#   - Track: venue name -> visit count, avg rating, last visited
+#   - Could be a simple query on attended + events tables, no new table needed
+#
+# Ranking integration:
+#   - "You've been to Lilypad 3 times and rated it 4.5 avg" -> boost all Lilypad events
+#   - "You've never been to anything in Somerville" -> small discovery boost
+#     for Somerville venues (surface area expansion)
+#   - Venues you rated poorly -> penalize
+#
+# Dashboard: "Your Venues" page showing a map or list of places
+# you've been, visit count, ratings. Fun to look at.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: Calendar density management
+# ============================================================
+# Don't over-schedule. Know when to stop recommending.
+#
+# Logic:
+#   - Check user's RSVPs for the coming week
+#   - If 3+ RSVPs already for Saturday, don't recommend more Saturday events
+#   - If 0 RSVPs for Tuesday evening, surface it as an opportunity:
+#     "Your Tuesday is free — how about [event]?"
+#   - Weekly digest should acknowledge existing plans:
+#     "You're going to Jazz Night Friday. Here's what else looks good."
+#
+# Implementation:
+#   - Before generating weekly email, pull user's RSVPs for the week
+#   - Pass RSVP context to ranking prompt: "User already has plans on
+#     Friday and Saturday evening. Prioritize other days."
+#   - In email, show confirmed plans first, then suggestions for open slots
+#   - Calendar feed: don't add new recs for days that are already full
+#
+# This makes the product feel aware and respectful of your time,
+# not just a firehose of options.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: Multi-city / travel mode
+# ============================================================
+# "I'm in NYC next weekend" -> swap sources temporarily.
+#
+# Implementation:
+#   - Add a simple UI/API: POST /api/travel {city, start_date, end_date}
+#   - For that date range, run the pipeline with the travel city's sources
+#   - Merge travel events into the weekly digest under a "In NYC" section
+#   - Calendar feed includes travel events for those dates
+#
+# Architecture already supports this: location_query is per-user,
+# event sources take location as param. Just need:
+#   - travel_plans table: (user_id, city, lat, lng, start_date, end_date)
+#   - Source configs for other cities (start with NYC, SF, LA)
+#   - Modified pipeline to check travel_plans and run extra sources
+#
+# Stretch goal but the foundation is there.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: Scraper health dashboard
+# ============================================================
+# Do617 returns 500 sometimes, Boston Calendar has stale data.
+# Need visibility into source reliability.
+#
+# Implementation:
+#   - source_stats table already tracks events_found + error_message per run
+#   - Build a /admin/sources page showing:
+#     - Each source: last 5 runs success/fail, avg event count, error rate
+#     - Sparkline or simple bar chart of event counts over time
+#     - Alert if a source returned 0 events (probably broken)
+#     - Last error message for each source
+#   - Could also add response_time to source_stats for perf tracking
+#
+# This is just a query + dashboard page on existing data. Quick win.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: Incremental runs / event caching
+# ============================================================
+# Don't re-scrape and re-rank everything every week.
+#
+# Strategy:
+#   - Cache scraped events for 7 days (most events don't change)
+#   - On each run, only scrape sources that are due for refresh
+#   - Only re-rank: new events + events whose date is within 7 days
+#     (urgency may have changed)
+#   - Keep existing rankings for unchanged future events
+#
+# Implementation:
+#   - Add last_scraped timestamp to source_stats or new source_cache table
+#   - Add refresh_interval_hours per source (e.g., Ticketmaster=24h, MIT=72h)
+#   - Modified pipeline: check cache freshness, skip fresh sources
+#   - Re-rank only events where: is_new OR start_time within 7 days
+#     OR has new friend RSVPs
+#
+# Expected impact: 50-70% reduction in scraping time + ranking costs
+# for subsequent runs. First run is same cost, subsequent runs much cheaper.
+# Status: DONE
+
+# ============================================================
+# [2026-03-09 23:00] TASK: Pipeline timing / observability
+# ============================================================
+# Cost tracking exists but no timing. Need to know which sources
+# are slow to debug pipeline performance.
+#
+# Implementation:
+#   - Add duration_seconds REAL to source_stats table
+#   - Wrap each source scraper in a timer
+#   - Log: "Ticketmaster: 200 events in 4.2s, MIT: 55 events in 12.8s"
+#   - Show timing on the /admin run detail page alongside event counts
+#   - Track total pipeline duration per run
+#
+# Also useful: add timing to ranking batches.
+# "Batch 1/29: 40 events ranked in 8.3s, $0.09"
+# Helps identify if a specific batch is slow (e.g., long descriptions).
+# Status: DONE
+
+# ============================================================
+# [2026-03-10] TASK: Admin schedule settings in dashboard
+# ============================================================
+# Add a "Schedule" section to the admin page (user #1 only) that shows
+# current email timing and lets you edit it.
+#
+# Store overrides in a `settings` table in the DB (key-value pairs).
+# On save, regenerate the crontab via scripts/install_cron.sh with new times.
+#
+# Fields:
+#   - Weekly pipeline day (dropdown Mon-Sun, default Saturday)
+#   - Weekly pipeline hour (dropdown 6am-12pm, default 9am)
+#   - Daily email hour (dropdown 6am-12pm, default 8am)
+#
+# Implementation:
+#   - db.py: create `settings` table (key TEXT PRIMARY KEY, value TEXT),
+#     add get_setting(key)/set_setting(key, value) methods
+#   - app.py: add schedule form to /admin page, POST /api/admin/schedule
+#     endpoint that saves to DB + regenerates crontab
+#   - scripts/install_cron.sh: accept args for day/hour overrides,
+#     or have Python generate the crontab lines directly
+# Status: TODO
+
+# ============================================================
+# [2026-03-10] TASK: Restore bucket list as a first-class dashboard feature
+# ============================================================
+# Bucket list currently lives buried in the profile page. It should be
+# more prominent and better integrated into the product loop.
+#
+# Changes:
+#   - Give bucket list its own tab/page at /bucket-list (not just a section on profile)
+#   - Show bucket list items with status: pending / in-progress / done
+#   - Link bucket items to matching events when they surface in recommendations
+#     (e.g. "take a salsa class" -> highlight salsa class events in digest)
+#   - In weekly email, include a "Bucket List Match" section when a recommended
+#     event matches a bucket list item (fuzzy match item text against event
+#     title/description/category)
+#   - Add "Mark done" button that links to the attended feedback flow
+#   - Show progress: "3 of 12 bucket list items completed"
+#
+# The bucket list is one of the best steering mechanisms — user literally
+# tells you what they want. Make it central, not buried.
+# Status: TODO
+
+# ============================================================
+# [2026-03-10] TASK: Remove Travel and Budget pages from dashboard
+# ============================================================
+# These are premature features cluttering the nav. Remove them entirely.
+#
+# Remove from nav:
+#   - render_nav() in app.py (~line 71-72): delete the Travel and Budget nav links
+#
+# Remove routes + APIs:
+#   - GET /budget (~line 3090-3163): budget_page handler + all HTML
+#   - POST /api/attend/spend (~line 3166-3184): spend logging API
+#   - POST /api/travel (~line 3187-3211): save travel plan API
+#   - DELETE /api/travel/{plan_id} (~line 3214-3226): delete travel plan API
+#   - GET /travel (~line 3229-3308): travel_page handler + all HTML
+#
+# NOTE: The Travel nav link was already removed from render_nav but
+# the Budget link removal was interrupted. Verify both are gone from nav.
+# Delete all the route handlers and API endpoints listed above.
+# The travel_plans table and spent_amount column can stay in the DB — no schema changes needed.
+# Status: DONE
+# Completed: 2026-03-10
+
+# ============================================================
+# [2026-03-10] TASK: Build UI variants for A/B comparison
+# ============================================================
+# For each main page (calendar/events, groups, profile, taste), create 3
+# visually distinct UI variants as separate route handlers
+# (e.g. /v1/, /v2/, /v3/).
+#
+# Each variant should be a complete, self-contained page using _layout().
+# The variants should differ meaningfully in layout and information density:
+#
+# Variant A — "Dense/Power User":
+#   compact cards, small text, lots of info visible at once, table-like
+#   layouts, muted colors
+#
+# Variant B — "Magazine/Editorial":
+#   large hero images, big typography, generous whitespace,
+#   one-event-per-screen feel, bold accent colors
+#
+# Variant C — "Mobile-first/App-like":
+#   sticky bottom nav, swipeable card stack feel, rounded corners,
+#   shadows, bottom sheets for detail, iOS/Android native app aesthetic
+#
+# Add a /variants index page with links to all variants for easy
+# side-by-side comparison. Keep all variants as inline HTML in app.py
+# (no templates). Each variant should show the same real data from the database.
+# Status: DONE
+# Completed: 2026-03-10
+
+# ============================================================
+# [2026-03-10] TASK: Email + calendar subscription testing harness (HIGH PRIORITY)
+# ============================================================
+# The web dashboard has a testing harness being built, but the PRIMARY
+# user touchpoints — email digest and iCal feed subscription — have NO
+# testing infrastructure. These matter way more than the web UI because:
+#   - Email is the main way users interact with the product daily
+#   - Calendar subscription is the "set and forget" distribution channel
+#   - Both are hard to iterate on without a preview/test loop
+#
+# Email testing harness:
+#   - GET /admin/email-preview — render the daily digest email in-browser
+#     using compose_daily_email() with real data from latest run
+#   - GET /admin/email-preview/tonight — preview the "last minute tonight" email
+#   - GET /admin/email-preview/taste — preview the daily taste matchup email
+#   - GET /admin/email-preview/bucket — preview bucket list match email
+#   - Each preview should show: subject line, HTML body rendered inline,
+#     plain text fallback, and a "Send test to me" button
+#   - Generate multiple email layout variants (like the web UI variants):
+#     dense/minimal, rich/magazine, mobile-optimized
+#   - Show all variants side-by-side on one page for easy comparison
+#
+# Calendar subscription testing harness:
+#   - GET /admin/cal-preview — render the iCal feed as a visual calendar
+#     in-browser (parse the .ics output and display as HTML calendar)
+#   - Show: event count, date range, sample events with full detail
+#   - Test RSVP links work (click through from feed preview)
+#   - Validate iCal RFC 5545 compliance (common parsing issues)
+#   - Show what it looks like in Google Calendar / Apple Calendar
+#     (or at minimum, show the raw .ics with syntax highlighting)
+#   - Test per-user feed vs group feed vs main feed differences
+#
+# Why this matters more than web UI variants:
+#   Email open rates >> dashboard visit rates for this kind of product.
+#   Calendar subscription is the stickiest feature — once subscribed,
+#   users passively receive value without opening anything.
+#   Getting these right is the difference between a tool people use
+#   and a tool people forget about.
+#
+# Implementation: all routes under /admin (user #1 only). Reuse existing
+# compose_daily_email, compose_tonight_email, etc. Just render to browser
+# instead of sending via SMTP.
+# Status: DONE
+# Completed: 2026-03-10
+
+# ============================================================
+# [2026-03-10] TASK: Iterate on event scoring and ranking quality
+# ============================================================
+# The ranking system is the core value engine. Current approach works but
+# needs iteration based on real usage data.
+#
+# Current architecture (for context):
+#   - Two-pass: Haiku pre-filter (>150 events) -> Sonnet full ranking (40/batch)
+#   - 7 dimensions (0-15 each): interest, social, urgency, logistics, friend, discovery, quality
+#   - Vibe-weighted: social/intellectual/mixed events use different weight vectors
+#   - Post-Claude adjustments: distance-based logistics, friend RSVP boost (+25/+10),
+#     steering directives, work-hours filter, season context
+#   - Threshold: score >= 25 to keep
+#
+# Areas to iterate on:
+#   - Weight tuning: are the vibe weights right? Log which events user actually
+#     attends vs what scored highest. If high-scored events are ignored and
+#     low-scored events get attended, weights are wrong.
+#   - Threshold tuning: is 25 too aggressive or too lenient? Track how many
+#     events make the cut vs how many the user actually looks at.
+#   - Prompt quality: the system prompt is detailed but could benefit from
+#     real examples of events the user liked/disliked as few-shot examples.
+#     Feed attended+rated events back into the prompt as calibration examples.
+#   - Discovery vs exploitation balance: discovery_score is weighted low in
+#     social vibe (0.5). Is that right? User said they want surface area expansion.
+#   - Spotify artist matching: currently +10 to interest_score. Is that enough?
+#     Should be almost auto-keep for any Spotify artist concert.
+#   - Taste stack integration: Elo rankings feed into the prompt as context but
+#     don't directly adjust scores. Could add post-Claude Elo-based score adjustment.
+#   - Pre-filter false negatives: is Haiku too aggressive? Compare events Haiku
+#     filters out vs what Sonnet would have scored them. Log a sample.
+#   - Batch consistency: does scoring vary between batches? Same event type
+#     might get different scores in batch 1 vs batch 15 due to prompt drift.
+#   - Add an A/B framework: run two weight configs, show both in email,
+#     track which recommendations get more clicks/RSVPs.
+#
+# Implementation approach:
+#   - Add /admin/ranking-analysis page showing: score distributions, attended vs
+#     recommended overlap, per-dimension histograms, weight sensitivity analysis
+#   - Log ranking inputs/outputs to enable offline replay and tuning
+#   - Add "Why this score?" drill-down per event on dashboard (already have
+#     match_reason but could show full dimension breakdown)
+# Status: TODO
+
+# ============================================================
+# [2026-03-10] TASK: Pipeline tuning dashboard / playground
+# ============================================================
+# An interactive tool for tweaking the ranking pipeline without editing code.
+# Should let you change parameters, re-run on cached data, and see the diff.
+#
+# Core features — GET /admin/pipeline (admin only):
+#
+# 1. Weight sliders:
+#   - Expose all vibe weight vectors as sliders (0-5 range, 0.5 step)
+#   - social/intellectual/mixed tabs, each with 7 dimension sliders
+#   - "Apply" re-scores all events from the latest run IN-BROWSER (no API call)
+#     using the same _compute_score formula in JS
+#   - Shows before/after: which events moved up, which dropped, new keeps/filters
+#
+# 2. Threshold tuner:
+#   - Slider for keep threshold (currently 25). Show how many events pass at
+#     each threshold level (histogram). See the marginal events at the boundary.
+#
+# 3. Pre-filter config:
+#   - Toggle pre-filter on/off
+#   - Set minimum event count to trigger pre-filter (currently 150)
+#   - Show what pre-filter removed last run + sample of filtered events
+#   - "Would Sonnet have kept these?" button: re-rank a sample of filtered
+#     events through Sonnet to check for false negatives
+#
+# 4. Post-scoring adjustments:
+#   - Friend RSVP boost amount (currently +25 going, +10 maybe) — sliders
+#   - Steering bonus/penalty amounts (currently +15/-15) — sliders
+#   - Distance logistics curve visualization (show the breakpoints)
+#
+# 5. Prompt editor:
+#   - Show the current system prompt and user message template
+#   - Editable text area to tweak prompt wording
+#   - "Re-rank batch" button: send one batch through Claude with modified prompt
+#   - Side-by-side diff of scores with original vs modified prompt
+#   - Save prompt as a named version for A/B comparison
+#
+# 6. Replay mode:
+#   - Pick any historical run from dropdown
+#   - Load its events + scores
+#   - Apply current weights/threshold to see what would have changed
+#   - Compare against actual user behavior (attended, RSVP'd, clicked)
+#
+# Data requirements:
+#   - Store raw Claude ranking responses per run (already have raw_json in events)
+#   - Store the dimension scores separately (already in DB)
+#   - Need to expose _VIBE_WEIGHTS and threshold as JSON via API
+#
+# API endpoints:
+#   GET  /api/admin/pipeline/config -> current weights, threshold, boost values
+#   POST /api/admin/pipeline/config -> save new config to settings table
+#   POST /api/admin/pipeline/replay -> re-rank a batch with modified prompt
+#   GET  /api/admin/pipeline/runs   -> list of runs with stats for replay
+#
+# This is the "knobs and dials" panel for the recommendation engine.
+# Makes iteration fast without code deploys.
+# Status: TODO
+
+# ============================================================
+# [2026-03-10] TASK: Recommendation backtester (quant-style signal analysis)
+# ============================================================
+# Treat the ranking pipeline like an alpha model. Build a backtester that
+# evaluates signal quality against realized user behavior (attended, rated,
+# RSVP'd, clicked, ignored).
+#
+# The core question: are our scoring signals actually predictive of what
+# the user ends up doing?
+#
+# === Data foundation ===
+# Already have in DB:
+#   - Per-event dimension scores (interest, social, urgency, logistics,
+#     friend, discovery, quality) + composite score + vibe + event_type
+#   - Attended table: which events user went to, rating (1-5), spent_amount
+#   - RSVPs: going/maybe/cant per event
+#   - Impressions: shown_at, clicked, acted (if implemented)
+#   - Steering: explicit more/less/block feedback
+#   - Historical runs with timestamps
+#
+# Need to add:
+#   - Track "shown but not acted on" as implicit negative signal
+#   - Log email opens + click-throughs per event (add tracking pixel +
+#     redirect links in email composer)
+#   - Store the full weight config used per run (so backtest uses the
+#     weights that were active at the time, not current weights)
+#
+# === Signal attribution ===
+# For each scoring dimension, compute:
+#   - Hit rate: % of events with high signal (>10) that were attended
+#   - Miss rate: % of attended events that had low signal (<5)
+#   - Lift: how much does a high signal increase attend probability vs baseline
+#   - Example output:
+#     "interest_score: 42% of events scoring >10 were attended (vs 8% baseline = 5.3x lift)"
+#     "social_score: 35% lift, friend_score: 28% lift, discovery_score: 4% lift"
+#   - This tells you which signals are actually doing work
+#
+# === Information Coefficient (IC) ===
+# Rank correlation (Spearman) between each signal and user outcome:
+#   - Outcome = attended (1/0), or rating (1-5), or RSVP status
+#   - Compute IC per dimension per run, then average across runs
+#   - IC > 0.1 = useful signal, IC < 0.02 = noise
+#   - Track IC over time: is a signal getting better or worse as user
+#     provides more feedback?
+#   - Composite IC: correlation of final weighted score vs attendance
+#
+# === Decay analysis ===
+# Do different signals predict better at different time horizons?
+#   - urgency_score IC for events <3 days out vs >7 days out
+#   - interest_score IC for events this week vs next month
+#   - friend_score IC by time-to-event (friends going matters more last-minute)
+#   - Hypothesis: urgency dominates short-term, interest dominates long-term
+#   - Output: signal IC by days-until-event buckets (0-3, 3-7, 7-14, 14+)
+#
+# === Weight optimization ===
+# Given attended/rated history, solve for optimal vibe weights:
+#   - Simple approach: logistic regression where features = 7 dimension scores,
+#     target = attended (1/0). Learned coefficients = optimal weights.
+#   - Per-vibe: train separate models for social/intellectual/mixed events
+#   - Compare learned weights vs hand-tuned weights — where are we most wrong?
+#   - Ridge regression to prevent overfitting on small sample
+#   - Output: "Current social vibe weights vs optimal:
+#     interest: 1.5 -> 2.1 (under-weighted)
+#     friend: 2.5 -> 1.8 (over-weighted)
+#     discovery: 0.5 -> 1.4 (severely under-weighted)"
+#   - Don't auto-apply — show the diff and let user decide
+#   - Need minimum ~30 attended events per vibe to be meaningful
+#
+# === Backtest report (per historical run) ===
+# For each past run, compute:
+#   - Precision: of events we kept (score >= threshold), what % were attended?
+#   - Recall: of events user attended, what % did we keep?
+#   - Precision@K: of top-10 scored events, how many attended?
+#   - False positives: high-scored events user ignored (why? bad signal?)
+#   - False negatives: low-scored events user attended anyway (what did we miss?)
+#   - Score distribution: histogram of attended vs not-attended event scores
+#     (should see clear separation — if not, signals aren't working)
+#   - Threshold sweep: precision/recall curve across thresholds 10-50
+#     to find optimal keep threshold
+#
+# === Dashboard: GET /admin/backtest ===
+# Page layout:
+#   1. Summary stats across all runs:
+#      - Overall precision/recall at current threshold
+#      - Best/worst performing signals (by IC)
+#      - Suggested weight changes (from optimization)
+#      - "Model quality" score (composite IC * precision)
+#
+#   2. Signal analysis table:
+#      | Dimension       | IC    | Hit Rate | Lift | Trend |
+#      | interest_score  | 0.23  | 42%      | 5.3x | ↑     |
+#      | social_score    | 0.18  | 35%      | 3.8x | →     |
+#      | friend_score    | 0.31  | 55%      | 6.1x | ↑     |
+#      | discovery_score | 0.04  | 12%      | 1.2x | ↓     |
+#
+#   3. Per-run backtest drill-down:
+#      - Select run from dropdown
+#      - Show precision/recall, score histogram, false pos/neg examples
+#      - "What if" slider: change threshold, see precision/recall shift
+#
+#   4. Weight optimizer panel:
+#      - Current vs suggested weights per vibe
+#      - "Apply suggested weights" button (saves to settings table)
+#      - Confidence indicator (sample size, R², out-of-sample validation)
+#
+#   5. Decay curves:
+#      - Chart: IC by days-until-event for each dimension
+#      - Insight: "urgency_score is 3x more predictive for <3 day events"
+#
+# === API endpoints ===
+#   GET  /api/admin/backtest/summary    -> overall stats + signal table
+#   GET  /api/admin/backtest/run/{id}   -> per-run precision/recall/histogram
+#   GET  /api/admin/backtest/signals    -> IC + lift per dimension over time
+#   GET  /api/admin/backtest/optimize   -> suggested weights from regression
+#   POST /api/admin/backtest/apply      -> save optimized weights to config
+#
+# === Implementation notes ===
+#   - Use numpy/scipy for IC computation and regression (add as deps)
+#   - Minimum data requirement: ~50 attended events before results are meaningful
+#   - Run backtest computation on-demand (not real-time) — cache results
+#   - Charts: inline SVG or lightweight JS charting (Chart.js via CDN)
+#   - This is admin-only, doesn't need to be pretty, needs to be informative
+#   - Start simple: signal attribution + IC table first, add optimization later
+# Status: TODO
+
+# ============================================================
+# [2026-03-10] TASK: ML-based ranking models (beyond Claude-as-scorer)
+# ============================================================
+# Currently Claude is the entire scoring engine — it reads events and
+# outputs 7 dimension scores. This works but has problems:
+#   - Expensive ($3-4/run, scales linearly with event count)
+#   - Non-deterministic (same event can score differently across batches)
+#   - Slow (30+ API calls per run)
+#   - No learning from user behavior (prompt is static, doesn't adapt)
+#   - Claude is a generalist, not trained on YOUR preferences
+#
+# The move: use Claude for cold-start feature extraction, then train
+# lightweight ML models on user behavior to do the actual scoring.
+#
+# === Phase 1: Feature engineering (Claude → features, ML → score) ===
+# Keep Claude for extracting semantic features that are hard to compute:
+#   - Event category/vibe classification
+#   - Interest match (requires understanding user profile)
+#   - Quality/reputation signals
+# But use these as FEATURES into a learned model, not as final scores.
+#
+# Feature vector per event:
+#   - Claude-extracted (cached, computed once per event):
+#     category, vibe, interest_match_raw, quality_raw
+#   - Computed deterministically (free, instant):
+#     distance_km, day_of_week, hour_of_day, is_weekend, is_evening,
+#     price_bucket, has_spotify_artist, source, venue_visit_count,
+#     venue_avg_rating, taste_elo_match, friend_rsvp_count,
+#     days_until_event, impressions_count, description_length,
+#     attendee_count, is_recurring
+#   - User behavior features:
+#     category_attend_rate, source_attend_rate, venue_attend_rate,
+#     avg_rating_for_category, time_slot_preference
+#
+# Model: gradient boosted trees (XGBoost or LightGBM)
+#   - Target: attended (1/0) or rating (1-5) as regression
+#   - Train on all historical (event_features, attended) pairs
+#   - ~20 features, needs ~100+ attended events to be useful
+#   - Retrain weekly after each pipeline run
+#   - Feature importance gives you signal attribution for free
+#
+# Benefits over pure-Claude:
+#   - Scoring is instant (no API calls) — <1ms per event
+#   - Deterministic — same features = same score always
+#   - Learns from YOUR behavior, not Claude's general knowledge
+#   - Feature importance is interpretable
+#   - Can score 10,000 events in <1 second
+#
+# === Phase 2: Hybrid pipeline ===
+# Best of both worlds:
+#   1. New events: Claude extracts semantic features (category, vibe,
+#      interest_match) — cached per event, never re-computed
+#   2. All events: ML model scores using full feature vector
+#   3. Top-50 from ML: Claude does a final "narrative pass" —
+#      generates match_reason explanations for the events you'll
+#      actually show the user
+#
+# Cost: ~$0.50/run (Claude only for feature extraction on new events
+# + narrative pass on top 50) vs $3-4 currently. 6-8x cheaper.
+#
+# === Phase 3: Embeddings + collaborative filtering ===
+# Once you have multiple users:
+#   - Embed events using sentence-transformers (title + description)
+#   - User embedding = weighted average of attended event embeddings
+#   - Score = cosine similarity between user embedding and event embedding
+#   - Collaborative filtering: "users like you attended X"
+#   - This is how Spotify/Netflix actually work at scale
+#
+# Implementation:
+#   - sentence-transformers (all-MiniLM-L6-v2) for event embeddings
+#   - Store embeddings in SQLite as BLOB (small scale) or faiss index
+#   - User embedding updated after each attended event
+#   - Cosine similarity as one more feature into the XGBoost model
+#
+# === Phase 4: Contextual bandits (explore/exploit) ===
+# The discovery problem: how do you recommend things outside the user's
+# known preferences without tanking precision?
+#   - Thompson sampling: maintain uncertainty per category/vibe
+#   - High uncertainty = more exploration (show it even if predicted low)
+#   - After user feedback: update posterior, reduce uncertainty
+#   - This is how you avoid the "filter bubble" problem formally
+#   - LinUCB or neural contextual bandit on the feature vector
+#
+# === Implementation plan ===
+# Dependencies: scikit-learn, xgboost (or lightgbm), sentence-transformers
+# New files:
+#   - src/recom/ranking/ml_model.py — feature extraction, model train/predict
+#   - src/recom/ranking/embeddings.py — event/user embeddings
+#   - scripts/train_model.py — offline training script
+#
+# Data requirements per phase:
+#   Phase 1: ~100 attended events (a few months of usage)
+#   Phase 2: same, just restructure the pipeline
+#   Phase 3: ~200+ events and/or multiple users
+#   Phase 4: ~500+ events with explicit feedback
+#
+# Dashboard integration:
+#   - /admin/ml page: model performance metrics, feature importance chart,
+#     Claude vs ML score comparison on recent events, training history
+#   - A/B toggle: serve Claude scores vs ML scores vs hybrid to compare
+#
+# Start with Phase 1 (feature engineering + XGBoost) as soon as there are
+# ~100 attended events in the DB. Until then, Claude scoring is fine —
+# you need the training data first.
+#
+# === Training data bootstrap (don't wait for 100 real attended events) ===
+#
+# Strategy 1: Taste Elo as proxy labels
+#   - Map each event to its closest taste archetype (by category/vibe)
+#   - Use the Elo rating as a proxy preference score
+#   - Event matches "live jazz" (Elo 1650) -> positive. "corporate networking"
+#     (Elo 1200) -> negative. Instant labeled data for every historical event.
+#   - Weak signal but covers the full event universe immediately
+#
+# Strategy 2: Event swipe game (Tinder for events)
+#   - GET /taste/swipe — show real events from past runs, user swipes yes/no/maybe
+#   - 10 swipes/day for a week = 70 labeled examples on REAL events
+#   - Much richer than archetype Elo because it captures event-specific features
+#     (venue, time, description, price) not just category
+#   - Gamify: streak counter, "discover your taste profile" framing
+#   - Can reuse events across runs — label once, train forever
+#
+# Strategy 3: Implicit signals from existing behavior
+#   - Steering actions: "more" = positive, "not for me" = negative, "block" = strong neg
+#   - Email clicks: which events user clicked vs scrolled past (add tracking
+#     pixel + redirect links in email composer)
+#   - Calendar feed: which events user kept vs deleted from their calendar
+#   - RSVP data: going = strong positive, maybe = weak positive, cant = neutral
+#
+# Strategy 4: Claude distillation (immediate, zero user effort)
+#   - Claude has already scored every event in the DB (7 dimensions + composite)
+#   - Train XGBoost to replicate Claude's composite score from deterministic features
+#   - The ML model learns Claude's scoring function but runs instantly for free
+#   - Then fine-tune on real user behavior as it accumulates
+#   - This alone eliminates $3-4/run cost with minimal quality loss
+#   - Validation: hold out 20% of Claude-scored events, check R²
+#
+# Bootstrap priority order:
+#   1. Claude distillation (zero effort, already have data, biggest cost savings)
+#   2. Taste Elo mapping (zero effort, already have Elo data)
+#   3. Event swipe game (needs UI, but high-quality labels)
+#   4. Implicit signals (needs email tracking infra)
+#   Fine-tune on real attendance as it accumulates over time.
+# Status: TODO
+
+# ============================================================
+# [2026-03-10] TASK: Define north star metric + switch to categorical scoring
+# ============================================================
+# Problem: we don't have a clear objective function. "Score 0-100" is
+# false precision — no meaningful difference between 67 and 71. And we
+# can't evaluate the system without knowing what "good" means.
+#
+# === North star metric ===
+# Primary: attend_rate × avg_rating
+#   - "You went AND liked it" — the Sharpe ratio of recommendations
+#   - High attend rate + low ratings = bad recs you went to out of boredom
+#   - High ratings + low attend rate = good recs you never acted on
+#   - Both components need to be high for the system to be working
+#
+# Secondary: discovery_rate
+#   - % of attended events in categories you hadn't attended before
+#   - Prevents filter bubble. The whole point is finding things you
+#     wouldn't have found on your own.
+#
+# Health check: recommendation_coverage
+#   - Are we showing diverse event types or converging to "jazz every week"?
+#   - Entropy of recommended event categories should stay above threshold
+#
+# Track all three on /admin/metrics page. Plot over time.
+#
+# === Switch from 0-100 score to 1-5 categorical labels ===
+#
+# New scoring output from Claude (replaces 7-dimension 0-15 scores):
+#   5 — Must go:     "Cancel other plans for this"    → auto-add to calendar
+#   4 — Strong rec:  "Definitely consider this"       → show prominently
+#   3 — Worth knowing: "If nothing better comes up"   → show in list
+#   2 — Marginal:    "Not really for you"             → hide by default
+#   1 — Skip:        "Wrong audience/interest"        → filter out
+#
+# Why this is better:
+#   - Maps to real decisions (not arbitrary 0-100 scale)
+#   - User rates attended events 1-5 → same scale, direct comparison
+#   - Confusion matrix is trivial: predicted 5, actual 3 = clear overfit
+#   - Claude is better at categorical judgment than precise numeric scoring
+#   - Shorter responses = cheaper API calls
+#   - Easier to explain: "we predicted 4, you rated 2 → we'll adjust"
+#
+# New Claude prompt (much simpler):
+#   "Rate each event 1-5 for this user. Return:
+#    event_id, rating (1-5), vibe (social/intellectual/mixed),
+#    match_reason (one sentence)"
+#   Keep vibe for weight/display purposes.
+#   Optionally still ask for top 2-3 relevant dimensions as tags
+#   (e.g. "interest, friend") for explainability, but not scored.
+#
+# Migration:
+#   - Keep 7-dimension scores in DB for backward compat / analysis
+#   - Add predicted_label (1-5) column to run_events
+#   - New ranking prompt outputs label + reason (not 7 scores)
+#   - _compute_score() becomes a simple lookup, not weighted sum
+#   - Threshold changes: keep = label >= 3 (instead of score >= 25)
+#   - Email/dashboard shows label as stars or tier name
+#   - Backtester evaluates: predicted_label vs actual_rating
+#     (confusion matrix, weighted kappa, mean absolute error)
+#
+# The spending question:
+#   Don't ask "is Claude worth $3/run" — ask "does Claude produce higher
+#   attend_rate × avg_rating than a cheaper approach?"
+#   Can't answer until we have data. Priority:
+#   1. Use the product — attend stuff, rate it, generate training data
+#   2. Build the backtest — measure which approach wins on the metric
+#   3. Then decide: Claude vs ML vs hybrid
+# Status: TODO
+
+# ============================================================
+# [2026-03-10] TASK: UI declutter — main page + nav bar (HIGH PRIORITY)
+# ============================================================
+# The calendar page has ~20 buttons and 2 sliders crammed in. The nav
+# bar has 9+ links. It's overwhelming. Keep all features but hide
+# complexity behind progressive disclosure.
+#
+# === Nav bar (currently 9 links: Events, Search, Groups, History, Taste, Venues, Profile + admin) ===
+#
+# Reduce to 4 visible tabs + overflow:
+#   Primary tabs (always visible):
+#     Events | Groups | Search | Profile
+#   Everything else goes in a "..." / hamburger overflow menu:
+#     History, Taste, Venues, Admin (if user #1)
+#   On mobile: bottom tab bar with 4 icons, overflow in profile menu
+#
+# Alternatively, group by intent:
+#   Discover (Events + Search) | Social (Groups) | Me (Profile + History + Taste + Venues)
+#   "Me" becomes a dropdown/page with sub-sections
+#
+# === Main calendar page ===
+#
+# Current problems:
+#   - Score slider, date range slider, view toggle, filter buttons,
+#     RSVP buttons, group cards, friend activity banner, etc. all
+#     visible at once
+#   - Feels like a control panel, not a consumer product
+#
+# Redesign principles:
+#   1. Default to ZERO visible controls — just show the events
+#   2. Smart defaults: week view, score >= 55, current week
+#   3. Filters behind a collapsible "Filters" button/drawer
+#   4. RSVP buttons only appear on hover/tap of an event card
+#   5. Group cards + friend activity: move to a sidebar or top strip
+#      that collapses to a single line ("2 friends going this week")
+#   6. Score slider: hide entirely. If user wants to see lower-scored
+#      events, put a "Show more" button at the bottom of the list
+#      that progressively lowers the threshold
+#
+# Specific changes:
+#   - Remove or hide: score slider, date range controls, view mode toggle
+#   - Keep visible: events list/calendar, "Filters" button, search bar
+#   - Filters drawer (collapsed by default): score range, date range,
+#     category filter, vibe filter, source filter, free-only toggle
+#   - Event cards: clean, minimal — title, date/time, venue, score pill
+#     Expand on click to show: description, RSVP buttons, match_reason,
+#     full score breakdown, map link
+#   - "Show more events" at bottom instead of score slider
+#   - Friend activity: single line at top "Alice is going to Jazz Night Fri"
+#     not a full banner
+#
+# The goal: someone opens the page and immediately sees "here are the
+# best events this week" with no cognitive overhead. Power features
+# exist but are tucked away.
+# Status: DONE
+# Completed: 2026-03-10
+
+# ============================================================
+# [2026-03-10] TASK: Radar/spider charts — Pokémon stat card style
+# ============================================================
+# Add cute radar (spider) charts throughout the app. Inspired by Pokémon
+# stat distributions and the Anthropic labor market research charts.
+#
+# Use cases:
+#
+# 1. Taste profile radar (on /profile or /taste):
+#   Axes = taste categories from Elo data: Music, Social, Intellectual,
+#   Outdoors, Food/Drink, Creative, Fitness, Nightlife
+#   Values = normalized Elo ratings per category (avg of items in category)
+#   Shows your "character stats" at a glance — "you're a music+social
+#   person who doesn't do much fitness"
+#   Update after each Elo matchup — watch your profile evolve
+#
+# 2. Event match radar (on event detail / hover):
+#   Axes = the 7 scoring dimensions: Interest, Social, Urgency,
+#   Logistics, Friend, Discovery, Quality
+#   Values = that event's dimension scores (0-15 normalized to 0-1)
+#   Instantly shows WHY an event scored high — "strong on interest +
+#   friend, weak on logistics" is obvious from the shape
+#   Much better than showing 7 numbers
+#
+# 3. Weekly digest radar (in email + dashboard):
+#   Axes = event categories: Music, Sports, Tech, Art, Food, Outdoor, Social
+#   Values = count or avg score of recommended events per category
+#   Shows the "shape" of this week's recommendations
+#   Compare week-to-week: "this week is music-heavy, last week was tech-heavy"
+#
+# 4. User comparison radar (on group page):
+#   Overlay two users' taste profiles on the same chart
+#   Shows overlap and differences — "you both love music but Alice likes
+#   outdoor stuff and you like tech"
+#   Fun for groups to compare
+#
+# Implementation:
+#   - Use Chart.js radar chart via CDN (lightweight, no build step)
+#   - Or pure SVG (no dependency, works in email too):
+#     Generate SVG polygon paths server-side in Python
+#     polygon points = (cos(angle) * value, sin(angle) * value) for each axis
+#   - Style: semi-transparent fill with colored border, pastel palette
+#   - Small version (120x120px) for inline use on cards
+#   - Large version (300x300px) for profile/detail pages
+#   - For email: must be SVG or pre-rendered PNG (no JS in email clients)
+#
+# API:
+#   GET /api/taste/radar?user_id=1 -> JSON with axes + values for Chart.js
+#   GET /api/event/{id}/radar      -> JSON with 7 dimension values
+#
+# Prioritize #1 (taste profile) and #2 (event match) first — these add
+# the most visual value. #3 and #4 are nice-to-haves.
+# Status: TODO
+
+# ============================================================
+# [2026-03-10] TASK: Fix event deduplication quality (HIGH PRIORITY)
+# ============================================================
+# The dedup logic exists in aggregator.py (_deduplicate) but needs
+# verification and tuning. With 14 sources now, duplicates are likely
+# much worse — same event on Eventbrite, Ticketmaster, Do617, Boston
+# Calendar, and a university calendar = 5 copies wasting ranking tokens.
+#
+# Current approach (aggregator.py):
+#   - _normalize_title: lowercase, strip punctuation, remove common words
+#   - _dedup_key: normalized title + date
+#   - _title_similarity: SequenceMatcher ratio
+#   - _venue_similarity: SequenceMatcher ratio
+#   - Merge keeps highest _data_score (description length, has URL, etc.)
+#
+# What needs work:
+#   1. Verify it's actually running and removing dupes — add logging:
+#      "Dedup: merged 'Jazz Night at Lilypad' from [Eventbrite, Do617, BostonCal]"
+#   2. Tune similarity thresholds — currently unknown, may be too strict
+#      or too loose. Test on real data from latest run.
+#   3. Venue name normalization — "The Sinclair" vs "Sinclair" vs
+#      "Sinclair Cambridge" should all match
+#   4. Date fuzzy matching — same event listed as "Fri Mar 14 7pm" on one
+#      source and "2026-03-14 19:00" on another. Parse and compare dates
+#      not strings.
+#   5. Cross-source URL dedup — if two events link to the same Eventbrite
+#      page, they're the same event regardless of title similarity
+#   6. Preserve all source URLs on merged event — user can pick which
+#      ticketing platform to buy from
+#   7. Add dedup stats to source_stats / run detail page:
+#      "1847 raw events → 1423 after dedup (424 duplicates removed, 23%)"
+#      Per-source: "Eventbrite: 64 events, 12 were dupes of Ticketmaster"
+#
+# Consider adding rapidfuzz as dependency (much faster than SequenceMatcher
+# for large event sets, and has better fuzzy matching algorithms).
+#
+# Test approach: dump all events from latest run, manually eyeball for
+# dupes that survived, tune thresholds until clean.
+# Status: TODO
+
+# ============================================================
+# [2026-03-10] TASK: Per-user + per-person sub-calendars (HIGH PRIORITY)
+# ============================================================
+# Currently there's one feed per user and one per group. But the real
+# value is being able to peek into any group-mate's calendar to
+# coordinate plans ("only me and John are free Saturday — what's he
+# looking at?").
+#
+# === Calendar feed structure ===
+# Each user gets multiple subscribable iCal feeds:
+#
+#   /u/{token}/feed.ics          — your personal recs (already exists)
+#   /u/{token}/rsvps.ics         — only events you've RSVP'd to
+#   /u/{token}/friends/{name}.ics — a specific friend's recs/RSVPs
+#   /group/{slug}/feed.ics       — group blend (already exists)
+#   /group/{slug}/member/{name}.ics — one member's picks within the group
+#
+# The key insight: in Google Calendar / Apple Calendar, each .ics URL
+# becomes a separate "sub-calendar" with its own color toggle. So you'd
+# have:
+#   [blue]   My Recs
+#   [green]  My RSVPs
+#   [orange] John's Picks
+#   [purple] Alice's Picks
+#   [red]    Group: Friday Crew blend
+#
+# Toggle them on/off to see different views. "Only me and John free
+# Saturday" = turn off everyone else, see what overlaps.
+#
+# === Implementation ===
+#
+# New routes:
+#   GET /u/{token}/rsvps.ics
+#     - Only events where user has RSVP'd going/maybe
+#     - Calendar title: "{name}'s Confirmed Plans"
+#
+#   GET /u/{token}/friends/{friend_token_or_name}/feed.ics
+#     - Auth: requires valid user token + friend must be in a shared group
+#     - Returns the friend's recommended events from their latest run
+#     - Calendar title: "{friend_name}'s Picks"
+#     - Privacy: only shows events, not scores or match reasons
+#
+#   GET /group/{slug}/member/{user_id}/feed.ics
+#     - Auth: requester must be group member
+#     - That member's kept events + RSVPs
+#     - Calendar title: "{name} — {group_name}"
+#
+# Dashboard: calendar subscription management page
+#   GET /u/{token}/cal (already exists, enhance it)
+#   Show all available feeds with copy-to-clipboard URLs:
+#     "Your Recs:     webcal://recom.arthgupta.dev/u/abc123/feed.ics     [Copy]"
+#     "Your RSVPs:    webcal://recom.arthgupta.dev/u/abc123/rsvps.ics    [Copy]"
+#     "John's Picks:  webcal://recom.arthgupta.dev/u/abc123/friends/john/feed.ics [Copy]"
+#     "Friday Crew:   webcal://recom.arthgupta.dev/group/friday-crew/feed.ics [Copy]"
+#   Use webcal:// scheme so clicking opens "Add to Calendar" natively
+#
+# Privacy model:
+#   - Your own feeds: accessible with your token (already the case)
+#   - Friend feeds: only if you share a group with them
+#   - Group member feeds: only if you're in that group
+#   - No public browsing of other people's calendars
+#   - Token in URL IS the auth (like Google Calendar private URLs)
+#
+# iCal best practices:
+#   - Set PRODID, CALSCALE, X-WR-CALNAME per feed for proper naming
+#   - Use different X-APPLE-CALENDAR-COLOR per feed type for auto-coloring
+#   - REFRESH-INTERVAL: PT1H (refresh hourly)
+#   - Each event gets a stable UID so calendar apps handle updates properly
+#
+# === CalDAV server — one account, N togglable sub-calendars ===
+# Run a CalDAV server so users add ONE account and get all their
+# sub-calendars auto-discovered with individual color/toggle control.
+# This is how iCloud/Exchange/Google work under the hood.
+#
+# User experience:
+#   1. On /join or /login, show: "Add to calendar"
+#   2. User adds a CalDAV account in their calendar app:
+#        Server: recom.arthgupta.dev
+#        Username: {token}
+#        Password: {token} (or blank — token IS the auth)
+#   3. Calendar app auto-discovers all sub-calendars:
+#        [blue]   My Recs
+#        [green]  My RSVPs
+#        [orange] John's Picks
+#        [purple] Alice's Picks
+#        [red]    Friday Crew (group blend)
+#   4. Each is independently toggleable, colorable, hideable
+#   5. New group-mates / groups auto-appear as new sub-calendars
+#
+# Implementation — use Radicale (Python CalDAV server, lightweight):
+#   pip install radicale
+#   - Runs as a WSGI app — can mount inside FastAPI or run standalone
+#   - Storage: filesystem or custom backend (we'd write a DB-backed backend)
+#   - Auth: custom plugin that validates token from URL/username
+#
+# Custom Radicale storage backend:
+#   - Maps our DB data to CalDAV collections:
+#     /{token}/my-recs/        → calendar from user's latest run (kept events)
+#     /{token}/my-rsvps/       → calendar from user's RSVPs
+#     /{token}/friend-{name}/  → calendar from group-mate's kept events + RSVPs
+#     /{token}/group-{slug}/   → calendar from group blend
+#   - Each collection = one VCALENDAR with VEVENT components
+#   - Read-only for now (users can't create events via CalDAV, only view)
+#   - Write support later: user creates event in calendar app → becomes
+#     a manual event in recom (cool but not MVP)
+#
+# Alternatively, skip Radicale and implement CalDAV PROPFIND/REPORT
+# directly in FastAPI:
+#   - CalDAV is just HTTP + WebDAV + iCal. The core methods needed:
+#     PROPFIND /{token}/             → list available calendars
+#     PROPFIND /{token}/{cal-name}/  → calendar metadata (name, color, etc.)
+#     REPORT  /{token}/{cal-name}/   → return VCALENDAR with all events
+#     GET     /{token}/{cal-name}/{uid}.ics → single event
+#   - Apple Calendar and Google Calendar both support CalDAV
+#   - More work than Radicale but zero dependencies and full control
+#   - There's a Python caldav library for client-side, but for server-side
+#     we'd be implementing the protocol handlers ourselves
+#
+# Proxy approach (simplest):
+#   - Keep the existing .ics endpoints as-is
+#   - Run Radicale alongside FastAPI, configure it to proxy-read our .ics feeds
+#   - Radicale handles the CalDAV protocol, we handle the data
+#   - Nginx/Cloudflare routes caldav.recom.arthgupta.dev → Radicale
+#
+# CalDAV account setup instructions per platform:
+#   Apple Calendar: Settings → Accounts → Add Account → Other →
+#     Add CalDAV Account → Server: recom.arthgupta.dev, User: {token}
+#   Google Calendar: Settings → Add calendar → From URL (doesn't support
+#     CalDAV natively, but does via Google Workspace Sync... or fall back
+#     to individual .ics subscriptions for Google users)
+#   Outlook: File → Account Settings → Internet Calendars → New →
+#     caldav://recom.arthgupta.dev/{token}/
+#   Fantastical: Settings → Accounts → CalDAV → Server: recom.arthgupta.dev
+#
+# NOTE: Google Calendar does NOT support CalDAV for subscription
+#   (only for Google Workspace push). For Google Calendar users,
+#   fall back to the one-click setup page that batch-subscribes
+#   individual .ics feeds. Detect platform on the setup page and
+#   show the right instructions.
+#
+# Onboarding flow:
+#   /u/{token}/cal page shows:
+#     "Apple/Outlook/Fantastical: Add CalDAV account" [instructions]
+#     "Google Calendar: Subscribe to feeds" [one-click batch subscribe]
+#   Either way, user gets togglable sub-calendars.
+#
+# Dependencies: radicale (pip install radicale)
+# New files: src/recom/caldav/ (storage backend + auth plugin)
+# Status: TODO
+
+# ============================================================
+# [2026-03-10] TASK: Calendar-native UX — accept/decline + post-event rating email
+# ============================================================
+# The ideal UX requires ZERO dashboard visits. Everything lives in
+# calendar + email:
+#
+#   1. Event appears in calendar (via CalDAV sub-calendars)
+#   2. User accepts/declines in their calendar app
+#   3. CalDAV RSVP status syncs back to recom → recorded as going/maybe/cant
+#   4. After event end_time passes → auto-send rating email
+#   5. User taps 1-5 stars in email → rating recorded, feeds into scoring
+#   6. Next week's calendar is better. Loop complete.
+#
+# The dashboard becomes optional admin tooling. The product IS the
+# calendar + email feedback loop.
+#
+# === Part 1: CalDAV RSVP sync (accept in calendar → RSVP in recom) ===
+# When Radicale CalDAV is running:
+#   - Calendar apps send PARTSTAT changes when user accepts/declines:
+#     ACCEPTED → rsvp "going"
+#     TENTATIVE → rsvp "maybe"
+#     DECLINED → rsvp "cant"
+#   - Radicale storage backend intercepts PUT/PATCH on events
+#   - Parse PARTSTAT from the VCALENDAR update
+#   - Write to our rsvps table in SQLite
+#   - This happens automatically — user just clicks accept in Apple Calendar
+#
+# For Google Calendar (no CalDAV): fall back to the existing email RSVP
+# links (already have GET /api/rsvp-link). Not as seamless but works.
+#
+# === Part 2: Post-event rating email ===
+# Cron job or daily script (run at 10pm daily):
+#   - Query: events where user RSVP'd "going" AND end_time < now
+#     AND no rating exists yet AND end_time was within last 24 hours
+#   - For each: send short rating email
+#
+# Email format (ultra-short, phone-scannable):
+#   Subject: "How was Jazz Night? Rate it"
+#   Body:
+#     "Jazz Night at Regattabar — tonight at 8pm
+#
+#      How was it?
+#      [★] [★★] [★★★] [★★★★] [★★★★★]
+#
+#      [I didn't go]"
+#
+#   Each star is a GET link:
+#     /api/rate?event_id=X&rating=5&u=TOKEN
+#   "I didn't go" sets RSVP to "cant" and removes attendance record
+#
+# The /api/rate endpoint:
+#   - Records rating in attended table
+#   - Adjusts Elo taste items for matching categories (+/- based on rating)
+#   - Returns a simple "Thanks! Rated ★★★★" confirmation page
+#   - Optionally: "Would you go again? [Yes] [No]" on the confirmation page
+#     for one more data point
+#
+# === Part 3: Smart timing ===
+#   - Don't send rating email immediately at event end_time (user is still there)
+#   - Send next morning (or 10pm if event ended before 9pm)
+#   - Don't send if user already rated via dashboard
+#   - Max 1 rating email per day (batch multiple events into one email)
+#   - If user never responds, send ONE gentle reminder after 48 hours, then stop
+#
+# === Part 4: Auto-mark attended ===
+#   - If user accepted in calendar (RSVP "going") and never clicked
+#     "I didn't go" → auto-mark as attended after 48 hours
+#   - This means passive users still generate training data
+#   - Conservative: only auto-mark if RSVP was "going" (not "maybe")
+#
+# Scheduling:
+#   scripts/send_ratings.py — cron daily 10pm
+#   Checks for completed events, sends rating emails
+#
+# This closes the feedback loop entirely within calendar + email.
+# User never needs to open the dashboard for the product to learn
+# and improve.
+# Status: TODO
