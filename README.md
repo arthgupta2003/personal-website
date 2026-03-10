@@ -4,6 +4,21 @@ A personal weekly event recommender for the Boston/Cambridge area. Learns your i
 
 Live dashboard: **https://recom.arthgupta.dev**
 
+## Quick start
+
+```bash
+./start.sh          # launches everything in a tmux session
+./start.sh stop     # kills the tmux session
+./start.sh status   # shows what's running
+```
+
+This starts 3 services in tmux panes:
+- **dashboard** — FastAPI on port 8000
+- **tunnel** — Cloudflare Tunnel (recom.arthgupta.dev + code.arthgupta.dev)
+- **code-web** — Claude Code Web UI on port 32352 (accessible at code.arthgupta.dev)
+
+Attach to the tmux session with `tmux attach -t recom`.
+
 ## How it works
 
 ```
@@ -49,6 +64,7 @@ A niche math lecture (intellectual vibe) isn't penalized for low friend-bringabi
 ### Prerequisites
 
 - Python 3.11+ and [uv](https://docs.astral.sh/uv/)
+- Node.js 22 (for claude-code-web; `nvm use 22`)
 - API keys: Anthropic (required), Ticketmaster (recommended), Eventbrite/Songkick (optional)
 - OAuth credentials: Google Cloud (YouTube + Gmail), Spotify
 - Gmail app password for SMTP sending
@@ -56,7 +72,7 @@ A niche math lecture (intellectual vibe) isn't penalized for low friend-bringabi
 ### Install
 
 ```bash
-git clone <repo> && cd recom
+git clone https://github.com/arthgupta2003/personal-website.git && cd personal-website
 cp .env.example .env  # fill in API keys and credentials
 uv sync
 ```
@@ -89,7 +105,10 @@ try November Project (Wed 6:30am Harvard Stadium)
 
 ```bash
 uv run recom              # full pipeline — ingest → rank → email
+uv run recom --all-users  # run for all active users
 uv run recom-dashboard    # start dashboard on localhost:8000
+uv run python -m recom.daily              # send daily email
+uv run python -m recom.daily --all-users  # daily email for all users
 ```
 
 ### Cron (weekly, Saturday 9am)
@@ -98,51 +117,54 @@ uv run recom-dashboard    # start dashboard on localhost:8000
 bash scripts/install_cron.sh
 ```
 
-## Deployment
+## Services & startup
 
-The dashboard is deployed via Cloudflare Tunnel to `recom.arthgupta.dev`. Both the dashboard and tunnel run as persistent macOS services via `launchd`.
+### tmux startup (recommended)
 
-### How it works
+The `start.sh` script manages all services in a single tmux session:
 
-- Pipeline runs locally via cron (needs OAuth tokens for Spotify/YouTube/Gmail)
-- Dashboard (FastAPI on `localhost:8000`) reads from `recom.db` (SQLite)
-- Cloudflare Tunnel exposes `localhost:8000` to the public internet with SSL
-- Both services auto-start on login and auto-restart on crash via `launchd`
+```bash
+./start.sh          # start all services
+./start.sh stop     # stop everything
+./start.sh status   # check what's running
+tmux attach -t recom   # attach to see logs
+```
 
-### launchd services
+Services started:
+| Pane | Service | Port | Public URL |
+|------|---------|------|------------|
+| dashboard | `uv run recom-dashboard` | 8000 | recom.arthgupta.dev |
+| tunnel | `cloudflared tunnel run` | — | routes to 8000 + 32352 |
+| code-web | `npx claude-code-web` | 32352 | code.arthgupta.dev |
 
-Two plist files in `~/Library/LaunchAgents/`:
+### Claude Code Web (remote dev from phone)
+
+Access Claude Code from any browser (including phone) at **https://code.arthgupta.dev**.
+
+- Requires Node 22 (`nvm use 22`) — Node 23 has a broken `node-pty`
+- Auth token is printed on startup (check the tmux `code-web` pane)
+- Spawns new Claude Code sessions (not attached to existing ones)
+
+### launchd services (alternative)
+
+Two plist files in `~/Library/LaunchAgents/` for auto-start on login:
 
 | Service | Plist | What it does |
 |---------|-------|-------------|
 | Dashboard | `com.recom.dashboard.plist` | Runs `uv run recom-dashboard` on port 8000 |
 | Tunnel | `com.recom.tunnel.plist` | Runs `cloudflared tunnel run recom-dashboard` |
 
-Both have `KeepAlive: true` and `RunAtLoad: true` — they start on login and restart if they crash.
-
 ```bash
-# Manage services
 launchctl load ~/Library/LaunchAgents/com.recom.dashboard.plist
 launchctl load ~/Library/LaunchAgents/com.recom.tunnel.plist
-launchctl unload ~/Library/LaunchAgents/com.recom.dashboard.plist   # stop
-launchctl list | grep recom                                         # check status
-
-# Logs
-tail -f state/dashboard.log
-tail -f state/tunnel.log
+launchctl list | grep recom   # check status
 ```
 
-### Keeping the server alive
-
-To prevent macOS from sleeping (required for the tunnel to stay up):
-
-**System Settings → Displays → Advanced → Prevent automatic sleeping on power adapter** → turn ON
-
-This keeps the laptop awake while plugged in so the dashboard and tunnel stay accessible.
+If using tmux startup, you don't need launchd (and vice versa).
 
 ### Tunnel config
 
-Tunnel config lives at `~/.cloudflared/config.yml`:
+`~/.cloudflared/config.yml`:
 ```yaml
 tunnel: <tunnel-id>
 credentials-file: ~/.cloudflared/<tunnel-id>.json
@@ -150,19 +172,42 @@ credentials-file: ~/.cloudflared/<tunnel-id>.json
 ingress:
   - hostname: recom.arthgupta.dev
     service: http://localhost:8000
+  - hostname: code.arthgupta.dev
+    service: http://localhost:32352
   - service: http_status:404
 ```
 
-### Add more subdomains
-
+Add more subdomains:
 ```bash
 cloudflared tunnel route dns recom-dashboard <subdomain>.arthgupta.dev
 # Then add to ingress in config.yml
 ```
 
-### Calendar subscription
+### Keeping the server alive
 
-Subscribe to the iCal feed for top events in any calendar app:
+**System Settings → Displays → Advanced → Prevent automatic sleeping on power adapter** → turn ON
+
+## Social features
+
+### RSVP
+
+Users can RSVP (Going / Maybe / Can't) to events on the calendar and in daily emails.
+
+- Each user gets a unique token (8-char hex) for identity
+- Visit the calendar with `?u=<token>` to see RSVP buttons
+- RSVPs show as colored pills on event cards (visible to all users)
+- Daily emails include Going/Maybe links that set RSVPs via one click
+
+### Groups (shared calendar)
+
+Create groups of friends who share a blended calendar:
+
+1. Visit `/group/create?u=<token>` to create a group
+2. Invite friends by email via the group page
+3. Group calendar at `/group/<slug>` shows union of all members' events with RSVP badges
+4. Subscribe to `/group/<slug>/feed.ics` for a shared iCal feed
+
+### Calendar subscription
 
 ```
 https://recom.arthgupta.dev/feed.ics
@@ -171,7 +216,20 @@ https://recom.arthgupta.dev/feed.ics
 - Default: only strong matches (score >= 55)
 - Use `?min_score=25` for all recommended events
 - Events show as `[72] Event Title` in your calendar
-- Feed auto-updates with each pipeline run
+
+## Multi-user support
+
+Multiple users can each get personalized recommendations with their own:
+- Spotify/YouTube/Gmail OAuth tokens
+- Interest keywords (`my_interests.txt`)
+- Bucket list (`bucket_list.txt`)
+- Location (city + zip code)
+- Email address for digest delivery
+
+```bash
+uv run recom --user 2         # run for specific user
+uv run recom --all-users      # run for all active users (used by cron)
+```
 
 ## Project structure
 
@@ -180,7 +238,8 @@ src/recom/
 ├── main.py              # pipeline orchestrator
 ├── config.py            # pydantic-settings from .env
 ├── models.py            # data models (Event, RankedEvent, InterestProfile, etc.)
-├── db.py                # SQLite helpers
+├── db.py                # SQLite (users, events, rankings, RSVPs, groups)
+├── daily.py             # daily email sender (per-user with RSVP links)
 ├── ingest/
 │   ├── youtube.py       # YouTube Data API (subscriptions + liked videos)
 │   ├── spotify.py       # Spotify API (top artists, tracks, recently played)
@@ -199,10 +258,10 @@ src/recom/
 │   ├── ranker.py        # 7-dimension scoring with vibe-based weights
 │   └── bucket_list.py   # Seasonal activity suggestions
 ├── email/
-│   ├── composer.py      # Jinja2 HTML email template
+│   ├── composer.py      # Jinja2 HTML email template (weekly + daily)
 │   └── sender.py        # Gmail SMTP
 └── dashboard/
-    └── app.py           # FastAPI dashboard
+    └── app.py           # FastAPI dashboard + RSVP API + group pages
 ```
 
 ## Cost
@@ -213,34 +272,11 @@ Each full run costs ~$3-4 in Claude API calls (mostly ranking ~1100 events in ba
 
 Live at **https://recom.arthgupta.dev**
 
-- **Run History** — all runs with event count, top score, cost. WIP runs show a progress banner with ranking completion percentage.
-- **Run Detail** — interest profile, source stats, all events with 7-dimension score breakdown, cost breakdown
-- **Calendar View** — top 10 events per day with "I went" tracking buttons. Midnight events show as "All day".
-- **Interests** — extracted interest profile with source signals (YouTube/Spotify/Manual), confidence bars, bucket list
+- **Calendar View** — week grid with top events, RSVP buttons (with `?u=token`), "I went" tracking
+- **Run History** — all runs with event count, top score, cost
+- **Run Detail** — interest profile, source stats, all events with 7-dimension score breakdown
+- **Interests** — extracted interest profile with source signals, confidence bars, bucket list
 - **Attended** — events you've marked as attended (feedback loop)
+- **Groups** — create/join groups, shared calendar with RSVP badges
 - **Join** — onboarding page for new users (Spotify OAuth, calendar subscription)
-- **iCal Feed** — `/feed.ics` for calendar subscriptions (strong matches only by default)
-
-### Email digest
-
-Weekly HTML email with:
-- Top 10 picks with clickable titles linking to event pages
-- Clubs, classes & memberships section
-- Bucket list suggestions (seasonal, from `bucket_list.txt`)
-- All remaining events organized by day (top 10 per day)
-- Header links to dashboard run detail page
-- Footer links to dashboard and calendar subscription
-
-### Multi-user support
-
-Multiple users can each get personalized recommendations with their own:
-- Spotify/YouTube/Gmail OAuth tokens
-- Interest keywords (`my_interests.txt`)
-- Bucket list (`bucket_list.txt`)
-- Location (city + zip code)
-- Email address for digest delivery
-
-```bash
-uv run recom --user 2         # run for specific user
-uv run recom --all-users      # run for all active users (used by cron)
-```
+- **iCal Feed** — `/feed.ics` and `/group/<slug>/feed.ics` for calendar subscriptions
