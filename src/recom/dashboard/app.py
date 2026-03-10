@@ -539,11 +539,29 @@ async def run_history():
             <td>${r['cost_total']:.4f}</td>
             <td>{r['model_used'] or ''}</td>
         </tr>"""
+    # Load schedule settings
+    db_obj = get_db()
+    sched_pipeline_day = db_obj.get_setting("schedule_pipeline_day", "Saturday")
+    sched_pipeline_hour = db_obj.get_setting("schedule_pipeline_hour", "9")
+    sched_daily_hour = db_obj.get_setting("schedule_daily_hour", "8")
+    day_opts = "".join(
+        f'<option value="{d}"{" selected" if d == sched_pipeline_day else ""}>{d}</option>'
+        for d in ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    )
+    pipeline_hour_opts = "".join(
+        f'<option value="{h}"{" selected" if str(h) == sched_pipeline_hour else ""}>{h}:00</option>'
+        for h in range(6, 13)
+    )
+    daily_hour_opts = "".join(
+        f'<option value="{h}"{" selected" if str(h) == sched_daily_hour else ""}>{h}:00</option>'
+        for h in range(6, 13)
+    )
     return HTMLResponse(LAYOUT_HEAD.replace("__TITLE__","Run History") + f"""
     <h1>Run History</h1>
-    <div style="margin-bottom:12px;display:flex;gap:12px;">
+    <div style="margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;">
         <a href="/admin/sources" style="font-size:13px;color:#4f46e5;font-weight:600;">📡 Source Health</a>
         <a href="/admin/interests" style="font-size:13px;color:#4f46e5;font-weight:600;">🧠 Interest Profile</a>
+        <a href="/admin/email-preview" style="font-size:13px;color:#4f46e5;font-weight:600;">✉ Email Preview</a>
     </div>
     <table>
         <thead><tr>
@@ -556,7 +574,87 @@ async def run_history():
         </tr></thead>
         <tbody>{rows_html}</tbody>
     </table>
+
+    <h2 style="margin-top:32px;">Schedule Settings</h2>
+    <div class="card" style="max-width:480px;">
+        <form id="sched-form" style="display:flex;flex-direction:column;gap:14px;">
+            <div>
+                <label style="font-size:13px;color:#6b7280;display:block;margin-bottom:4px;">Weekly pipeline day</label>
+                <select name="pipeline_day" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;width:100%;">{day_opts}</select>
+            </div>
+            <div>
+                <label style="font-size:13px;color:#6b7280;display:block;margin-bottom:4px;">Weekly pipeline hour</label>
+                <select name="pipeline_hour" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;width:100%;">{pipeline_hour_opts}</select>
+            </div>
+            <div>
+                <label style="font-size:13px;color:#6b7280;display:block;margin-bottom:4px;">Daily digest email hour</label>
+                <select name="daily_hour" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;width:100%;">{daily_hour_opts}</select>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button type="button" onclick="saveSchedule()"
+                        style="padding:8px 20px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;">Save &amp; Reinstall Cron</button>
+                <span id="sched-status" style="font-size:13px;color:#6b7280;"></span>
+            </div>
+        </form>
+    </div>
+    <script>
+    async function saveSchedule() {{
+        const form = document.getElementById('sched-form');
+        const data = {{
+            pipeline_day: form.pipeline_day.value,
+            pipeline_hour: form.pipeline_hour.value,
+            daily_hour: form.daily_hour.value,
+        }};
+        const st = document.getElementById('sched-status');
+        st.textContent = 'Saving...';
+        try {{
+            const r = await fetch('/api/admin/schedule', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify(data)
+            }});
+            const res = await r.json();
+            st.textContent = res.ok ? '✓ Saved' + (res.cron_updated ? ' + cron updated' : '') : '✗ ' + (res.error || 'Failed');
+            st.style.color = res.ok ? '#16a34a' : '#dc2626';
+        }} catch(e) {{ st.textContent = '✗ ' + e; st.style.color = '#dc2626'; }}
+    }}
+    </script>
     """ + LAYOUT_FOOT)
+
+
+@app.post("/api/admin/schedule")
+async def api_admin_schedule(request: Request):
+    """Save schedule settings and optionally regenerate crontab."""
+    import subprocess as _sub
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    db = get_db()
+    day = body.get("pipeline_day", "Saturday")
+    pipeline_hour = str(body.get("pipeline_hour", "9"))
+    daily_hour = str(body.get("daily_hour", "8"))
+    db.set_setting("schedule_pipeline_day", day)
+    db.set_setting("schedule_pipeline_hour", pipeline_hour)
+    db.set_setting("schedule_daily_hour", daily_hour)
+    # Try to reinstall cron (best-effort)
+    cron_updated = False
+    install_script = Path(__file__).parent.parent.parent.parent / "scripts" / "install_cron.sh"
+    if install_script.exists():
+        try:
+            env = {"PATH": "/usr/local/bin:/usr/bin:/bin"}
+            day_abbr = day[:3].lower()
+            # Convert day name to cron day-of-week number (0=Sun)
+            _dow = {"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6}
+            dow = _dow.get(day_abbr, 6)
+            res = _sub.run(
+                ["bash", str(install_script), pipeline_hour, daily_hour, str(dow)],
+                capture_output=True, text=True, timeout=10, env=env
+            )
+            cron_updated = res.returncode == 0
+        except Exception:
+            pass
+    return JSONResponse({"ok": True, "cron_updated": cron_updated})
 
 
 @app.get("/run/{run_id}", response_class=HTMLResponse)
@@ -1215,6 +1313,8 @@ async def taste_page(request: Request, response: Response):
     {'<a href="/taste/share/' + (current_user["user_token"] if current_user else "") + '" target="_blank" style="text-decoration:none;"><div class="stat-pill" style="cursor:pointer;border-color:#4b5563;color:#94a3b8;">↗ Share</div></a>' if current_user else ''}
   </div>
 
+  <div id="radar-section" style="display:flex;justify-content:center;margin:0 0 24px;"></div>
+
   <div class="matchup-card" id="matchup-card">
     <div class="matchup-label">Which sounds better to you?</div>
     <div class="matchup-vs" id="matchup-vs">Loading...</div>
@@ -1388,6 +1488,55 @@ function deleteItem(id, e) {{
 
 renderMatchup();
 renderStack();
+
+// Load radar chart
+fetch('/api/taste/radar').then(r => r.json()).then(d => {{
+  const sec = document.getElementById('radar-section');
+  if (!sec || !d.axes || d.axes.length < 3) return;
+  const n = d.axes.length;
+  const size = 200;
+  const cx = cy = size / 2;
+  const r = size * 0.38;
+  const lr = size * 0.48;
+  const TWO_PI = Math.PI * 2;
+  // Grid rings
+  let svg = `<svg width="${{size}}" height="${{size}}" viewBox="0 0 ${{size}} ${{size}}" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">`;
+  [0.25,0.5,0.75,1.0].forEach(level => {{
+    const pts = d.axes.map((_,i) => {{
+      const a = TWO_PI * i / n - Math.PI/2;
+      return `${{(cx+Math.cos(a)*r*level).toFixed(1)}},${{(cy+Math.sin(a)*r*level).toFixed(1)}}`;
+    }});
+    svg += `<polygon points="${{pts.join(' ')}}" fill="none" stroke="#2d2d5e" stroke-width="0.8"/>`;
+  }});
+  // Axes
+  d.axes.forEach((_,i) => {{
+    const a = TWO_PI * i / n - Math.PI/2;
+    svg += `<line x1="${{cx.toFixed(1)}}" y1="${{cy.toFixed(1)}}" x2="${{(cx+Math.cos(a)*r).toFixed(1)}}" y2="${{(cy+Math.sin(a)*r).toFixed(1)}}" stroke="#2d2d5e" stroke-width="0.8"/>`;
+  }});
+  // Data
+  const dpts = d.values.map((v,i) => {{
+    const a = TWO_PI * i / n - Math.PI/2;
+    return `${{(cx+Math.cos(a)*r*v).toFixed(1)}},${{(cy+Math.sin(a)*r*v).toFixed(1)}}`;
+  }});
+  svg += `<polygon points="${{dpts.join(' ')}}" fill="rgba(129,140,248,0.25)" stroke="#818cf8" stroke-width="2"/>`;
+  // Dots + labels
+  d.values.forEach((v,i) => {{
+    const a = TWO_PI * i / n - Math.PI/2;
+    const px = (cx+Math.cos(a)*r*v).toFixed(1);
+    const py = (cy+Math.sin(a)*r*v).toFixed(1);
+    const lx = (cx+Math.cos(a)*lr).toFixed(1);
+    const ly = (cy+Math.sin(a)*lr).toFixed(1);
+    const anchor = cx-Math.cos(a)*r > 5 ? 'end' : cx+Math.cos(a)*r > 5 ? 'start' : 'middle';
+    svg += `<circle cx="${{px}}" cy="${{py}}" r="3" fill="#818cf8"/>`;
+    svg += `<text x="${{lx}}" y="${{ly}}" text-anchor="${{anchor}}" dominant-baseline="middle" font-size="9" fill="#94a3b8" font-family="system-ui">${{d.axes[i]}}</text>`;
+  }});
+  svg += '</svg>';
+  sec.innerHTML = `<div style="background:#1e1e3a;border:1px solid #2d2d5e;border-radius:16px;padding:20px 32px;text-align:center;">
+    <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#6366f1;margin-bottom:12px;">Taste Profile</div>
+    ${{svg}}
+    <div style="font-size:11px;color:#4b5563;margin-top:8px;">Based on ${{d.axes.length}} categories · updates with each matchup</div>
+  </div>`;
+}});
 </script>
 """, current_user))
     return _maybe_set_cookie(request, resp, current_user)
@@ -1434,6 +1583,102 @@ async def taste_delete(request: Request):
     items = db.get_taste_items(user_id)
     pair = db.get_taste_matchup_pair(user_id)
     return {"ok": True, "items": items, "next_pair": list(pair) if pair else None}
+
+
+def _radar_svg(axes: list[str], values: list[float], colors: list[str] | None = None,
+               size: int = 200, fill: str = "rgba(129,140,248,0.25)",
+               stroke: str = "#818cf8") -> str:
+    """Generate a pure-SVG radar (spider) chart. values should be 0.0–1.0 each."""
+    import math
+    n = len(axes)
+    if n < 3:
+        return ""
+    cx = cy = size / 2
+    r = size * 0.38
+    label_r = size * 0.48
+    # Grid rings
+    rings_svg = ""
+    for level in [0.25, 0.5, 0.75, 1.0]:
+        pts = []
+        for i in range(n):
+            angle = math.pi * 2 * i / n - math.pi / 2
+            x = cx + math.cos(angle) * r * level
+            y = cy + math.sin(angle) * r * level
+            pts.append(f"{x:.1f},{y:.1f}")
+        rings_svg += f'<polygon points="{" ".join(pts)}" fill="none" stroke="#2d2d5e" stroke-width="0.8"/>'
+    # Axis lines
+    axes_svg = ""
+    for i in range(n):
+        angle = math.pi * 2 * i / n - math.pi / 2
+        x = cx + math.cos(angle) * r
+        y = cy + math.sin(angle) * r
+        axes_svg += f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{x:.1f}" y2="{y:.1f}" stroke="#2d2d5e" stroke-width="0.8"/>'
+    # Data polygon
+    data_pts = []
+    for i, val in enumerate(values):
+        val = max(0.0, min(1.0, val))
+        angle = math.pi * 2 * i / n - math.pi / 2
+        x = cx + math.cos(angle) * r * val
+        y = cy + math.sin(angle) * r * val
+        data_pts.append(f"{x:.1f},{y:.1f}")
+    data_svg = f'<polygon points="{" ".join(data_pts)}" fill="{fill}" stroke="{stroke}" stroke-width="2"/>'
+    # Dots at each vertex
+    dots_svg = ""
+    for i, val in enumerate(values):
+        val = max(0.0, min(1.0, val))
+        angle = math.pi * 2 * i / n - math.pi / 2
+        x = cx + math.cos(angle) * r * val
+        y = cy + math.sin(angle) * r * val
+        dots_svg += f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="{stroke}"/>'
+    # Axis labels
+    labels_svg = ""
+    for i, label in enumerate(axes):
+        angle = math.pi * 2 * i / n - math.pi / 2
+        lx = cx + math.cos(angle) * label_r
+        ly = cy + math.sin(angle) * label_r
+        anchor = "middle"
+        if lx < cx - 5:
+            anchor = "end"
+        elif lx > cx + 5:
+            anchor = "start"
+        labels_svg += (
+            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" '
+            f'dominant-baseline="middle" font-size="9" fill="#94a3b8" font-family="system-ui">'
+            f'{label}</text>'
+        )
+    return (
+        f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" '
+        f'xmlns="http://www.w3.org/2000/svg" style="overflow:visible">'
+        f'{rings_svg}{axes_svg}{data_svg}{dots_svg}{labels_svg}'
+        f'</svg>'
+    )
+
+
+@app.get("/api/taste/radar")
+async def taste_radar(request: Request):
+    """Return radar chart data for the current user's taste profile."""
+    db = get_db()
+    current_user = _get_current_user(request)
+    user_id = current_user["id"] if current_user else 1
+    items = db.get_taste_items(user_id)
+    if not items:
+        return JSONResponse({"axes": [], "values": []})
+    # Group by category, average Elo per category
+    category_order = ["music", "social", "arts", "intellectual", "active", "food", "maker", "general"]
+    cat_elos: dict[str, list[float]] = {}
+    for item in items:
+        cat = item.get("category", "general")
+        cat_elos.setdefault(cat, []).append(float(item.get("elo_rating", 1400)))
+    axes = [c for c in category_order if c in cat_elos]
+    if not axes:
+        axes = list(cat_elos.keys())[:8]
+    avg_elos = [sum(cat_elos[c]) / len(cat_elos[c]) for c in axes]
+    # Normalize to 0–1 range
+    min_e = min(avg_elos) if avg_elos else 1200
+    max_e = max(avg_elos) if avg_elos else 1600
+    rng = max_e - min_e or 1
+    values = [(e - min_e) / rng for e in avg_elos]
+    return JSONResponse({"axes": axes, "values": values, "raw_elos": avg_elos})
 
 
 @app.get("/taste/share/{token}", response_class=HTMLResponse)
@@ -3064,6 +3309,237 @@ a{{color:#4f46e5;font-weight:600;}}</style></head>
 </div></body></html>""")
 
 
+@app.get("/api/rate", response_class=HTMLResponse)
+async def api_rate_event(request: Request, event_id: str = "", rating: int = 0,
+                          u: str = "", no_go: int = 0):
+    """One-click event rating from email links. GET-based for email compatibility."""
+    db = get_db()
+    token = u or request.cookies.get(COOKIE_NAME, "")
+    user = db.get_user_by_token(token) if token else None
+    if not user:
+        return HTMLResponse("<h1>Link expired</h1><p>Please log in to rate events.</p>", status_code=401)
+    if not event_id:
+        return HTMLResponse("<h1>Invalid link</h1>", status_code=400)
+
+    user_id = user["id"]
+
+    if no_go:
+        # User says they didn't actually go — update RSVP to cant, no rating
+        db.conn.execute(
+            "INSERT OR REPLACE INTO rsvps (user_id, event_id, status, updated_at) VALUES (?, ?, 'cant', ?)",
+            (user_id, event_id, datetime.now().isoformat()),
+        )
+        db.conn.commit()
+        message = "Got it! Marked as not attended."
+        icon = "👍"
+    elif 1 <= rating <= 5:
+        # Record attendance + rating
+        db.conn.execute(
+            """INSERT INTO attended (user_id, event_id, attended_at, rating)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(user_id, event_id) DO UPDATE SET rating = excluded.rating, attended_at = excluded.attended_at""",
+            (user_id, event_id, datetime.now().isoformat(), rating),
+        )
+        db.conn.commit()
+        # Adjust Elo taste items for matching categories based on rating
+        # Get event category/vibe from rankings
+        row = db.conn.execute(
+            "SELECT vibe, event_type FROM rankings WHERE event_id = ? LIMIT 1",
+            (event_id,),
+        ).fetchone()
+        if row:
+            vibe = row["vibe"] or "general"
+            elo_adjustment = (rating - 3) * 10  # -20 to +20
+            if elo_adjustment != 0:
+                db.conn.execute(
+                    """UPDATE taste_items
+                       SET elo_rating = MAX(1000, MIN(2000, elo_rating + ?))
+                       WHERE user_id = ? AND category = ?""",
+                    (elo_adjustment, user_id, vibe),
+                )
+                db.conn.commit()
+        stars = "★" * rating + "☆" * (5 - rating)
+        message = f"Rated {stars}"
+        icon = "🌟" if rating >= 4 else "✓"
+    else:
+        return HTMLResponse("<h1>Invalid rating</h1>", status_code=400)
+
+    ev_row = db.conn.execute("SELECT title FROM events WHERE event_id = ? LIMIT 1", (event_id,)).fetchone()
+    ev_title = ev_row["title"] if ev_row else event_id
+
+    return HTMLResponse(f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rating saved</title>
+<style>body{{font-family:-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8fafc;margin:0}}
+.card{{background:white;border-radius:16px;padding:32px;max-width:380px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.08)}}
+h2{{color:#1e293b;margin-bottom:8px}}p{{color:#64748b;}}
+a{{color:#4f46e5;font-weight:600;}}</style></head>
+<body><div class="card">
+<div style="font-size:48px;margin-bottom:16px">{icon}</div>
+<h2>{message}</h2>
+<p style="font-weight:600;color:#374151;">{ev_title[:60]}</p>
+<p style="margin-top:20px"><a href="/?u={u}">Back to calendar →</a></p>
+</div></body></html>""")
+
+
+@app.get("/bucket-list", response_class=HTMLResponse)
+async def bucket_list_page(request: Request, response: Response):
+    """Bucket list — first-class page showing activities with status tracking."""
+    db = get_db()
+    current_user = _get_current_user(request)
+    user_id = current_user["id"] if current_user else 1
+    items = db.get_user_bucket_list(user_id)
+
+    # Get latest run events for fuzzy matching bucket list items to events
+    run = db.get_user_latest_run(user_id)
+    matched_events: dict[int, list[dict]] = {}
+    if run:
+        kept_events = db.conn.execute(
+            """SELECT e.event_id, e.title, e.start_time, e.url, rk.score
+               FROM events e JOIN rankings rk ON rk.event_id = e.event_id AND rk.run_id = e.run_id
+               WHERE e.run_id = ? AND rk.keep = 1 ORDER BY rk.score DESC LIMIT 300""",
+            (run["id"],),
+        ).fetchall()
+        kept_events = [dict(r) for r in kept_events]
+        # Simple keyword match: check if any word from bucket item appears in event title
+        for item in items:
+            words = [w.lower() for w in item["activity"].split() if len(w) > 3]
+            matches = []
+            for ev in kept_events:
+                ev_title_lower = (ev.get("title") or "").lower()
+                if any(w in ev_title_lower for w in words):
+                    matches.append(ev)
+            if matches:
+                matched_events[item["id"]] = matches[:3]
+
+    pending = [i for i in items if i.get("status", "pending") != "done"]
+    done = [i for i in items if i.get("status", "pending") == "done"]
+    total = len(items)
+    done_count = len(done)
+
+    def _item_html(item: dict) -> str:
+        item_id = item["id"]
+        status = item.get("status", "pending")
+        is_done = status == "done"
+        matches = matched_events.get(item_id, [])
+        match_html = ""
+        if matches and not is_done:
+            match_html = '<div style="margin-top:6px;">'
+            for m in matches:
+                dt = ""
+                if m.get("start_time"):
+                    try:
+                        from datetime import datetime as _dt
+                        dt = _dt.fromisoformat(m["start_time"]).strftime("%b %d")
+                    except Exception:
+                        pass
+                match_html += (
+                    f'<a href="{m.get("url","#")}" target="_blank" '
+                    f'style="display:inline-block;margin-right:6px;margin-bottom:4px;padding:3px 10px;'
+                    f'background:#ede9fe;color:#6d28d9;border-radius:12px;font-size:12px;'
+                    f'text-decoration:none;font-weight:600;">'
+                    f'🎯 {m["title"][:40]}{" · " + dt if dt else ""}</a>'
+                )
+            match_html += "</div>"
+        done_style = "text-decoration:line-through;color:#9ca3af;" if is_done else ""
+        btn_html = (
+            f'<button onclick="setStatus({item_id},\'pending\')" '
+            f'style="padding:3px 10px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;'
+            f'border-radius:6px;font-size:12px;cursor:pointer;margin-left:8px;">Undo</button>'
+            if is_done else
+            f'<button onclick="setStatus({item_id},\'done\')" '
+            f'style="padding:3px 10px;border:1px solid #16a34a;background:#dcfce7;color:#166534;'
+            f'border-radius:6px;font-size:12px;cursor:pointer;margin-left:8px;">✓ Done</button>'
+        )
+        del_btn = (
+            f'<button onclick="delItem({item_id})" '
+            f'style="padding:3px 8px;border:none;background:none;color:#9ca3af;'
+            f'font-size:12px;cursor:pointer;" title="Remove">✕</button>'
+        )
+        completed_label = ""
+        if is_done and item.get("completed_at"):
+            try:
+                from datetime import datetime as _dt
+                completed_label = f' <span style="font-size:11px;color:#9ca3af;">({_dt.fromisoformat(item["completed_at"]).strftime("%b %d, %Y")})</span>'
+            except Exception:
+                pass
+        return (
+            f'<div id="bl-{item_id}" style="display:flex;align-items:flex-start;gap:8px;'
+            f'padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;'
+            f'{"background:#f9fafb;" if is_done else "background:#fff;"}">'
+            f'<div style="flex:1;">'
+            f'<span style="{done_style}font-size:15px;font-weight:600;">{item["activity"]}</span>'
+            f'{completed_label}'
+            f'{match_html}'
+            f'</div>'
+            f'<div style="display:flex;align-items:center;flex-shrink:0;">'
+            f'{btn_html}{del_btn}'
+            f'</div>'
+            f'</div>'
+        )
+
+    pending_html = "".join(_item_html(i) for i in pending) or '<p style="color:#9ca3af;">No pending items.</p>'
+    done_html = "".join(_item_html(i) for i in done) or ""
+
+    resp = HTMLResponse(_layout("Bucket List", f"""
+    <h1>Bucket List</h1>
+    <p style="color:#6b7280;margin-bottom:8px;font-size:14px;">
+        Activities you want to do. Items matching current recommendations are highlighted.
+        <strong style="color:#374151;">{done_count}/{total} completed</strong>
+    </p>
+
+    <div style="margin-bottom:24px;">
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <input id="new-item" type="text" placeholder="Add something to your bucket list..."
+                   style="flex:1;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;"
+                   onkeydown="if(event.key==='Enter')addItem()">
+            <button onclick="addItem()"
+                    style="padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Add</button>
+        </div>
+        <div id="pending-list">{pending_html}</div>
+    </div>
+
+    {f'''<details style="margin-top:8px;">
+        <summary style="cursor:pointer;color:#6b7280;font-size:14px;font-weight:600;padding:8px 0;">
+            Completed ({done_count})
+        </summary>
+        <div style="margin-top:12px;">{done_html}</div>
+    </details>''' if done_html else ""}
+
+    <script>
+    async function addItem() {{
+        const inp = document.getElementById('new-item');
+        const activity = inp.value.trim();
+        if (!activity) return;
+        const r = await fetch('/api/bucket/add', {{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{activity}})}});
+        const d = await r.json();
+        if (d.ok) {{ inp.value = ''; location.reload(); }}
+        else alert(d.error || 'Failed to add');
+    }}
+    async function delItem(id) {{
+        if (!confirm('Remove this item?')) return;
+        await fetch('/api/bucket/delete', {{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id}})}});
+        document.getElementById('bl-'+id)?.remove();
+    }}
+    async function setStatus(id, status) {{
+        await fetch('/api/bucket/status', {{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id,status}})}});
+        location.reload();
+    }}
+    </script>
+    """, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.post("/api/bucket/status")
+async def api_bucket_status(request: Request):
+    data = await request.json()
+    db = get_db()
+    current_user = _get_current_user(request)
+    user_id = current_user["id"] if current_user else 1
+    db.update_bucket_item_status(int(data.get("id", 0)), data.get("status", "pending"), user_id)
+    return JSONResponse({"ok": True})
+
+
 @app.get("/attended", response_class=HTMLResponse)
 async def attended_page(request: Request, response: Response):
     db = get_db()
@@ -3165,36 +3641,50 @@ async def search_page(request: Request, response: Response):
         <div style="display:flex;gap:8px;">
             <input id="q" type="text" placeholder="What are you looking for?"
                    style="flex:1;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;"
-                   onkeydown="if(event.key==='Enter')doSearch()">
-            <button onclick="doSearch()"
+                   onkeydown="if(event.key==='Enter')doSearch(false)">
+            <button onclick="doSearch(false)"
                     style="padding:10px 20px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;">Search</button>
+            <button onclick="doSearch(true)" title="Search the web for events not in our database"
+                    style="padding:10px 16px;background:#059669;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">🌐 Web</button>
         </div>
-        <div id="results" style="margin-top:20px;"></div>
+        <div id="tier-hint" style="margin-top:6px;font-size:11px;color:#9ca3af;"></div>
+        <div id="results" style="margin-top:16px;"></div>
     </div>
     <script>
-    async function doSearch() {
+    async function doSearch(webOnly) {
         const q = document.getElementById('q').value.trim();
         if (!q) return;
         const res = document.getElementById('results');
-        res.innerHTML = '<p style="color:#6b7280;">Searching...</p>';
+        const hint = document.getElementById('tier-hint');
+        res.innerHTML = '<p style="color:#6b7280;">' + (webOnly ? 'Searching the web...' : 'Searching...') + '</p>';
+        hint.textContent = '';
         try {
             const r = await fetch('/api/search', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({query: q})
+                body: JSON.stringify({query: q, web_only: !!webOnly})
             });
             const data = await r.json();
             if (data.error) { res.innerHTML = `<p style="color:#dc2626;">${data.error}</p>`; return; }
             if (!data.results || !data.results.length) {
-                res.innerHTML = '<p style="color:#6b7280;">No matches found. Try a different query.</p>';
+                res.innerHTML = '<p style="color:#6b7280;">No matches found. Try the 🌐 Web button to search beyond our database.</p>';
                 return;
             }
+            if (data.tier === 'web') {
+                hint.textContent = '🌐 Results from web search — not yet in your recommendations database';
+                hint.style.color = '#059669';
+            } else {
+                hint.textContent = `Found ${data.results.length} matches in your event database`;
+            }
             res.innerHTML = data.results.map(e => `
-                <div style="padding:14px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px;">
+                <div style="padding:14px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px;${e.source_tier==='web'?'border-color:#a7f3d0;background:#f0fdf4;':''}">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                         <a href="${e.url || '#'}" target="_blank"
                            style="font-size:15px;font-weight:700;color:#1e293b;text-decoration:none;">${e.title}</a>
-                        <span style="background:#f1f5f9;color:#374151;font-size:11px;font-weight:800;padding:2px 8px;border-radius:8px;flex-shrink:0;margin-left:8px;">${e.score || ''}</span>
+                        <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px;">
+                            ${e.source_tier==='web' ? '<span style="background:#dcfce7;color:#166534;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;">WEB</span>' : ''}
+                            ${e.score ? '<span style="background:#f1f5f9;color:#374151;font-size:11px;font-weight:800;padding:2px 8px;border-radius:8px;">'+e.score+'</span>' : ''}
+                        </div>
                     </div>
                     <p style="margin:4px 0 6px;font-size:12px;color:#6b7280;">${e.start_time ? new Date(e.start_time).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'Anytime'} · ${e.location_name || ''}</p>
                     <p style="margin:0;font-size:13px;color:#6d28d9;">${e.reason || ''}</p>
@@ -3206,51 +3696,35 @@ async def search_page(request: Request, response: Response):
     }
     // Auto-focus and allow pre-filled query from URL
     const urlQ = new URLSearchParams(location.search).get('q');
-    if (urlQ) { document.getElementById('q').value = urlQ; doSearch(); }
+    if (urlQ) { document.getElementById('q').value = urlQ; doSearch(false); }
     else document.getElementById('q').focus();
     </script>
     """, current_user))
     return _maybe_set_cookie(request, resp, current_user)
 
 
-@app.post("/api/search")
-async def api_search(request: Request):
-    """AI-powered natural language event search using Claude Haiku."""
+def _search_db_events(db, run_id: int, query: str, all_runs: bool = False) -> list[dict]:
+    """Search kept events via Claude Haiku. all_runs=True searches all historical runs."""
     import anthropic as _anthropic
-    current_user = _get_current_user(request)
-    if not current_user:
-        return JSONResponse({"error": "Not authenticated"}, status_code=401)
-    try:
-        body = await request.json()
-        query = (body.get("query") or "").strip()
-        if not query:
-            return JSONResponse({"error": "Empty query"})
-    except Exception:
-        return JSONResponse({"error": "Invalid request"}, status_code=400)
-
-    db = get_db()
     settings = Settings()
-    run = db.get_user_latest_run(current_user["id"])
-    if not run:
-        return JSONResponse({"results": [], "message": "No events yet — run the pipeline first."})
-
-    # Get all kept events from latest run
-    rows = db.conn.execute(
-        """SELECT e.*, rk.score, rk.match_reason, rk.vibe
-           FROM events e
-           JOIN rankings rk ON rk.event_id = e.event_id AND rk.run_id = e.run_id
-           WHERE e.run_id = ? AND rk.keep = 1
-           ORDER BY rk.score DESC LIMIT 200""",
-        (run["id"],),
-    ).fetchall()
+    if not settings.anthropic_api_key:
+        return []
+    if all_runs:
+        rows = db.conn.execute(
+            """SELECT e.*, rk.score, rk.match_reason FROM events e
+               JOIN rankings rk ON rk.event_id = e.event_id AND rk.run_id = e.run_id
+               WHERE rk.keep = 1 ORDER BY rk.score DESC LIMIT 400""",
+        ).fetchall()
+    else:
+        rows = db.conn.execute(
+            """SELECT e.*, rk.score, rk.match_reason FROM events e
+               JOIN rankings rk ON rk.event_id = e.event_id AND rk.run_id = e.run_id
+               WHERE e.run_id = ? AND rk.keep = 1 ORDER BY rk.score DESC LIMIT 200""",
+            (run_id,),
+        ).fetchall()
     events = [dict(r) for r in rows]
     if not events:
-        return JSONResponse({"results": [], "message": "No recommended events found."})
-
-    if not settings.anthropic_api_key:
-        return JSONResponse({"error": "No API key configured"}, status_code=500)
-
-    # Build compact event list for Claude
+        return []
     event_list = [
         {
             "id": e.get("event_id", ""),
@@ -3263,17 +3737,12 @@ async def api_search(request: Request):
         }
         for e in events
     ]
-
-    prompt = f"""User query: "{query}"
-
-Here are {len(event_list)} recommended events. Return the top 5 most relevant matches as JSON:
-{{"matches": [{{"event_id": "...", "reason": "one-line why this matches the query"}}]}}
-
-Return ONLY valid JSON, no markdown.
-
-Events:
-{json.dumps(event_list, default=str)}"""
-
+    prompt = (
+        f'User query: "{query}"\n\n'
+        f'Here are {len(event_list)} events. Return the top 5 most relevant matches as JSON:\n'
+        f'{{"matches": [{{"event_id": "...", "reason": "one-line why this matches"}}]}}\n\n'
+        f'Return ONLY valid JSON, no markdown.\n\nEvents:\n{json.dumps(event_list, default=str)}'
+    )
     try:
         client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
         resp = client.messages.create(
@@ -3287,8 +3756,7 @@ Events:
         data = json.loads(text)
     except Exception as exc:
         logger.error("Search AI call failed: %s", exc)
-        return JSONResponse({"error": "Search failed"}, status_code=500)
-
+        return []
     events_by_id = {e.get("event_id", ""): e for e in events}
     results = []
     for m in data.get("matches", [])[:5]:
@@ -3304,9 +3772,129 @@ Events:
             "url": ev.get("url", ""),
             "score": int(ev.get("score") or 0),
             "reason": m.get("reason", ""),
+            "source_tier": "db",
         })
+    return results
 
-    return JSONResponse({"results": results})
+
+def _search_web_fallback(query: str, settings: Settings) -> list[dict]:
+    """Use Claude with web_search tool to find events not in our DB."""
+    import anthropic as _anthropic
+    if not settings.anthropic_api_key:
+        return []
+    try:
+        client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        location = settings.location_query or "Boston, MA"
+        system = (
+            f"You help find local events in {location}. "
+            "When asked about events, use the web_search tool to find real upcoming events. "
+            "Return results as JSON only — no prose."
+        )
+        user_msg = (
+            f'Find events matching: "{query}" near {location}. '
+            "Search for real upcoming events and return JSON:\n"
+            '{"events": [{"title": "...", "date": "...", "venue": "...", "url": "...", "description": "..."}]}\n'
+            "Return 3-5 events max. Return ONLY the JSON, no other text."
+        )
+        resp = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            system=system,
+            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        # Extract text from response (may have tool use blocks)
+        text = ""
+        for block in resp.content:
+            if hasattr(block, "text"):
+                text = block.text.strip()
+                break
+        if not text:
+            return []
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        data = json.loads(text)
+        results = []
+        for ev in data.get("events", [])[:5]:
+            results.append({
+                "event_id": f"web_{hash(ev.get('title','') + ev.get('url','')) % 10**8:08x}",
+                "title": ev.get("title", ""),
+                "start_time": ev.get("date"),
+                "location_name": ev.get("venue", ""),
+                "url": ev.get("url", ""),
+                "score": 0,
+                "reason": ev.get("description", "")[:120],
+                "source_tier": "web",
+            })
+        return results
+    except Exception as exc:
+        logger.warning("Web search fallback failed: %s", exc)
+        return []
+
+
+@app.post("/api/search")
+async def api_search(request: Request):
+    """Tiered AI event search: DB kept events → DB all events → web fallback."""
+    current_user = _get_current_user(request)
+    if not current_user:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    try:
+        body = await request.json()
+        query = (body.get("query") or "").strip()
+        web_only = bool(body.get("web_only", False))
+        if not query:
+            return JSONResponse({"error": "Empty query"})
+    except Exception:
+        return JSONResponse({"error": "Invalid request"}, status_code=400)
+
+    db = get_db()
+    settings = Settings()
+    run = db.get_user_latest_run(current_user["id"])
+
+    if not settings.anthropic_api_key:
+        return JSONResponse({"error": "No API key configured"}, status_code=500)
+
+    if web_only:
+        # Direct web search (user explicitly requested)
+        import asyncio as _asyncio
+        loop = _asyncio.get_running_loop()
+        results = await loop.run_in_executor(None, _search_web_fallback, query, settings)
+        return JSONResponse({"results": results, "tier": "web"})
+
+    # Tier 1: search kept events from latest run
+    results: list[dict] = []
+    if run:
+        results = await _asyncio_run_in_executor(_search_db_events, db, run["id"], query, False)
+
+    # Tier 2: expand to all events if < 3 results
+    if len(results) < 3 and run:
+        logger.info("Search tier 2: expanding to all historical events for %r", query)
+        all_results = await _asyncio_run_in_executor(_search_db_events, db, run["id"], query, True)
+        # Merge: prefer existing, add new ones
+        existing_ids = {r["event_id"] for r in results}
+        for r in all_results:
+            if r["event_id"] not in existing_ids:
+                results.append(r)
+        results = results[:5]
+
+    # Tier 3: web fallback if still < 3 results
+    if len(results) < 3:
+        logger.info("Search tier 3: web fallback for %r", query)
+        web_results = await _asyncio_run_in_executor(_search_web_fallback, query, settings)
+        existing_ids = {r["event_id"] for r in results}
+        for r in web_results:
+            if r["event_id"] not in existing_ids:
+                results.append(r)
+
+    tier = "web" if results and results[-1].get("source_tier") == "web" else "db"
+    return JSONResponse({"results": results[:5], "tier": tier})
+
+
+async def _asyncio_run_in_executor(fn, *args):
+    """Run a sync function in a thread pool executor."""
+    import asyncio as _asyncio
+    loop = _asyncio.get_running_loop()
+    return await loop.run_in_executor(None, fn, *args)
 
 
 @app.get("/group/create", response_class=HTMLResponse)
@@ -4319,28 +4907,132 @@ async def user_ical_feed(token: str, min_score: int = 55):
     )
 
 
+@app.get("/u/{token}/rsvps.ics")
+async def user_rsvps_ical(token: str):
+    """Per-user iCal feed containing only events the user RSVP'd 'going' or 'maybe'."""
+    import html as _html
+
+    db = get_db()
+    user = db.get_user_by_token(token)
+    if not user:
+        return Response(content="BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR",
+                       media_type="text/calendar")
+
+    user_id = user["id"]
+    user_name = user.get("name") or user.get("email", "")
+
+    # Get all RSVPs for this user with event details
+    rows = db.conn.execute(
+        """SELECT r.status, r.event_id, e.title, e.start_time, e.location_name,
+                  e.url, e.price, e.description
+           FROM rsvps r
+           JOIN events e ON e.event_id = r.event_id
+           WHERE r.user_id = ? AND r.status IN ('going', 'maybe')
+           ORDER BY e.start_time ASC LIMIT 100""",
+        (user_id,),
+    ).fetchall()
+    rsvps = [dict(r) for r in rows]
+
+    def _ical_escape(text: str) -> str:
+        text = _html.unescape(str(text))
+        return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        f"PRODID:-//recom//RSVPs {_ical_escape(user_name)}//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        f"X-WR-CALNAME:Recom — {_ical_escape(user_name)}'s Confirmed Plans",
+        "X-APPLE-CALENDAR-COLOR:#22c55e",
+        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+    ]
+
+    for ev in rsvps:
+        start = ev.get("start_time")
+        if not start:
+            continue
+        try:
+            dt = datetime.fromisoformat(start)
+        except (ValueError, TypeError):
+            continue
+        dtstart = dt.strftime("%Y%m%dT%H%M%S")
+        status = ev.get("status", "going")
+        title = _ical_escape(ev.get("title") or "")
+        location = _ical_escape(ev.get("location_name") or "")
+        url = ev.get("url") or ""
+        price = _ical_escape(ev.get("price") or "Free")
+        eid = ev.get("event_id", "")
+        status_label = "✓ Going" if status == "going" else "? Maybe"
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:{eid}@rsvps-{token}",
+            f"DTSTART:{dtstart}",
+            f"SUMMARY:{status_label}: {title}",
+            f"LOCATION:{location}",
+            f"URL:{url}",
+            f"DESCRIPTION:{price}",
+            "DURATION:PT2H",
+            "END:VEVENT",
+        ])
+
+    lines.append("END:VCALENDAR")
+    return Response(
+        content="\r\n".join(lines),
+        media_type="text/calendar",
+        headers={"Content-Disposition": f"inline; filename=recom-rsvps-{token}.ics"},
+    )
+
+
 @app.get("/u/{token}/cal", response_class=HTMLResponse)
 async def user_cal_page(token: str, request: Request):
-    """Page showing the user's personal feed URL for copying."""
+    """Page showing all available calendar feed URLs for the user."""
     db = get_db()
     user = db.get_user_by_token(token)
     if not user:
         return HTMLResponse("<h1>User not found</h1>", status_code=404)
     settings = Settings()
-    feed_url = f"{settings.dashboard_url}/u/{token}/feed.ics"
+    dashboard_url = settings.dashboard_url
+    feed_url = f"{dashboard_url}/u/{token}/feed.ics"
+    rsvps_url = f"{dashboard_url}/u/{token}/rsvps.ics"
+    webcal_feed = feed_url.replace("https://", "webcal://").replace("http://", "webcal://")
+    webcal_rsvps = rsvps_url.replace("https://", "webcal://").replace("http://", "webcal://")
     user_name = user.get("name") or user.get("email", "")
-    return HTMLResponse(_layout("Your Calendar", f"""
-    <h1>Your Personal Calendar</h1>
-    <div class="card" style="max-width:520px;">
-        <p style="margin-bottom:12px;">Hi <strong>{user_name}</strong>! Subscribe to this URL in Google Calendar or Apple Calendar:</p>
-        <div style="background:#f3f4f6;padding:12px 16px;border-radius:8px;font-family:monospace;font-size:13px;word-break:break-all;cursor:pointer;"
-             onclick="navigator.clipboard.writeText('{feed_url}');this.style.background='#dcfce7';this.innerHTML='Copied!';setTimeout(()=>{{this.style.background='#f3f4f6';this.innerHTML='{feed_url}';}},2000);">
-            {feed_url}
-        </div>
-        <p style="color:#9ca3af;font-size:12px;margin-top:10px;">
-            Click to copy. Share this URL with friends so they can see your picks.<br>
-            Google Calendar: Other calendars → From URL → paste.
-        </p>
+
+    def _feed_row(label: str, url: str, webcal: str, desc: str, color: str = "#4f46e5") -> str:
+        safe_url = url.replace("'", "\\'")
+        return f"""
+        <div style="padding:14px 0;border-bottom:1px solid #e5e7eb;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                <div>
+                    <div style="font-weight:700;font-size:15px;color:{color};">{label}</div>
+                    <div style="font-size:12px;color:#6b7280;margin-top:2px;">{desc}</div>
+                </div>
+                <div style="display:flex;gap:6px;flex-shrink:0;">
+                    <a href="{webcal}" style="padding:5px 12px;background:#f3f4f6;color:#374151;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">+ Calendar</a>
+                    <button onclick="navigator.clipboard.writeText('{safe_url}');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy URL',1500)"
+                            style="padding:5px 12px;background:#e0e7ff;color:#3730a3;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">Copy URL</button>
+                </div>
+            </div>
+        </div>"""
+
+    return HTMLResponse(_layout("Your Calendars", f"""
+    <h1>Your Calendars</h1>
+    <p style="color:#6b7280;margin-bottom:20px;font-size:14px;">
+        Subscribe to any of these feeds in Google Calendar, Apple Calendar, or Outlook.
+        They update automatically.
+    </p>
+    <div class="card" style="max-width:640px;">
+        {_feed_row("My Recommendations", feed_url, webcal_feed, "All events scored ≥55 from your latest run", "#4f46e5")}
+        {_feed_row("My Confirmed Plans", rsvps_url, webcal_rsvps, "Only events you RSVP'd going or maybe", "#16a34a")}
+    </div>
+    <div class="card" style="max-width:640px;margin-top:16px;">
+        <p style="font-size:13px;color:#6b7280;margin-bottom:8px;"><strong>How to subscribe:</strong></p>
+        <ul style="font-size:13px;color:#6b7280;margin:0;padding-left:20px;line-height:1.8;">
+            <li><strong>Google Calendar:</strong> Other calendars → + → From URL → paste URL</li>
+            <li><strong>Apple Calendar:</strong> File → New Calendar Subscription → paste URL</li>
+            <li><strong>Outlook:</strong> Add calendar → From internet → paste URL</li>
+        </ul>
     </div>
     """, user=user))
 

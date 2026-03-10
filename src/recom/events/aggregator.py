@@ -81,12 +81,42 @@ def _venue_similarity(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
 
 
-def _deduplicate(events: list[Event]) -> list[Event]:
-    """Remove duplicate events using exact key match + fuzzy cross-source dedup.
+def _normalize_venue(name: str) -> str:
+    """Normalize venue names for comparison: remove 'the', 'at', punctuation, lowercase."""
+    text = name.lower().strip()
+    text = re.sub(r"[^\w\s]", "", text)
+    text = re.sub(r"\b(the|at|in|a)\b", "", text)
+    return re.sub(r"\s+", " ", text).strip()
 
-    Pass 1: exact normalized-title + date key (catches same event, same source wording)
-    Pass 2: fuzzy title similarity (>0.82) on same day from different sources
+
+def _extract_url_base(url: str) -> str | None:
+    """Extract a canonical base from a URL for cross-source dedup (e.g. eventbrite event ID)."""
+    if not url:
+        return None
+    # Eventbrite: extract numeric event ID
+    m = re.search(r"eventbrite\.com/e/[^/]*-(\d{8,})", url)
+    if m:
+        return f"eventbrite:{m.group(1)}"
+    # Ticketmaster: extract event ID
+    m = re.search(r"ticketmaster\.com/event/([A-Z0-9]{16,})", url, re.IGNORECASE)
+    if m:
+        return f"ticketmaster:{m.group(1).upper()}"
+    # Luma: extract event slug
+    m = re.search(r"lu\.ma/([a-z0-9\-]{4,})", url, re.IGNORECASE)
+    if m:
+        return f"luma:{m.group(1).lower()}"
+    return None
+
+
+def _deduplicate(events: list[Event]) -> list[Event]:
+    """Remove duplicate events using three passes:
+    Pass 1: exact normalized-title + date key
+    Pass 2: URL-based cross-source dedup (same Eventbrite/Ticketmaster/Luma event ID)
+    Pass 3: fuzzy title similarity (>0.82) on same day from different sources,
+            with venue normalization for near-identical titles
     """
+    raw_count = len(events)
+
     # Pass 1: exact dedup
     seen: dict[str, Event] = {}
     for ev in events:
@@ -96,10 +126,37 @@ def _deduplicate(events: list[Event]) -> list[Event]:
         else:
             existing = seen[key]
             if _data_score(ev) > _data_score(existing):
+                logger.debug(
+                    "Exact dedup: keeping better copy of %r (source=%s over %s)",
+                    ev.title[:40], ev.source, existing.source
+                )
                 seen[key] = ev
+    exact_removed = raw_count - len(seen)
     deduped = list(seen.values())
 
-    # Pass 2: fuzzy cross-source dedup — group by date, then pairwise check
+    # Pass 2: URL-based cross-source dedup
+    url_map: dict[str, Event] = {}
+    url_removed = 0
+    url_survivors: list[Event] = []
+    for ev in deduped:
+        url_key = _extract_url_base(ev.url or "")
+        if url_key:
+            if url_key not in url_map:
+                url_map[url_key] = ev
+            else:
+                existing = url_map[url_key]
+                if _data_score(ev) > _data_score(existing):
+                    url_map[url_key] = ev
+                logger.debug(
+                    "URL dedup: merged %r [%s] with %r [%s]",
+                    ev.title[:40], ev.source, existing.title[:40], existing.source
+                )
+                url_removed += 1
+        else:
+            url_survivors.append(ev)
+    deduped = url_survivors + list(url_map.values())
+
+    # Pass 3: fuzzy cross-source dedup — group by date, then pairwise check
     by_day: dict[str, list[Event]] = {}
     for ev in deduped:
         day = ev.start_time.strftime("%Y-%m-%d") if ev.start_time else "__nodatE__"
@@ -118,6 +175,10 @@ def _deduplicate(events: list[Event]) -> list[Event]:
                 if title_sim >= 0.82:
                     # Same event from different source — keep better one
                     if _data_score(ev) > _data_score(existing):
+                        logger.debug(
+                            "Fuzzy dedup (title %.2f): %r [%s] replaces %r [%s]",
+                            title_sim, ev.title[:40], ev.source, existing.title[:40], existing.source
+                        )
                         kept.remove(existing)
                         kept.append(ev)
                     is_dup = True
@@ -125,7 +186,11 @@ def _deduplicate(events: list[Event]) -> list[Event]:
                     break
                 # Also check venue similarity for near-identical titles
                 if title_sim >= 0.70 and ev.location_name and existing.location_name:
-                    if _venue_similarity(ev.location_name, existing.location_name) >= 0.70:
+                    venue_sim = _venue_similarity(
+                        _normalize_venue(ev.location_name),
+                        _normalize_venue(existing.location_name)
+                    )
+                    if venue_sim >= 0.65:
                         if _data_score(ev) > _data_score(existing):
                             kept.remove(existing)
                             kept.append(ev)
@@ -136,9 +201,11 @@ def _deduplicate(events: list[Event]) -> list[Event]:
                 kept.append(ev)
         final.extend(kept)
 
-    if fuzzy_removed:
-        logger.info("Fuzzy dedup removed %d cross-source duplicates", fuzzy_removed)
-
+    total_removed = raw_count - len(final)
+    logger.info(
+        "Dedup: %d raw → %d after dedup (%d removed: %d exact, %d url, %d fuzzy)",
+        raw_count, len(final), total_removed, exact_removed, url_removed, fuzzy_removed
+    )
     return final
 
 
@@ -253,8 +320,15 @@ async def discover_all_events(
     before = len(all_events)
     all_events = _deduplicate(all_events)
     after = len(all_events)
-    if before != after:
-        logger.info("Deduplicated events: %d -> %d (removed %d)", before, after, before - after)
+    removed = before - after
+    if removed:
+        logger.info("Deduplicated events: %d -> %d (removed %d)", before, after, removed)
+    # Add a synthetic dedup stat for visibility in the run detail page
+    stats.append(SourceStat(
+        source_name="_dedup",
+        events_found=after,
+        error_message=f"raw={before}, removed={removed} ({removed*100//max(before,1)}%)" if removed else None,
+    ))
 
     # Geocode venues (adds lat/lon for distance-aware ranking & search)
     home_lat = getattr(settings, "latitude", 42.3736)

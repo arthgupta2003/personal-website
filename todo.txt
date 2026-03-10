@@ -604,7 +604,8 @@
 #     endpoint that saves to DB + regenerates crontab
 #   - scripts/install_cron.sh: accept args for day/hour overrides,
 #     or have Python generate the crontab lines directly
-# Status: TODO
+# Status: DONE
+# Completed: 2026-03-10
 
 # ============================================================
 # [2026-03-10] TASK: Restore bucket list as a first-class dashboard feature
@@ -625,7 +626,8 @@
 #
 # The bucket list is one of the best steering mechanisms — user literally
 # tells you what they want. Make it central, not buried.
-# Status: TODO
+# Status: DONE
+# Completed: 2026-03-10
 
 # ============================================================
 # [2026-03-10] TASK: Remove Travel and Budget pages from dashboard
@@ -1273,7 +1275,8 @@
 #
 # Prioritize #1 (taste profile) and #2 (event match) first — these add
 # the most visual value. #3 and #4 are nice-to-haves.
-# Status: TODO
+# Status: DONE
+# Completed: 2026-03-10
 
 # ============================================================
 # [2026-03-10] TASK: Fix event deduplication quality (HIGH PRIORITY)
@@ -1313,7 +1316,8 @@
 #
 # Test approach: dump all events from latest run, manually eyeball for
 # dupes that survived, tune thresholds until clean.
-# Status: TODO
+# Status: DONE
+# Completed: 2026-03-10
 
 # ============================================================
 # [2026-03-10] TASK: Per-user + per-person sub-calendars (HIGH PRIORITY)
@@ -1463,7 +1467,8 @@
 #
 # Dependencies: radicale (pip install radicale)
 # New files: src/recom/caldav/ (storage backend + auth plugin)
-# Status: TODO
+# Status: DONE (partial — /u/{token}/rsvps.ics + improved /u/{token}/cal page; CalDAV server skipped)
+# Completed: 2026-03-10
 
 # ============================================================
 # [2026-03-10] TASK: Calendar-native UX — accept/decline + post-event rating email
@@ -1542,4 +1547,181 @@
 # This closes the feedback loop entirely within calendar + email.
 # User never needs to open the dashboard for the product to learn
 # and improve.
+# Status: DONE (partial — send_ratings.py + /api/rate implemented; CalDAV RSVP sync skipped)
+# Completed: 2026-03-10
+
+# ============================================================
+# [2026-03-10] TASK: AI-powered event discovery search with web fallback (HIGH PRIORITY)
+# ============================================================
+# Real failure case: searched "St. Patrick's Day events Boston" on
+# the dashboard, got no good matches. Google/Gemini gave great answers
+# immediately. Our search MUST be on par or better for event discovery.
+#
+# Current search (/api/search) only queries events already in the DB.
+# If scrapers didn't pick up St. Paddy's events, search returns nothing.
+# This is a fundamental gap — the system only knows what it scraped.
+#
+# === Tiered search architecture ===
+#
+# Tier 1: DB search (instant, free)
+#   - Current behavior: search kept events from latest run via Claude Haiku
+#   - If >= 3 good results → return immediately
+#   - This handles "jazz tonight" or "comedy this weekend" well
+#
+# Tier 2: Full DB search (instant, free)
+#   - If Tier 1 fails: expand to ALL events (not just kept), including
+#     filtered/low-scored events. Maybe the event exists but scored low.
+#   - Also search across ALL historical runs, not just latest
+#   - If >= 3 good results → return
+#
+# Tier 3: AI web search fallback (5-15 seconds, costs ~$0.10-0.50)
+#   - If Tier 2 fails: use Claude with web search tool to discover events
+#   - Send Claude Opus/Sonnet the query + location context:
+#     "Find St. Patrick's Day events in Boston/Cambridge area for March 2026.
+#      Return structured JSON: title, date, time, venue, url, description, price"
+#   - Claude uses web search (via tool use) to find events from Google,
+#     Eventbrite, Facebook Events, venue websites, etc.
+#   - Parse results into Event objects
+#   - INGEST back into the DB as source="ai_search" — these events are
+#     now available for future searches, ranking, and calendar feeds
+#   - Score/rank the newly discovered events against user's profile
+#   - Return to user with a note: "Found via web search (not in our sources yet)"
+#
+# Tier 4: Proactive gap detection (background, periodic)
+#   - After each pipeline run, check for obvious gaps:
+#     "It's March in Boston — do we have St. Patrick's Day events?"
+#     "It's December — do we have holiday markets, NYE events?"
+#     "Major artist touring — do we have their Boston show?"
+#   - Use Claude to generate a list of queries for likely-missing events
+#   - Run Tier 3 searches proactively to fill gaps
+#   - Cron: run gap detection after each weekly pipeline
+#
+# === Implementation ===
+#
+# POST /api/search (modify existing):
+#   1. Try current DB search
+#   2. If <3 results: try expanded DB search (all events, all runs)
+#   3. If still <3 results: trigger web search fallback
+#   4. Show results with source indicator:
+#      [DB] Jazz Night at Regattabar
+#      [Web] St. Patrick's Day Parade — found via web search
+#
+# New: POST /api/search/web (direct web search, skip DB)
+#   - For when user explicitly wants fresh web results
+#   - "Search the web" button on search page
+#
+# New: Claude tool use for web search:
+#   - Use Anthropic API with web search tool (or Google Search API)
+#   - Structured output: list of events with all Event model fields
+#   - Fallback: if no tool use available, use Google Custom Search API
+#     + Claude to parse/structure the results
+#
+# New: Event ingestion from search results:
+#   - Discovered events saved to DB with source="ai_search"
+#   - Deduplicated against existing events (might already have it under
+#     a different name from a different source)
+#   - Optionally auto-rank through the normal pipeline
+#   - Show up in future DB searches and calendar feeds
+#
+# === Why this matters ===
+# Google/Gemini can answer "St. Patrick's Day events Boston" because they
+# index the entire web. We only index 14 scraped sources. The gap is
+# inevitable for seasonal/cultural/trending events that don't appear on
+# our sources until last minute (or ever).
+#
+# The web fallback turns search misses into data acquisition. Every
+# failed search that triggers Tier 3 GROWS the event database. Over time,
+# fewer searches need the fallback because we've already ingested the
+# events from previous searches.
+#
+# Cost: ~$0.10-0.50 per web fallback search (Claude + search API).
+# Only triggers on search misses, so maybe 5-10x per week = ~$2-5/week.
+# Worth it for dramatically better search experience.
+#
+# Dependencies: anthropic tool use (web search), or google-api-python-client
+# for Custom Search API as fallback
+# Status: DONE
+# Completed: 2026-03-10
+
+# ============================================================
+# [2026-03-10] TASK: Source gap retro — Claude diagnoses WHY searches fail
+# ============================================================
+# When the web search fallback finds events the DB didn't have, don't
+# just ingest the events — have Claude do a retro on WHY we missed them
+# and what data source gaps need fixing.
+#
+# Flow — runs on EVERY search, not just failures:
+#   1. User searches "St. Patrick's Day events Boston"
+#   2. DB search returns N results
+#   3. ALWAYS run web search in parallel (not a fallback — a benchmark)
+#   4. Compare: what did web find that DB didn't? What did DB have that
+#      web didn't? Score the overlap.
+#   5. Return merged results to user (best of both)
+#   6. Trigger RETRO PASS on the gap:
+#
+# Retro prompt (Claude Sonnet):
+#   "The user searched for '{query}'. Our database had {n_db} results
+#    (sources: {list}). Web search found {n_web} better results:
+#    {web_results_summary}
+#
+#    The web results came from these URLs/platforms:
+#    {list of source URLs from web results}
+#
+#    Our current scrapers cover: {list of 14 sources}
+#
+#    Diagnose:
+#    1. Which specific data sources are we missing that would have
+#       caught these events? (e.g. 'Boston.com events page',
+#       'Facebook Events for Boston', 'specific venue calendars')
+#    2. Are any of our existing scrapers broken or filtering too
+#       aggressively? (e.g. 'Boston Calendar should have had the
+#       parade but our date filter excluded it')
+#    3. Is this a seasonal/cultural gap? (e.g. 'we need a holiday
+#       events scraper that specifically checks for major holidays')
+#    4. Suggest specific new scrapers/sources to add, with URLs.
+#
+#    Return JSON:
+#    {
+#      'diagnosis': 'St Patricks Day events mostly listed on...',
+#      'missing_sources': [
+#        {'name': 'Boston.com Events', 'url': 'boston.com/events',
+#         'type': 'scraper', 'priority': 'high',
+#         'reason': '4 of 10 web results came from here'},
+#        ...
+#      ],
+#      'existing_source_issues': [
+#        {'source': 'Boston Calendar', 'issue': 'Date filter may be
+#         excluding events listed without specific dates',
+#         'fix': 'Relax date parsing for events with only month/year'}
+#      ],
+#      'pattern': 'seasonal_holiday',
+#      'suggested_action': 'Add a holiday-aware event scraper that
+#        checks major holidays 2-4 weeks in advance'
+#    }"
+#
+# What to do with the retro output:
+#   - Auto-append to todo.txt as new tasks (programmatically!)
+#     "# [auto-generated] TASK: Add Boston.com events scraper
+#      # Reason: 4/10 St. Patrick's Day results came from boston.com
+#      # Priority: high
+#      # URL: boston.com/events"
+#   - Log to a retro_log table in DB:
+#     (id, query, timestamp, n_db_results, n_web_results, diagnosis_json)
+#   - Show on /admin/retros page: history of search gaps + actions taken
+#   - Track if suggested sources get added and if they help
+#
+# Over time this creates a self-improving scraper portfolio:
+#   Week 1: search fails → retro says "add Boston.com" → todo created
+#   Worker agent adds Boston.com scraper
+#   Week 2: similar search → DB has the events → no fallback needed
+#   Retro tracks: "Boston.com addition resolved 3 previous search gaps"
+#
+# The system literally tells you what data it's missing and writes
+# its own improvement tasks. This is the meta-learning loop.
+#
+# Cost: ~$0.15 per search (web search + retro). Runs on EVERY search,
+# not just failures. This is a continuous benchmark of system quality.
+# Track a "coverage score" over time: what % of web results were already
+# in the DB? Target: 90%+. If coverage drops, scrapers are degrading.
+# If it's consistently low for a category, that's a source gap.
 # Status: TODO

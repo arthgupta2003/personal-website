@@ -21,6 +21,7 @@ dependencies = [
     "python-multipart>=0.0.22",
     "icalendar>=7.0.3",
     "premailer>=3.10.0",
+    "radicale>=3.6.1",
 ]
 
 [project.scripts]

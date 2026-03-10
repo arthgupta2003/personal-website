@@ -237,6 +237,12 @@ CREATE TABLE IF NOT EXISTS source_cache (
     events_count INTEGER DEFAULT 0,
     refresh_interval_hours REAL DEFAULT 24.0
 );
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -394,6 +400,27 @@ class Database:
                 events_count INTEGER DEFAULT 0,
                 refresh_interval_hours REAL DEFAULT 24.0
             )""")
+            self.conn.commit()
+
+        # app_settings table
+        try:
+            self.conn.execute("SELECT 1 FROM app_settings LIMIT 1")
+        except Exception:
+            self.conn.execute("""CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )""")
+            self.conn.commit()
+
+        # bucket list status column
+        cur = self.conn.execute("PRAGMA table_info(user_bucket_list)")
+        bl_cols = {row["name"] for row in cur.fetchall()}
+        if "status" not in bl_cols:
+            self.conn.execute("ALTER TABLE user_bucket_list ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
+            self.conn.commit()
+        if "completed_at" not in bl_cols:
+            self.conn.execute("ALTER TABLE user_bucket_list ADD COLUMN completed_at TEXT")
             self.conn.commit()
 
     def close(self):
@@ -587,6 +614,29 @@ class Database:
             (user_id,),
         ).fetchall()
         return [r["activity"] for r in rows]
+
+    def update_bucket_item_status(self, item_id: int, status: str, user_id: int = 1) -> bool:
+        completed_at = datetime.now().isoformat() if status == "done" else None
+        self.conn.execute(
+            "UPDATE user_bucket_list SET status = ?, completed_at = ? WHERE id = ? AND user_id = ?",
+            (status, completed_at, item_id, user_id),
+        )
+        self.conn.commit()
+        return True
+
+    # --- App settings (key-value store) ---
+
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        row = self.conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str):
+        self.conn.execute(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            (key, value, datetime.now().isoformat()),
+        )
+        self.conn.commit()
 
     def save_source_stat(self, run_id: int, stat: SourceStat, duration_seconds: float | None = None):
         self.conn.execute(

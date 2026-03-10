@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     dashboard_port: int = 8000
     dashboard_url: str = "https://recom.arthgupta.dev"
 
-    model_config = {"env_file": ".env", "env_prefix": "RECOM_"}
+    model_config = {"env_file": ".env", "env_prefix": "RECOM_", "extra": "ignore"}
 
 
 MODEL_PRICING: dict[str, dict[str, float]] = {

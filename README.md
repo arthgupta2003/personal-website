@@ -33,13 +33,18 @@ INGEST (YouTube API + Spotify + Gmail newsletters)
 
 1. **Ingest** — Pull subscriptions + liked videos from YouTube, top artists + tracks + recently played from Spotify, newsletter emails from Gmail
 2. **Extract interests** — Claude analyzes your activity and produces an interest profile (cached 7 days). Merged with manual keywords from `my_interests.txt`
-3. **Discover events** — Queries 7 sources in parallel:
+3. **Discover events** — Queries 14 sources in parallel:
    - Eventbrite API (general events, 10mi radius)
    - Meetup GraphQL API (groups, community)
    - Ticketmaster API (concerts, artist-specific searches for your Spotify artists)
-   - MIT Events (calendar scraper)
-   - Harvard Events (Trumba JSON API)
-   - The Boston Calendar + Do617 + ArtsBoston (scrapers)
+   - Bandsintown API (concert discovery)
+   - Dice.fm (electronic/live music)
+   - Resident Advisor (club/electronic events)
+   - University calendars (MIT, Harvard, Northeastern, Tufts, BU, Brandeis, Wellesley, MassArt, Emerson, Babson)
+   - Museums (ICA, MFA, Gardner, Harvard Art Museums, etc.)
+   - Outdoor/nature (hikes, day trips, state parks)
+   - The Boston Calendar + TimeOut Boston (scrapers)
+   - Gmail newsletters (Claude extraction)
 4. **Rank** — Claude scores every event on 7 dimensions (0-15 each), weighted differently based on whether the event is social, intellectual, or mixed
 5. **Bucket list** — Claude picks 3-5 seasonally relevant activities from your `bucket_list.txt`
 6. **Email** — HTML digest with top 10 picks, clubs/classes, bucket list suggestions, and all remaining events organized by day
@@ -58,6 +63,31 @@ INGEST (YouTube API + Spotify + Gmail newsletters)
 | **Venue/quality** | 1.0 | 2.0 | 1.0 |
 
 A niche math lecture (intellectual vibe) isn't penalized for low friend-bringability. A college basketball game (social vibe) isn't penalized for low interest match.
+
+### Backtester (quant-style signal analysis)
+
+The ranking pipeline is treated like an alpha model. A built-in backtester evaluates signal quality against realized user behavior — the same way a quant evaluates trading signals against realized PnL.
+
+| Quant concept | Recom equivalent |
+|---|---|
+| Alpha signal | Scoring dimension (interest, social, urgency, etc.) |
+| Signal weight | Vibe weight vector |
+| Universe | Event pool from scrapers |
+| Portfolio construction | Top-N event selection (keep threshold) |
+| Transaction costs | Logistics score (distance/time friction) |
+| Realized PnL | Attended events + star ratings |
+| Sharpe ratio | Attend rate × avg rating / variance |
+| Turnover | New events surfaced week-to-week |
+
+**Signal attribution** — For each dimension, compute hit rate, miss rate, and lift vs baseline. Which signals actually predict what the user does?
+
+**Information Coefficient (IC)** — Spearman rank correlation between each signal score and actual attendance/rating. IC > 0.1 = useful signal, IC < 0.02 = noise. Tracked over time to detect signal decay.
+
+**Decay analysis** — Different signals predict better at different horizons. Urgency dominates for events <3 days out; interest dominates for events >7 days out. IC computed per days-until-event bucket.
+
+**Weight optimization** — Logistic regression on attended history to find optimal vibe weights. Shows current vs suggested weights with confidence intervals. Requires ~30+ attended events per vibe to be meaningful.
+
+**Backtest report** — Per-run precision/recall at current threshold, precision@K, false positive/negative analysis, and threshold sweep curve to find optimal keep cutoff.
 
 ## Setup
 
