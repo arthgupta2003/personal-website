@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(chmod +x:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv run:*)",
+      "Bash(~/.zshrc:*)",
+      "Bash(lsof:*)",
+      "Bash(curl:*)",
+      "Bash(head:*)",
+      "Bash(sqlite3:*)",
+      "Bash(bash:*)",
+      "Bash(brew install:*)",
+      "Bash(kill 40666:*)",
+      "Bash(cloudflared tunnel:*)",
+      "WebFetch(domain:cfdomainpricing.com)",
+      "Bash(dig:*)",
+      "Bash(pkill:*)",
+      "Bash(launchctl load:*)",
+      "Bash(launchctl:*)",
+      "Bash(top:*)",
+      "Bash(ps -eo pid,rss,comm)",
+      "Bash(sort -k2 -rn)",
+      "Bash(sort -k1 -rn)",
+      "Bash(ps -eo rss,pid,comm)",
+      "WebFetch(domain:zilliz.com)",
+      "Bash(claude:*)",
+      "Bash(npx:*)",
+      "Bash(cloudflared access:*)",
+      "Bash(npm rebuild:*)",
+      "Bash(rm:*)",
+      "Bash(node:*)",
+      "Bash(nvm ls:*)",
+      "Bash(source:*)",
+      "Bash(git remote:*)",
+      "Bash(git fetch:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

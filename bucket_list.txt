@@ -1,0 +1,61 @@
+# Boston Bucket List — things you want to do (not tied to specific events)
+# Add anything here. The system will surface relevant ones based on season/weather.
+# Lines starting with # are ignored.
+
+# Water sports (warm weather)
+kite surfing
+sailing on the Charles (Community Boating, $99/season)
+kayaking on the Charles
+paddleboarding
+surfing at Nahant or Nantasket Beach
+
+# Snow sports (day trips from Boston, ~2hr drive)
+skiing at Loon Mountain, NH
+skiing at Sunapee, NH
+snowboarding — try it (Wachusett is closest, 1hr)
+cross-country skiing at Weston Ski Track (20 min drive)
+tubing at Nashoba Valley (45 min)
+snowmobiling in NH (guided tours, day trip)
+snowshoeing (Blue Hills or NH)
+
+# Outdoor
+hiking Blue Hills
+day trip to Cape Cod
+bike the Minuteman Trail
+picnic on the Esplanade
+watch sunset from MIT sailing pavilion
+hike Mt. Monadnock, NH (day trip, 1.5hr drive)
+hike in the White Mountains, NH (day trip, 2hr drive)
+
+# Sports to try
+indoor bouldering at Central Rock / Brooklyn Boulders
+try pickleball (courts at Cambridge Athletic Club, Magazine Beach)
+try tennis (public courts at Magazine Beach, Harvard)
+ice skating on Frog Pond (winter)
+try indoor volleyball (BSSC leagues)
+try squash or racquetball
+go to a batting cage
+try fencing (Boston Fencing Club)
+try archery tag
+go karting (K1 Speed, 30 min drive)
+try ax throwing (Urban Axes, Somerville)
+rollerskating / rollerblading along the Esplanade
+
+# Food & drink
+try every ramen spot in Cambridge
+rooftop bars when it's warm
+North End food crawl
+lobster roll tour
+
+# Culture
+catch a Red Sox game at Fenway
+see a show at the Brattle Theatre
+explore the Isabella Stewart Gardner Museum
+walk the Freedom Trail
+
+# Active
+rock climbing at Central Rock / Brooklyn Boulders
+ice skating on Frog Pond (winter)
+run the Harvard Stadium steps
+join a BSSC league
+try November Project (Wed 6:30am Harvard Stadium)

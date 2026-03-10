@@ -1,0 +1,8 @@
+# One sender email or domain per line
+# Used to filter Gmail for newsletter event extraction
+# Lines starting with # are ignored
+fractalboston@substack.com
+newsletter@thebostoncalendar.com
+do617@do617.com
+hello@6amcity.com
+events@artsboston.org
