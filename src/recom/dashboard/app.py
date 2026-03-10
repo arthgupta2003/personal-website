@@ -2415,9 +2415,9 @@ async def calendar_view(request: Request, run_id: int | None = None):
       const srcBadge = e.source ? `<span class="source-badge">${{e.source}}</span>` : '';
       // My RSVP indicator
       let myRsvpBadge = '';
-      if (e.my_rsvp === 'going') myRsvpBadge = '<span title="You\'re going!" style="font-size:13px;color:#16a34a;font-weight:700;">✓ Going</span>';
-      else if (e.my_rsvp === 'maybe') myRsvpBadge = '<span title="On your maybe list" style="font-size:12px;color:#d97706;font-weight:600;">🔖 Maybe</span>';
-      else if (e.my_rsvp === 'cant') myRsvpBadge = '<span style="font-size:11px;color:#9ca3af;font-weight:500;text-decoration:line-through;">Can\'t go</span>';
+      if (e.my_rsvp === 'going') myRsvpBadge = '<span title="You&apos;re going!" style="font-size:13px;color:#16a34a;font-weight:700;">✓ Going</span>';
+      else if (e.my_rsvp === 'maybe') myRsvpBadge = '<span title="On your maybe list" style="font-size:12px;color:#d97706;font-weight:600;">Maybe</span>';
+      else if (e.my_rsvp === 'cant') myRsvpBadge = '<span style="font-size:11px;color:#9ca3af;font-weight:500;text-decoration:line-through;">Can&apos;t go</span>';
       return `<div class="evt-card vibe-${{e.vibe}}${{e.my_rsvp === 'maybe' ? ' rsvp-maybe-card' : ''}}${{e.my_rsvp === 'going' ? ' rsvp-going-card' : ''}}" onclick="openModal(EVENTS.find(x=>x.id==='${{eid}}'))">
         ${{imgHtml}}
         <div class="card-body">

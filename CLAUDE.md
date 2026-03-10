@@ -36,21 +36,30 @@ No Makefile or test suite — `uv` handles all build/run tasks.
 
 ## Testing & quality checklist
 
-**After any dashboard change**, run the smoke test before considering the task done:
+**After any dashboard change**, run BOTH tests before considering the task done. Dashboard must be running first (`/workspace/.venv/bin/uvicorn recom.dashboard.app:app --host 0.0.0.0 --port 8000`).
 
 ```bash
-# Dashboard must be running first
-bash scripts/smoke_test.sh
+# 1. HTTP smoke test — checks all routes return correct status codes
+bash scripts/smoke_test.sh test@example.com     # 23 checks, must be 23/0
+
+# 2. Browser test — real Chromium, checks rendered output after JS executes
+/workspace/.venv/bin/python scripts/browser_test.py   # 45 checks, must be 45/0
 ```
 
-The smoke test checks all routes return expected HTTP codes (200 / 307 / 401). If it fails, fix before moving on — regressions are not acceptable.
+Also validate JS syntax after any template change:
+```bash
+curl -s http://localhost:8000/ > /tmp/p.html
+python3 -c "import re; html=open('/tmp/p.html').read(); s=max(re.findall(r'<script[^>]*>(.*?)</script>',html,re.DOTALL),key=len); open('/tmp/s.js','w').write(s)"
+node --check /tmp/s.js   # must show no output (clean)
+```
 
-**Manual checklist for dashboard changes:**
+**Checklist for dashboard changes:**
 1. Import check: `python -c "from recom.dashboard.app import app; print('OK')"`
-2. All nav pages use `render_nav(current_user)` (via `_layout(..., current_user)`) — never `LAYOUT_HEAD`
-3. `_layout(title, body, current_user)` — body must NOT end with `+ LAYOUT_FOOT` (layout adds it)
+2. All pages use `_layout(..., current_user)` — never `LAYOUT_HEAD` directly
+3. `_layout(title, body, current_user)` — body must NOT end with `+ LAYOUT_FOOT`
 4. Auth-required pages call `_get_current_user(request)` and redirect if None
-5. Logged-in users see their own data (use `db.get_user_latest_run(user_id)` not `db.get_runs()[0]`)
+5. Logged-in users see their own data — use `db.get_user_latest_run(user_id)` not `db.get_runs()[0]`
+6. No unescaped apostrophes in JS strings — use `&apos;` or `&quot;` in HTML attributes inside JS
 
 ## Git workflow
 
