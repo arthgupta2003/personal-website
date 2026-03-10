@@ -130,6 +130,7 @@ def extract_interests(
     manual_keywords: list[str],
     client: anthropic.Anthropic,
     model: str,
+    taste_top: list[dict] | None = None,
 ) -> tuple[InterestProfile, CostRecord]:
     """Call Claude to extract interests from activity data, then merge
     manual keywords.  Returns (InterestProfile, CostRecord)."""
@@ -182,6 +183,27 @@ def extract_interests(
                 Interest(topic=kw, confidence=0.9, source_signals=["manual"])
             )
             existing_topics.add(kw.lower())
+
+    # --- Merge Elo taste stack (top items as explicit interest signals) ---
+    if taste_top:
+        # Map Elo to confidence: top item at 1400 baseline → 0.7, each win adds ~0.02
+        max_elo = max(t["elo_rating"] for t in taste_top) if taste_top else 1400
+        min_elo = min(t["elo_rating"] for t in taste_top) if taste_top else 1400
+        elo_range = max(max_elo - min_elo, 1)
+        for item in taste_top:
+            label = item["label"]
+            if label.lower() not in existing_topics:
+                # Confidence 0.6–0.95 scaled by relative Elo position
+                relative = (item["elo_rating"] - min_elo) / elo_range
+                conf = round(0.6 + relative * 0.35, 2)
+                interests.append(
+                    Interest(
+                        topic=label,
+                        confidence=conf,
+                        source_signals=[f"elo_taste_stack:{item['category']}"],
+                    )
+                )
+                existing_topics.add(label.lower())
 
     profile = InterestProfile(
         interests=interests,

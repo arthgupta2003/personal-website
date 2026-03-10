@@ -1,0 +1,10 @@
+# Don't copy secrets into the image (they're mounted at runtime)
+.env
+state/tokens/
+*.db
+
+# Heavy / unnecessary
+.git
+node_modules
+__pycache__
+.venv

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+import math
+from datetime import datetime, timezone
 
 import anthropic
 
@@ -14,6 +15,59 @@ from recom.models import CostRecord, Event, InterestProfile, RankedEvent
 logger = logging.getLogger(__name__)
 
 _BATCH_SIZE = 40
+
+# Cambridge, MA default home
+_HOME_LAT = 42.3736
+_HOME_LON = -71.1097
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371
+    dLat = math.radians(lat2 - lat1)
+    dLon = math.radians(lon2 - lon1)
+    a = math.sin(dLat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dLon / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _is_during_work_hours(event: Event) -> bool:
+    """Return True if the event starts Mon-Fri 9am-5pm (user is unavailable)."""
+    if not event.start_time:
+        return False
+    if event.is_online:
+        return False
+    dt = event.start_time
+    # Normalize to naive local time if needed
+    if dt.tzinfo is not None:
+        try:
+            from zoneinfo import ZoneInfo
+            dt = dt.astimezone(ZoneInfo("America/New_York")).replace(tzinfo=None)
+        except Exception:
+            dt = dt.replace(tzinfo=None)
+    # Mon=0 ... Fri=4
+    if dt.weekday() >= 5:  # weekend — always OK
+        return False
+    hour = dt.hour + dt.minute / 60
+    return 9.0 <= hour < 17.0
+
+
+def _distance_logistics_adjustment(km: float) -> float:
+    """Return logistics_score adjustment based on distance from home.
+
+    Applied AFTER Claude scores so we get deterministic distance penalties
+    regardless of whether Claude knows the exact location.
+    """
+    if km < 1.5:
+        return 2.5   # walking distance — trivial to attend
+    elif km < 3:
+        return 1.5   # very close, short bike/walk
+    elif km < 8:
+        return 0.5   # normal Cambridge/Somerville range
+    elif km < 20:
+        return -0.5  # farther Boston neighborhoods
+    elif km < 40:
+        return -1.5  # suburbs
+    else:
+        return -3.0  # very far out
 
 # Dimension weights per vibe — different events evaluated differently.
 #
@@ -174,10 +228,32 @@ Score EVERY event. Do not skip any.
 """
 
 
+def _get_season_context() -> str:
+    """Return a short seasonal context string for Boston."""
+    month = datetime.now().month
+    if month in (12, 1, 2):
+        season = "winter"
+        hint = "Cold and often snowy. Prioritize indoor events (concerts, museums, lectures, cooking classes, bars). Outdoor events need very good reason."
+    elif month in (3, 4, 5):
+        season = "spring"
+        hint = "Weather improving. Start surfacing outdoor options (especially late April/May). Cherry blossoms, farmers markets, running clubs become attractive. Evenings still cool."
+    elif month in (6, 7, 8):
+        season = "summer"
+        hint = "Warm and sunny. Strongly boost outdoor events: concerts, harbor islands, rooftop bars, beer gardens, outdoor festivals, hiking. Locals leave city on weekends — unique indoor events still valuable."
+    else:  # 9, 10, 11
+        season = "fall"
+        hint = "Perfect outdoor weather through October. Boost foliage hikes, apple picking, outdoor markets, fall festivals. November: shift back to indoor."
+    return f"Current season: {season} (month {month}) in Boston. {hint}"
+
+
 def _build_user_message(
     profile: InterestProfile,
     events: list[Event],
     spotify_artists: list[str] | None = None,
+    taste_top: list[dict] | None = None,
+    home_lat: float = _HOME_LAT,
+    home_lon: float = _HOME_LON,
+    calendar_context: str | None = None,
 ) -> str:
     """Build the user-turn message containing the profile and event batch."""
 
@@ -194,14 +270,42 @@ def _build_user_message(
             f"  - {interest.topic} | {interest.confidence:.2f} | {signals}"
         )
 
+    if taste_top:
+        profile_lines.append("")
+        profile_lines.append("=== TASTE STACK (Elo-ranked activity preferences, highest first) ===")
+        profile_lines.append("Boost interest_score for events matching these high-ranked activity types:")
+        for item in taste_top[:10]:
+            profile_lines.append(f"  - {item['label']} (Elo: {round(item['elo_rating'])}, category: {item['category']})")
+
     if spotify_artists:
         profile_lines.append("")
         profile_lines.append("=== SPOTIFY ARTISTS (user listens to these — boost concerts!) ===")
         profile_lines.append(", ".join(spotify_artists))
 
+    # Season context
+    profile_lines.append("")
+    profile_lines.append("=== SEASONALITY ===")
+    profile_lines.append(_get_season_context())
+
+    # Calendar density context (upcoming confirmed plans)
+    if calendar_context:
+        profile_lines.append("")
+        profile_lines.append("=== USER'S UPCOMING PLANS (already confirmed) ===")
+        profile_lines.append(calendar_context)
+        profile_lines.append("Avoid over-recommending on days already full (2+ RSVPs). Surface good options for free slots.")
+
     # Events section
     event_dicts: list[dict] = []
     for ev in events:
+        # Compute distance if geocoded
+        if ev.lat is not None and ev.lon is not None and not ev.is_online:
+            km = round(_haversine_km(home_lat, home_lon, ev.lat, ev.lon), 1)
+            dist_str = f"{km}km from home"
+        elif ev.is_online:
+            dist_str = "online"
+        else:
+            dist_str = "unknown distance"
+
         event_dicts.append(
             {
                 "id": ev.id,
@@ -210,6 +314,7 @@ def _build_user_message(
                 "start_time": ev.start_time.isoformat() if ev.start_time else None,
                 "end_time": ev.end_time.isoformat() if ev.end_time else None,
                 "location": ev.location_name,
+                "distance": dist_str,
                 "is_online": ev.is_online,
                 "price": ev.price,
                 "category": ev.category,
@@ -227,7 +332,10 @@ def _build_user_message(
 
 
 def _parse_ranked_batch(
-    raw_text: str, events_by_id: dict[str, Event]
+    raw_text: str,
+    events_by_id: dict[str, Event],
+    home_lat: float = _HOME_LAT,
+    home_lon: float = _HOME_LON,
 ) -> list[RankedEvent]:
     """Parse Claude's JSON response into RankedEvent objects."""
 
@@ -270,11 +378,18 @@ def _parse_ranked_batch(
             logger.warning("Claude returned unknown event_id: %s -- skipping", event_id)
             continue
 
+        # Apply distance-based logistics adjustment if geocoded
+        raw_logistics = float(item.get("logistics_score", 0))
+        if event.lat is not None and event.lon is not None and not event.is_online:
+            km = _haversine_km(home_lat, home_lon, event.lat, event.lon)
+            adj = _distance_logistics_adjustment(km)
+            raw_logistics = max(0.0, min(15.0, raw_logistics + adj))
+
         dims = {
             "interest_score": float(item.get("interest_score", 0)),
             "social_score": float(item.get("social_score", 0)),
             "urgency_score": float(item.get("urgency_score", 0)),
-            "logistics_score": float(item.get("logistics_score", 0)),
+            "logistics_score": raw_logistics,
             "friend_score": float(item.get("friend_score", 0)),
             "discovery_score": float(item.get("discovery_score", 0)),
             "quality_score": float(item.get("quality_score", 0)),
@@ -306,12 +421,86 @@ def _parse_ranked_batch(
 # ---------------------------------------------------------------------------
 
 
+_PREFILTER_BATCH = 100
+_PREFILTER_SYSTEM = """\
+You are a fast relevance screener. Given a user interest profile and a list of events, \
+return only the event IDs that have ANY relevance to the user's interests (score >= 30/100). \
+Be inclusive — it's better to pass through borderline events than to miss good ones. \
+Skip only events that are clearly irrelevant (wrong audience, completely mismatched interests, corporate events for non-employees, kids events for adults, etc.).
+
+Return ONLY valid JSON (no markdown):
+{"keep": ["event_id_1", "event_id_2", ...]}
+"""
+
+
+def _prefilter_events(
+    profile: InterestProfile,
+    events: list[Event],
+    client: anthropic.Anthropic,
+    prefilter_model: str = "claude-haiku-4-5-20251001",
+) -> tuple[list[Event], list[Event], list[CostRecord]]:
+    """Quick relevance pass using a cheap model. Returns (kept, filtered_out, costs)."""
+    if not events:
+        return [], [], []
+
+    profile_summary = f"Summary: {profile.summary}\nInterests: {', '.join(i.topic for i in profile.interests[:15])}"
+    cost_records: list[CostRecord] = []
+    kept: list[Event] = []
+    filtered_out: list[Event] = []
+    events_by_id = {ev.id: ev for ev in events}
+
+    batches = [events[i: i + _PREFILTER_BATCH] for i in range(0, len(events), _PREFILTER_BATCH)]
+
+    for batch_idx, batch in enumerate(batches):
+        event_list = [{"id": ev.id, "title": ev.title, "description": (ev.description or "")[:150], "location": ev.location_name, "category": ev.category} for ev in batch]
+        user_msg = f"{profile_summary}\n\nEvents:\n{json.dumps(event_list, default=str)}\n\nReturn JSON with keep array of relevant event IDs."
+
+        try:
+            resp = client.messages.create(
+                model=prefilter_model,
+                max_tokens=4096,
+                system=_PREFILTER_SYSTEM,
+                messages=[{"role": "user", "content": user_msg}],
+            )
+            text = resp.content[0].text.strip()
+            if text.startswith("```"):
+                text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
+            data = json.loads(text)
+            keep_ids = set(data.get("keep", []))
+            cost_records.append(CostRecord(
+                call_type="prefilter",
+                model=prefilter_model,
+                tokens_in=resp.usage.input_tokens,
+                tokens_out=resp.usage.output_tokens,
+                cost_usd=estimate_cost(prefilter_model, resp.usage.input_tokens, resp.usage.output_tokens),
+            ))
+            for ev in batch:
+                if ev.id in keep_ids:
+                    kept.append(ev)
+                else:
+                    filtered_out.append(ev)
+        except Exception as exc:
+            logger.warning("Prefilter batch %d failed (%s) — passing all through", batch_idx + 1, exc)
+            kept.extend(batch)
+
+    logger.info("Prefilter: %d/%d events passed (%d filtered out)", len(kept), len(events), len(filtered_out))
+    return kept, filtered_out, cost_records
+
+
 def rank_events(
     profile: InterestProfile,
     events: list[Event],
     client: anthropic.Anthropic,
     model: str,
     spotify_artists: list[str] | None = None,
+    taste_top: list[dict] | None = None,
+    home_lat: float = _HOME_LAT,
+    home_lon: float = _HOME_LON,
+    use_prefilter: bool = True,
+    prefilter_model: str = "claude-haiku-4-5-20251001",
+    friend_rsvps: dict[str, list[str]] | None = None,
+    steering: list[dict] | None = None,
+    calendar_context: str | None = None,
 ) -> tuple[list[RankedEvent], list[CostRecord]]:
     """Rank all events against the interest profile using Claude.
 
@@ -323,7 +512,24 @@ def rank_events(
         logger.info("No events to rank.")
         return [], []
 
-    # Build lookup
+    # Pre-filter 1: skip weekday 9-5 events (user can't attend)
+    work_hours_skipped = [ev for ev in events if _is_during_work_hours(ev)]
+    events = [ev for ev in events if not _is_during_work_hours(ev)]
+    if work_hours_skipped:
+        logger.info(
+            "Pre-filter: removed %d weekday-daytime events (9am-5pm Mon-Fri)",
+            len(work_hours_skipped),
+        )
+
+    # Pre-filter 2: fast haiku relevance pass (only if large enough to justify cost)
+    prefilter_discarded: list[Event] = []
+    prefilter_costs: list[CostRecord] = []
+    if use_prefilter and len(events) > 150:
+        events, prefilter_discarded, prefilter_costs = _prefilter_events(
+            profile, events, client, prefilter_model
+        )
+
+    # Build lookup (include skipped so they can be returned as score=0)
     events_by_id: dict[str, Event] = {ev.id: ev for ev in events}
 
     # Decide batching
@@ -340,12 +546,12 @@ def rank_events(
     )
 
     all_ranked: list[RankedEvent] = []
-    cost_records: list[CostRecord] = []
+    cost_records: list[CostRecord] = list(prefilter_costs)
 
     for batch_idx, batch in enumerate(batches):
         logger.info("Ranking batch %d/%d (%d events)", batch_idx + 1, len(batches), len(batch))
 
-        user_message = _build_user_message(profile, batch, spotify_artists)
+        user_message = _build_user_message(profile, batch, spotify_artists, taste_top, home_lat, home_lon, calendar_context)
 
         try:
             response = client.messages.create(
@@ -359,7 +565,7 @@ def rank_events(
             raise
 
         raw_text = response.content[0].text
-        batch_ranked = _parse_ranked_batch(raw_text, events_by_id)
+        batch_ranked = _parse_ranked_batch(raw_text, events_by_id, home_lat, home_lon)
         all_ranked.extend(batch_ranked)
 
         tokens_in = response.usage.input_tokens
@@ -403,6 +609,88 @@ def rank_events(
                     filter_reason="Event was not returned in ranking response.",
                 )
             )
+
+    # Apply friend RSVP boost: friends going = +25, maybe = +10
+    if friend_rsvps:
+        for ranked_ev in all_ranked:
+            friends = friend_rsvps.get(ranked_ev.event.id, [])
+            if not friends:
+                continue
+            going_count = sum(1 for f in friends if f.endswith("★"))
+            maybe_count = len(friends) - going_count
+            bonus = going_count * 25 + maybe_count * 10
+            if bonus > 0:
+                old_score = ranked_ev.score
+                ranked_ev.score = min(100.0, ranked_ev.score + bonus)
+                ranked_ev.keep = ranked_ev.score >= 25
+                names = ", ".join(f.rstrip("★?") for f in friends[:3])
+                ranked_ev.match_reason = f"🫂 {names} {'is' if len(friends)==1 else 'are'} going! " + ranked_ev.match_reason
+                logger.debug("Friend boost for %s: +%d (%s -> %s)", ranked_ev.event.title, bonus, old_score, ranked_ev.score)
+
+    # Apply steering directives
+    if steering:
+        steer_map: dict[str, str] = {}
+        for s in steering:
+            if s["target_type"] in ("event_id", "keyword", "category", "source"):
+                steer_map[f"{s['target_type']}:{s['target_value'].lower()}"] = s["action"]
+
+        for ranked_ev in all_ranked:
+            action = None
+            # Check event_id
+            action = action or steer_map.get(f"event_id:{ranked_ev.event.id}")
+            # Check source
+            action = action or steer_map.get(f"source:{ranked_ev.event.source.value.lower()}")
+            # Check category
+            if ranked_ev.event.category:
+                action = action or steer_map.get(f"category:{ranked_ev.event.category.lower()}")
+            # Check keyword in title
+            title_lower = ranked_ev.event.title.lower()
+            for key, act in steer_map.items():
+                if key.startswith("keyword:") and key[8:] in title_lower:
+                    action = act
+                    break
+
+            if action == "block" or action == "done":
+                ranked_ev.keep = False
+                ranked_ev.score = 0
+                ranked_ev.filter_reason = f"Steering: {action}"
+            elif action == "more":
+                ranked_ev.score = min(100.0, ranked_ev.score + 15)
+                ranked_ev.keep = ranked_ev.score >= 25
+            elif action == "less":
+                ranked_ev.score = max(0.0, ranked_ev.score - 15)
+                ranked_ev.keep = ranked_ev.score >= 25
+            elif action == "pause":
+                ranked_ev.keep = False
+                ranked_ev.filter_reason = "Steering: paused"
+
+    # Add prefilter-discarded events as keep=False
+    for ev in prefilter_discarded:
+        all_ranked.append(
+            RankedEvent(
+                event=ev,
+                score=0,
+                interest_score=0,
+                social_score=0,
+                match_reason="",
+                keep=False,
+                filter_reason="Filtered by relevance pre-pass.",
+            )
+        )
+
+    # Add work-hours-filtered events as keep=False (they were never sent to Claude)
+    for ev in work_hours_skipped:
+        all_ranked.append(
+            RankedEvent(
+                event=ev,
+                score=0,
+                interest_score=0,
+                social_score=0,
+                match_reason="",
+                keep=False,
+                filter_reason="During work hours (Mon-Fri 9am-5pm).",
+            )
+        )
 
     # Sort descending by score
     all_ranked.sort(key=lambda r: r.score, reverse=True)

@@ -272,11 +272,41 @@ Each full run costs ~$3-4 in Claude API calls (mostly ranking ~1100 events in ba
 
 Live at **https://recom.arthgupta.dev**
 
-- **Calendar View** — week grid with top events, RSVP buttons (with `?u=token`), "I went" tracking
-- **Run History** — all runs with event count, top score, cost
-- **Run Detail** — interest profile, source stats, all events with 7-dimension score breakdown
-- **Interests** — extracted interest profile with source signals, confidence bars, bucket list
-- **Attended** — events you've marked as attended (feedback loop)
-- **Groups** — create/join groups, shared calendar with RSVP badges
-- **Join** — onboarding page for new users (Spotify OAuth, calendar subscription)
-- **iCal Feed** — `/feed.ics` and `/group/<slug>/feed.ics` for calendar subscriptions
+Cookie-based auth via magic links (`?u=<token>`). All pages use a shared nav bar with links to every section.
+
+| Route | Auth | Description |
+|-------|------|-------------|
+| `/` | public | Week calendar with RSVP buttons, hot-day strip, heatmap |
+| `/run/<id>` | public | Run detail: source stats, interest profile, all events with score breakdown |
+| `/interests` | public | Interest profile: signals, confidence bars, bucket list |
+| `/attended` | public | Events marked as attended (personal attendance log) |
+| `/taste` | public | Elo-style taste ranker — swipe events to train the ranking model |
+| `/groups` | public | List all groups |
+| `/group/<slug>` | public | Shared group calendar with RSVP badges for all members |
+| `/group/create` | public | Create a new group |
+| `/landing` | public | Marketing landing page |
+| `/login` | public | Magic link login |
+| `/feed.ics` | public | iCal feed (`?min_score=55` default; `?u=token` for personal) |
+| `/group/<slug>/feed.ics` | public | Group iCal feed |
+| `/venues` | auth | Venue tracker: pin favorite venues, see upcoming events at each |
+| `/search` | auth | Full-text event search with AI re-ranking |
+| `/budget` | auth | Budget tracker: log spend per event, see totals |
+| `/travel` | auth | Travel planner: upcoming trips with auto-pulled nearby events |
+| `/profile` | auth | User settings: name, location, email, notification prefs |
+| `/admin` | public | Admin: run pipeline, view all users, recent runs |
+| `/admin/sources` | public | Source health: last fetch time, event counts, errors |
+
+### Taste ranker
+
+`/taste` presents pairs of events and asks which you'd rather attend. Ratings feed into an Elo system that influences the ranking weights for your next pipeline run. Streak shown at top.
+
+## Testing
+
+After any dashboard change, run the smoke test:
+
+```bash
+bash scripts/smoke_test.sh                         # unauthenticated checks only
+bash scripts/smoke_test.sh test@example.com        # + authenticated flow (creates test user)
+```
+
+The authenticated flow creates a test user, grabs their token, and hits every route with a cookie. All 23 checks must pass before considering a dashboard change done.

@@ -7,6 +7,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 
 case "${1:-start}" in
   stop)
+    (cd "$DIR" && docker compose -f docker-compose.claude.yml down 2>/dev/null) || true
     tmux kill-session -t "$SESSION" 2>/dev/null && echo "Stopped $SESSION" || echo "Not running"
     exit 0
     ;;
@@ -45,10 +46,10 @@ tmux split-window -t "$SESSION" -v -c "$DIR"
 tmux select-pane -t "$SESSION" -T "tunnel"
 tmux send-keys -t "$SESSION" "sleep 2 && cloudflared tunnel run recom-dashboard" Enter
 
-# Split for claude-code-web
+# Split for claude-code-web (containerized)
 tmux split-window -t "$SESSION" -v -c "$DIR"
 tmux select-pane -t "$SESSION" -T "code-web"
-tmux send-keys -t "$SESSION" "$NVM_INIT && sleep 3 && npx claude-code-web@latest" Enter
+tmux send-keys -t "$SESSION" "sleep 3 && export CLAUDE_CREDENTIALS=\"\$(security find-generic-password -s 'Claude Code-credentials' -w)\" && cd $DIR && docker compose -f docker-compose.claude.yml up --build" Enter
 
 # Even out the panes
 tmux select-layout -t "$SESSION" even-vertical

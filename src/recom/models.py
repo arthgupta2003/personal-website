@@ -67,6 +67,10 @@ class EventSource(str, Enum):
     DO617 = "do617"
     ARTSBOSTON = "artsboston"
     NEWSLETTER = "newsletter"
+    TIMEOUT_BOSTON = "timeout_boston"
+    BANDSINTOWN = "bandsintown"
+    DICE = "dice"
+    RESIDENT_ADVISOR = "resident_advisor"
 
 
 class Event(BaseModel):
@@ -85,6 +89,8 @@ class Event(BaseModel):
     category: str | None = None
     organizer: str | None = None
     image_url: str | None = None
+    lat: float | None = None
+    lon: float | None = None
 
 
 class RankedEvent(BaseModel):

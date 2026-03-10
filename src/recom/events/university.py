@@ -236,17 +236,194 @@ async def _fetch_harvard(settings: Settings) -> list[Event]:
     return events
 
 
+# ── Localist API (Northeastern, MassArt) ─────────────────────────────────────
+
+async def _fetch_localist(
+    base_url: str,
+    school_name: str,
+    source: EventSource,
+    location_default: str,
+    address_default: str,
+) -> list[Event]:
+    """Generic Localist API fetcher. Covers Northeastern, MassArt, etc."""
+    now = datetime.now(timezone.utc)
+    start_str = now.strftime("%Y-%m-%d")
+    end_str = (now + timedelta(days=30)).strftime("%Y-%m-%d")
+    events: list[Event] = []
+
+    async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, follow_redirects=True) as client:
+        page = 1
+        while page <= 5:  # max 5 pages = 500 events
+            try:
+                resp = await client.get(
+                    f"{base_url}/api/2/events",
+                    params={"pp": 100, "start": start_str, "end": end_str, "page": page},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as exc:
+                logger.warning("%s Localist page %d failed: %s", school_name, page, exc)
+                break
+
+            items = data.get("events", [])
+            if not items:
+                break
+
+            for item in items:
+                evt = item.get("event", item)
+                title = (evt.get("title") or "").strip()
+                if not title:
+                    continue
+                description = (evt.get("description_text") or evt.get("description") or "")[:500]
+                url = evt.get("url") or evt.get("localist_url") or ""
+                location = (evt.get("location_name") or evt.get("venue", {}).get("name") or location_default) if isinstance(evt.get("venue"), dict) else location_default
+                address = (evt.get("address") or address_default)
+                image_url = None
+                if evt.get("photo"):
+                    photo = evt["photo"]
+                    if isinstance(photo, dict):
+                        image_url = photo.get("url") or photo.get("medium") or photo.get("small")
+                    elif isinstance(photo, str):
+                        image_url = photo
+
+                # Parse instances
+                instances = evt.get("event_instances", [])
+                start_time = None
+                end_time = None
+                if instances:
+                    inst = instances[0].get("event_instance", instances[0])
+                    start_raw = inst.get("start")
+                    end_raw = inst.get("end")
+                    if start_raw:
+                        start_time = parse_event_dt(start_raw)
+                    if end_raw:
+                        end_time = parse_event_dt(end_raw)
+                else:
+                    start_raw = evt.get("first_date") or ""
+                    start_time = parse_event_dt(start_raw) if start_raw else None
+
+                date_str = str(evt.get("first_date") or "")
+                events.append(Event(
+                    id=_make_id(school_name.lower().replace(" ", "_"), title, date_str),
+                    source=source,
+                    title=title,
+                    description=description,
+                    url=url,
+                    start_time=start_time,
+                    end_time=end_time,
+                    location_name=location,
+                    location_address=address,
+                    organizer=school_name,
+                    image_url=image_url,
+                ))
+
+            if page >= data.get("total_pages", 1):
+                break
+            page += 1
+
+    logger.info("%s Localist returned %d events", school_name, len(events))
+    return events
+
+
+# ── Additional Trumba sources ─────────────────────────────────────────────────
+
+async def _fetch_trumba_school(
+    calendar_name: str,
+    school_name: str,
+    source: EventSource,
+    location_default: str,
+    address_default: str,
+) -> list[Event]:
+    """Reuse Harvard Trumba pattern for other schools."""
+    now = datetime.now(timezone.utc)
+    start_str = now.strftime("%Y-%m-%dT00:00:00")
+    end_str = (now + timedelta(days=30)).strftime("%Y-%m-%dT23:59:59")
+    url = f"https://www.trumba.com/calendars/{calendar_name}.json"
+    params = {"startDate": start_str, "endDate": end_str}
+
+    events: list[Event] = []
+    async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, follow_redirects=True) as client:
+        try:
+            resp = await client.get(url, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            logger.warning("%s Trumba fetch failed: %s", school_name, exc)
+            return []
+
+    for item in data if isinstance(data, list) else []:
+        title = (item.get("title") or "").strip()
+        if not title:
+            continue
+        start_raw = item.get("startDateTime") or item.get("startDate") or ""
+        end_raw = item.get("endDateTime") or item.get("endDate") or ""
+        description = (item.get("description") or "")[:500]
+        event_url = item.get("permaLinkUrl") or ""
+        location = item.get("location") or location_default
+        date_str = start_raw or ""
+
+        events.append(Event(
+            id=_make_id(school_name.lower().replace(" ", "_"), title, date_str),
+            source=source,
+            title=title,
+            description=description,
+            url=event_url,
+            start_time=parse_event_dt(start_raw) if start_raw else None,
+            end_time=parse_event_dt(end_raw) if end_raw else None,
+            location_name=location or location_default,
+            location_address=address_default,
+            organizer=school_name,
+        ))
+
+    logger.info("%s Trumba returned %d events", school_name, len(events))
+    return events
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 async def fetch_university_events(settings: Settings) -> list[Event]:
-    """Fetch events from MIT and Harvard calendars."""
+    """Fetch events from MIT, Harvard, and additional universities."""
     all_events: list[Event] = []
 
-    for name, fetcher in [("MIT", _fetch_mit), ("Harvard", _fetch_harvard)]:
+    sources = [
+        ("MIT", _fetch_mit),
+        ("Harvard", _fetch_harvard),
+    ]
+
+    # Run core sources
+    for name, fetcher in sources:
         try:
             result = await fetcher(settings)
             all_events.extend(result)
         except Exception:
             logger.exception("%s event fetch failed", name)
+
+    # Localist sources (Northeastern, MassArt) — run concurrently
+    localist_tasks = [
+        _fetch_localist(
+            "https://calendar.northeastern.edu",
+            "Northeastern University",
+            EventSource.MIT,  # reuse existing source enum for now
+            "Northeastern University",
+            "Boston, MA 02115",
+        ),
+        _fetch_localist(
+            "https://calendar.massart.edu",
+            "MassArt",
+            EventSource.MIT,
+            "Massachusetts College of Art and Design",
+            "Boston, MA 02215",
+        ),
+    ]
+
+    try:
+        localist_results = await asyncio.gather(*localist_tasks, return_exceptions=True)
+        for result in localist_results:
+            if isinstance(result, Exception):
+                logger.warning("Localist source failed: %s", result)
+            else:
+                all_events.extend(result)
+    except Exception:
+        logger.exception("Localist batch failed")
 
     return all_events

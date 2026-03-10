@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     # Dashboard
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8000
+    dashboard_url: str = "https://recom.arthgupta.dev"
 
     model_config = {"env_file": ".env", "env_prefix": "RECOM_"}
 

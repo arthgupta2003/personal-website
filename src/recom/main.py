@@ -95,7 +95,10 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
 
     # === Step 2: Extract interests ===
     logger.info("Step 2: Extracting interests...")
-    manual_keywords = load_manual_keywords(settings.interests_file)
+    # Prefer DB-backed manual interests; fall back to flat file
+    manual_keywords = db.get_manual_interest_keywords(user_id) or load_manual_keywords(settings.interests_file)
+    # Elo taste stack — used both for interest extraction and ranking
+    taste_top = db.get_taste_items(user_id)[:15] if hasattr(db, "get_taste_items") else None
 
     cached_profile = db.get_cached_interest_profile(max_age_days=7)
     if cached_profile and not yt_activity and not sp_activity:
@@ -103,7 +106,8 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
         profile = cached_profile
     else:
         profile, interest_cost = extract_interests(
-            activity, manual_keywords, client, settings.claude_model
+            activity, manual_keywords, client, settings.claude_model,
+            taste_top=taste_top,
         )
         all_costs.append(interest_cost)
         db.save_cost(run_id, interest_cost)
@@ -113,14 +117,17 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
 
     # === Step 3: Discover events ===
     logger.info("Step 3: Discovering events...")
-    events, source_stats, newsletter_costs = asyncio.run(
+    events, source_stats, newsletter_costs, source_durations = asyncio.run(
         discover_all_events(settings, newsletters=newsletters,
                             claude_client=client, claude_model=settings.claude_model,
                             spotify_artists=spotify_artists)
     )
 
     for stat in source_stats:
-        db.save_source_stat(run_id, stat)
+        db.save_source_stat(run_id, stat, duration_seconds=source_durations.get(stat.source_name))
+        # Update source cache freshness tracking
+        if not stat.error_message and stat.events_found > 0:
+            db.update_source_cache(stat.source_name, stat.events_found)
     for cost in newsletter_costs:
         all_costs.append(cost)
         db.save_cost(run_id, cost)
@@ -134,9 +141,25 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
     # === Step 4: Rank events ===
     logger.info("Step 4: Ranking events with Claude...")
     if events:
+        # Get friend RSVPs for group members (to boost events friends are attending)
+        friend_rsvps = db.get_friend_rsvps_for_run(user_id, run_id)
+        if friend_rsvps:
+            logger.info("  Found friend RSVPs for %d events", len(friend_rsvps))
+
+        steering = db.get_steering(user_id)
+
+        # Build calendar density context: user's upcoming RSVPs this week
+        calendar_context = db.get_calendar_context(user_id)
+
         ranked, rank_costs = rank_events(
             profile, events, client, settings.claude_model,
             spotify_artists=spotify_artists,
+            taste_top=taste_top,
+            home_lat=settings.latitude,
+            home_lon=settings.longitude,
+            friend_rsvps=friend_rsvps if friend_rsvps else None,
+            steering=steering if steering else None,
+            calendar_context=calendar_context or None,
         )
         for cost in rank_costs:
             all_costs.append(cost)
@@ -149,7 +172,8 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
         logger.info("  No events to rank")
 
     # === Step 4.5: Bucket list suggestions ===
-    bucket_items = load_bucket_list(settings.bucket_list_file)
+    # Prefer DB-backed bucket list; fall back to flat file
+    bucket_items = db.get_bucket_list_activities(user_id) or load_bucket_list(settings.bucket_list_file)
     bucket_suggestions: list[dict] = []
     if bucket_items:
         logger.info("Step 4.5: Picking bucket list suggestions...")
@@ -175,6 +199,8 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
             tokens_in=total_tokens_in, tokens_out=total_tokens_out,
             bucket_suggestions=bucket_suggestions,
             run_id=run_id,
+            home_lat=settings.latitude,
+            home_lon=settings.longitude,
         )
 
         if settings.smtp_password:
