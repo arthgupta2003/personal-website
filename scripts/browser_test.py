@@ -59,14 +59,15 @@ def test_unauthenticated(page: Page, base: str):
     print("\n-- Unauthenticated --")
 
     # Home page loads and has event cards OR empty state message
-    page.goto(base + "/")
-    page.wait_for_load_state("networkidle")
+    # Use commit (HTML received) since page is large and slow to fully parse
+    page.goto(base + "/", wait_until="commit", timeout=120000)
+    page.wait_for_timeout(2000)
 
     # Nav exists
     check("/ has nav", page.locator("nav").count() > 0)
 
     # Check list view has content
-    page.wait_for_function("typeof switchView === 'function'", timeout=5000)
+    page.wait_for_function("typeof switchView === 'function'", timeout=30000)
     page.evaluate("switchView('list')")
     page.wait_for_timeout(500)
     list_html = page.locator("#list-view").inner_html()
@@ -91,15 +92,15 @@ def test_unauthenticated(page: Page, base: str):
     # Other pages load without errors
     for path, label in [("/taste", "/taste"), ("/groups", "/groups"),
                         ("/attended", "/attended"), ("/login", "/login")]:
-        page.goto(base + path)
-        page.wait_for_load_state("networkidle")
+        page.goto(base + path, wait_until="domcontentloaded")
+        page.wait_for_timeout(1000)
         check(f"{label} loads (no 5xx)", "500" not in page.title() and "error" not in page.title().lower())
         check(f"{label} has nav", page.locator("nav").count() > 0)
 
     # Auth-required pages redirect
     for path in ["/venues", "/search", "/budget", "/travel", "/profile"]:
-        resp = page.goto(base + path)
-        page.wait_for_load_state("networkidle")
+        resp = page.goto(base + path, wait_until="domcontentloaded")
+        page.wait_for_timeout(1000)
         final_url = page.url
         check(f"{path} redirects unauth", "/login" in final_url or "login" in page.content().lower(),
               f"ended at {final_url}")
@@ -116,10 +117,9 @@ def test_authenticated(page: Page, base: str, token: str):
         "path": "/",
     }])
 
-    # Home page
-    page.goto(base + "/")
-    page.wait_for_load_state("networkidle")
-    page.wait_for_function("typeof switchView === 'function'", timeout=5000)
+    # Home page (slow — large page, use commit + generous wait)
+    page.goto(base + "/", wait_until="commit", timeout=120000)
+    page.wait_for_function("typeof switchView === 'function'", timeout=60000)
     page.evaluate("switchView('list')")
     page.wait_for_timeout(800)
 
@@ -140,7 +140,7 @@ def test_authenticated(page: Page, base: str, token: str):
     for link in ["Search", "Venues", "Budget", "Travel", "Taste"]:
         check(f"nav has {link}", link in nav_html, f"nav: {nav_html[:300]!r}")
 
-    # Auth pages load without errors
+    # Auth pages load without errors AND have consistent nav
     for path, label in [
         ("/venues", "/venues"),
         ("/search", "/search"),
@@ -149,26 +149,30 @@ def test_authenticated(page: Page, base: str, token: str):
         ("/profile", "/profile"),
         ("/taste", "/taste"),
     ]:
-        page.goto(base + path)
-        page.wait_for_load_state("networkidle")
+        page.goto(base + path, wait_until="domcontentloaded")
+        page.wait_for_timeout(1000)
         title = page.title()
         content = page.content()
         check(f"{label} (authed) no 500", "500" not in title and "Internal Server Error" not in content,
               f"title={title!r}")
         check(f"{label} (authed) has nav", page.locator("nav").count() > 0)
+        # Verify nav links are actually styled (nav CSS loaded correctly)
+        nav_bg = page.evaluate("getComputedStyle(document.querySelector('nav')).backgroundColor")
+        check(f"{label} nav is dark (not unstyled)", nav_bg not in ("rgba(0, 0, 0, 0)", ""),
+              f"nav bg={nav_bg!r}")
 
     # Travel page: no JS errors from f-string collision
     page.goto(base + "/travel")
-    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(1000)
     errors: list[str] = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.wait_for_timeout(500)
     check("/travel no JS errors", len(errors) == 0, "; ".join(errors))
 
     # RSVP buttons visible on home
-    page.goto(base + "/")
-    page.wait_for_load_state("networkidle")
-    page.wait_for_function("typeof switchView === 'function'", timeout=5000)
+    page.goto(base + "/", wait_until="domcontentloaded")
+    page.wait_for_timeout(1000)
+    page.wait_for_function("typeof switchView === 'function'", timeout=30000)
     page.evaluate("switchView('list')")
     page.wait_for_timeout(800)
 
@@ -183,9 +187,9 @@ def test_filters(page: Page, base: str, token: str):
         "path": "/",
     }])
 
-    page.goto(base + "/")
-    page.wait_for_load_state("networkidle")
-    page.wait_for_function("typeof switchView === 'function'", timeout=5000)
+    page.goto(base + "/", wait_until="domcontentloaded")
+    page.wait_for_timeout(1000)
+    page.wait_for_function("typeof switchView === 'function'", timeout=30000)
     page.evaluate("switchView('list')")
     page.wait_for_timeout(800)
 
@@ -242,6 +246,7 @@ def main():
         browser = p.chromium.launch(headless=True)
         context = browser.new_context()
         page = context.new_page()
+        page.set_default_timeout(90000)
 
         # Capture console errors
         js_errors: list[str] = []

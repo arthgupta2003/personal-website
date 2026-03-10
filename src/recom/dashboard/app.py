@@ -68,8 +68,8 @@ def render_nav(user: dict | None = None) -> str:
           <a href="/attended" class="nav-link">History</a>
           <a href="/taste" class="nav-link">Taste</a>
           <a href="/venues" class="nav-link">Venues</a>
-          <a href="/travel" class="nav-link">Travel</a>
           <a href="/budget" class="nav-link">Budget</a>
+          <a href="/travel" class="nav-link">Travel</a>
           <a href="/profile" class="nav-link">Profile</a>
           <div class="nav-divider"></div>
           <span style="font-size:13px;color:rgba(255,255,255,.7);font-weight:500;">{name}</span>
@@ -815,37 +815,28 @@ async def profile_page(request: Request, response: Response):
     settings = Settings()
     home_lat = float(current_user["home_lat"]) if current_user.get("home_lat") else settings.latitude
     home_lon = float(current_user["home_lon"]) if current_user.get("home_lon") else settings.longitude
-    nav = render_nav(current_user)
     name = current_user.get("name") or ""
     email = current_user.get("email") or ""
-    resp = HTMLResponse(f"""<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Profile — recom</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    resp = HTMLResponse(_layout("Profile", f"""
 <style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Inter',sans-serif;background:#f8fafc;color:#1e293b;min-height:100vh}}
-.page{{max-width:560px;margin:0 auto;padding:32px 16px 80px}}
-h1{{font-size:1.8rem;font-weight:800;color:#1e293b;margin-bottom:4px}}
-.sub{{font-size:14px;color:#64748b;margin-bottom:32px}}
-.card{{background:white;border-radius:16px;padding:24px;margin-bottom:20px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.05)}}
-.card h2{{font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}}
-label{{display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px}}
-input{{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s}}
-input:focus{{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.1)}}
-.row{{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}}
-.field{{margin-bottom:12px}}
+.profile-page{{max-width:560px;margin:0 auto;padding:32px 16px 80px}}
+.profile-page h1{{font-size:1.8rem;font-weight:800;color:#1e293b;margin-bottom:4px}}
+.profile-page .sub{{font-size:14px;color:#64748b;margin-bottom:32px}}
+.profile-page .card{{background:white;border-radius:16px;padding:24px;margin-bottom:20px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.05)}}
+.profile-page .card h2{{font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}}
+.profile-page label{{display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px}}
+.profile-page input{{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s}}
+.profile-page input:focus{{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.1)}}
+.profile-page .row{{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}}
+.profile-page .field{{margin-bottom:12px}}
 .save-btn{{background:#4f46e5;color:white;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s}}
 .save-btn:hover{{background:#4338ca}}
 .map-hint{{font-size:12px;color:#9ca3af;margin-top:6px}}
-.success{{display:none;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:12px}}
+.save-success{{display:none;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:12px}}
 .locate-btn{{background:white;border:1.5px solid #e5e7eb;color:#374151;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:12px;display:flex;align-items:center;gap:6px}}
 .locate-btn:hover{{border-color:#4f46e5;color:#4f46e5}}
-</style></head>
-<body>
-{nav}
-<div class="page">
+</style>
+<div class="profile-page">
   <h1>Profile</h1>
   <p class="sub">Your personal settings and preferences.</p>
 
@@ -858,7 +849,7 @@ input:focus{{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.1)}}
   <div class="card">
     <h2>Home Location</h2>
     <p style="font-size:13px;color:#64748b;margin-bottom:16px;">Your home coordinates are used to calculate event distances and improve recommendations.</p>
-    <button class="locate-btn" onclick="useGPS()">📍 Use my current location</button>
+    <button class="locate-btn" onclick="useGPS()">Use my current location</button>
     <div class="row">
       <div class="field"><label>Latitude</label><input id="home_lat" type="number" step="0.0001" value="{home_lat}"></div>
       <div class="field"><label>Longitude</label><input id="home_lon" type="number" step="0.0001" value="{home_lon}"></div>
@@ -867,7 +858,7 @@ input:focus{{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.1)}}
   </div>
 
   <button class="save-btn" onclick="save()">Save changes</button>
-  <div class="success" id="success">✓ Profile updated!</div>
+  <div class="save-success" id="success">Saved!</div>
 </div>
 
 <script>
@@ -898,7 +889,7 @@ function save() {{
   }});
 }}
 </script>
-</body></html>""")
+""", current_user))
     return _maybe_set_cookie(request, resp, current_user)
 
 
@@ -944,18 +935,9 @@ async def taste_page(request: Request, response: Response):
     pair_json = json.dumps([dict(pair[0]), dict(pair[1])]) if pair else "null"
     items_json = json.dumps(items, default=str)
 
-    nav = render_nav(current_user)
-    resp = HTMLResponse(f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Taste Stack — recom</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    resp = HTMLResponse(_layout("Taste Stack", f"""
 <style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{ font-family: 'Inter', sans-serif; background: #0f0f1a; color: #e2e8f0; min-height: 100vh; }}
+.app-content {{ background: #0f0f1a; }}
 .page-wrap {{ max-width: 700px; margin: 0 auto; padding: 32px 16px 80px; }}
 .hero {{ text-align: center; padding: 48px 0 32px; }}
 .hero h1 {{ font-size: 2.4rem; font-weight: 900; background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }}
@@ -997,9 +979,6 @@ body {{ font-family: 'Inter', sans-serif; background: #0f0f1a; color: #e2e8f0; m
 .cat-label {{ font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #4b5563; margin-bottom: 10px; padding-left: 4px; }}
 .congrats {{ text-align: center; padding: 32px; color: #94a3b8; }}
 </style>
-</head>
-<body>
-{nav}
 <div class="page-wrap">
   <div class="hero">
     <h1>Your Taste Stack</h1>
@@ -1188,8 +1167,7 @@ function deleteItem(id, e) {{
 renderMatchup();
 renderStack();
 </script>
-</body>
-</html>""")
+""", current_user))
     return _maybe_set_cookie(request, resp, current_user)
 
 
@@ -4371,3 +4349,863 @@ def run():
     settings = Settings()
     logger.info(f"Starting dashboard at http://{settings.dashboard_host}:{settings.dashboard_port}")
     uvicorn.run(app, host=settings.dashboard_host, port=settings.dashboard_port)
+
+
+# ---------------------------------------------------------------------------
+# UI Variant Routes — /variants index + 12 variant pages
+# ---------------------------------------------------------------------------
+
+def _get_variant_events() -> list[dict]:
+    """Return top 10 upcoming kept events from the latest run."""
+    db = get_db()
+    runs = db.get_runs()
+    if not runs:
+        return []
+    run_id = runs[0]["id"]
+    events = db.get_run_events(run_id)
+    now_str = datetime.now().isoformat()
+    kept = [e for e in events if e.get("keep") and e.get("start_time")]
+    kept.sort(key=lambda e: e.get("start_time") or "")
+    upcoming = [e for e in kept if (e.get("start_time") or "") >= now_str]
+    return upcoming[:10] or kept[:10]
+
+
+def _fmt_event_dt(start_time: str | None) -> str:
+    if not start_time:
+        return ""
+    try:
+        dt = datetime.fromisoformat(start_time)
+        return dt.strftime("%a %b %-d, %-I:%M %p")
+    except Exception:
+        return start_time[:16]
+
+
+@app.get("/variants", response_class=HTMLResponse)
+async def variants_index(request: Request):
+    """Index page listing all 12 UI variants."""
+    db = get_db()
+    current_user = _get_current_user(request)
+    body = """
+<style>
+.variants-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
+.variant-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); border-left: 4px solid #818cf8; }
+.variant-card h3 { font-size: 15px; font-weight: 700; color: #1a1a1a; margin-bottom: 4px; }
+.variant-card .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 2px 8px; border-radius: 8px; margin-bottom: 8px; }
+.tag-dense { background: #f3f4f6; color: #374151; }
+.tag-magazine { background: #fdf2f8; color: #9d174d; }
+.tag-app { background: #0f0f1a; color: #818cf8; }
+.variant-card p { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+.variant-card a { display: inline-block; font-size: 13px; font-weight: 600; color: #4f46e5; text-decoration: none; }
+.variant-card a:hover { text-decoration: underline; }
+.section-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #818cf8; margin: 28px 0 8px; }
+</style>
+<h1>UI Variants</h1>
+<p style="color:#6b7280;margin-bottom:8px;">13 experimental layouts for 4 main pages. Each shows real data.</p>
+
+<div class="section-label">Calendar / Events</div>
+<div class="variants-grid">
+  <div class="variant-card" style="border-left-color:#374151;">
+    <span class="tag tag-dense">Dense</span>
+    <h3>Calendar — Dense</h3>
+    <p>Compact table-style list, 12px text, max info density, muted colors.</p>
+    <a href="/v/calendar/dense">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#ec4899;">
+    <span class="tag tag-magazine">Magazine</span>
+    <h3>Calendar — Magazine</h3>
+    <p>Large hero card, bold typography, generous whitespace, accent colors.</p>
+    <a href="/v/calendar/magazine">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#818cf8;">
+    <span class="tag tag-app">App</span>
+    <h3>Calendar — App</h3>
+    <p>Dark theme, rounded cards, sticky bottom nav, iOS/Android native feel.</p>
+    <a href="/v/calendar/app">View variant &rarr;</a>
+  </div>
+</div>
+
+<div class="section-label">Taste</div>
+<div class="variants-grid">
+  <div class="variant-card" style="border-left-color:#374151;">
+    <span class="tag tag-dense">Dense</span>
+    <h3>Taste — Dense</h3>
+    <p>Compact ranked list, small text, table-like layout, muted palette.</p>
+    <a href="/v/taste/dense">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#ec4899;">
+    <span class="tag tag-magazine">Magazine</span>
+    <h3>Taste — Magazine</h3>
+    <p>Big hero section, large category labels, magazine-style ranking spread.</p>
+    <a href="/v/taste/magazine">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#818cf8;">
+    <span class="tag tag-app">App</span>
+    <h3>Taste — App</h3>
+    <p>Dark theme, swipeable-style cards, large touch targets, native feel.</p>
+    <a href="/v/taste/app">View variant &rarr;</a>
+  </div>
+</div>
+
+<div class="section-label">Groups</div>
+<div class="variants-grid">
+  <div class="variant-card" style="border-left-color:#374151;">
+    <span class="tag tag-dense">Dense</span>
+    <h3>Groups — Dense</h3>
+    <p>Compact table of all groups with member counts and quick-action links.</p>
+    <a href="/v/groups/dense">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#ec4899;">
+    <span class="tag tag-magazine">Magazine</span>
+    <h3>Groups — Magazine</h3>
+    <p>Large group cards, hero layout, bold accent colors, invite-focused.</p>
+    <a href="/v/groups/magazine">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#818cf8;">
+    <span class="tag tag-app">App</span>
+    <h3>Groups — App</h3>
+    <p>Dark theme, list-style group tiles, bottom nav, app-native aesthetic.</p>
+    <a href="/v/groups/app">View variant &rarr;</a>
+  </div>
+</div>
+
+<div class="section-label">Profile</div>
+<div class="variants-grid">
+  <div class="variant-card" style="border-left-color:#374151;">
+    <span class="tag tag-dense">Dense</span>
+    <h3>Profile — Dense</h3>
+    <p>Compact info grid, small labels, tabular account details, muted tones.</p>
+    <a href="/v/profile/dense">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#ec4899;">
+    <span class="tag tag-magazine">Magazine</span>
+    <h3>Profile — Magazine</h3>
+    <p>Full-bleed avatar header, big name display, magazine-spread settings.</p>
+    <a href="/v/profile/magazine">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#818cf8;">
+    <span class="tag tag-app">App</span>
+    <h3>Profile — App</h3>
+    <p>Dark settings-screen style, section groups, iOS toggle aesthetics.</p>
+    <a href="/v/profile/app">View variant &rarr;</a>
+  </div>
+</div>
+"""
+    resp = HTMLResponse(_layout("UI Variants", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+# ── Calendar variants ────────────────────────────────────────────────────────
+
+@app.get("/v/calendar/dense", response_class=HTMLResponse)
+async def v_calendar_dense(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    events = _get_variant_events()
+
+    rows = ""
+    for e in events:
+        score = int(e.get("score") or 0)
+        score_color = "#166534" if score >= 70 else "#92400e" if score >= 40 else "#6b7280"
+        rows += f"""<tr>
+          <td style="max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            <a href="{e.get('url','#')}" target="_blank" style="color:#1e40af;font-size:12px;font-weight:600;">{e.get('title','')[:60]}</a>
+          </td>
+          <td style="font-size:12px;color:#374151;white-space:nowrap;">{_fmt_event_dt(e.get('start_time'))}</td>
+          <td style="font-size:12px;color:#374151;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{e.get('location_name','')[:30]}</td>
+          <td style="font-size:12px;color:#374151;">{e.get('price') or 'Free'}</td>
+          <td style="font-size:12px;font-weight:700;color:{score_color};">{score}</td>
+          <td style="font-size:11px;color:#9ca3af;text-transform:capitalize;">{e.get('vibe','')}</td>
+        </tr>"""
+
+    body = f"""
+<style>
+body {{ background: #f8fafc; }}
+.d-wrap {{ max-width: 900px; margin: 0 auto; padding: 12px 16px 40px; }}
+.d-header {{ display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }}
+.d-header h1 {{ font-size: 15px; font-weight: 700; color: #374151; }}
+.d-header .d-sub {{ font-size: 12px; color: #9ca3af; }}
+.d-table {{ width: 100%; border-collapse: collapse; background: white; border-radius: 6px;
+            box-shadow: 0 1px 2px rgba(0,0,0,.06); font-size: 12px; }}
+.d-table th {{ background: #f8fafc; color: #9ca3af; font-size: 10px; font-weight: 700;
+               text-transform: uppercase; letter-spacing: .6px; padding: 6px 10px;
+               border-bottom: 1px solid #e5e7eb; text-align: left; }}
+.d-table td {{ padding: 6px 10px; border-bottom: 1px solid #f3f4f6; color: #374151; }}
+.d-table tr:last-child td {{ border-bottom: none; }}
+.d-table tr:hover td {{ background: #f9fafb; }}
+.d-back {{ font-size: 12px; color: #6b7280; display: inline-block; margin-bottom: 8px; }}
+</style>
+<div class="d-wrap">
+  <a href="/variants" class="d-back">&larr; All variants</a>
+  <div class="d-header">
+    <h1>Upcoming Events</h1>
+    <span class="d-sub">{len(events)} picks &middot; Dense view</span>
+  </div>
+  <table class="d-table">
+    <thead><tr>
+      <th>Event</th><th>When</th><th>Location</th><th>Price</th><th>Score</th><th>Vibe</th>
+    </tr></thead>
+    <tbody>{rows if rows else '<tr><td colspan="6" style="color:#9ca3af;text-align:center;padding:20px;">No events yet — run the pipeline first.</td></tr>'}</tbody>
+  </table>
+</div>"""
+    resp = HTMLResponse(_layout("Calendar — Dense", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/calendar/magazine", response_class=HTMLResponse)
+async def v_calendar_magazine(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    events = _get_variant_events()
+
+    hero_html = ""
+    rest_html = ""
+    if events:
+        h = events[0]
+        score = int(h.get("score") or 0)
+        hero_html = f"""
+<div style="background:linear-gradient(135deg,#4f46e5,#ec4899);border-radius:20px;padding:40px;margin-bottom:32px;color:white;position:relative;overflow:hidden;">
+  <div style="position:absolute;top:-60px;right:-60px;width:200px;height:200px;background:rgba(255,255,255,.06);border-radius:50%;"></div>
+  <p style="font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;opacity:.7;margin-bottom:12px;">TOP PICK THIS WEEK</p>
+  <h2 style="font-size:2.2rem;font-weight:900;line-height:1.1;margin-bottom:14px;max-width:560px;">{h.get('title','')}</h2>
+  <p style="font-size:15px;opacity:.85;margin-bottom:20px;">{_fmt_event_dt(h.get('start_time'))} &middot; {h.get('location_name','')[:40]}</p>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <a href="{h.get('url','#')}" target="_blank" style="display:inline-block;background:white;color:#4f46e5;font-weight:800;font-size:14px;padding:10px 24px;border-radius:50px;text-decoration:none;">Get tickets &rarr;</a>
+    <span style="font-size:28px;font-weight:900;opacity:.9;">{score}</span>
+    <span style="font-size:13px;opacity:.7;">/ 100</span>
+  </div>
+</div>"""
+        for e in events[1:]:
+            sc = int(e.get("score") or 0)
+            rest_html += f"""
+<div style="background:white;border-radius:16px;padding:24px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;align-items:flex-start;gap:20px;">
+  <div style="flex-shrink:0;width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#4f46e5,#ec4899);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:white;">{sc}</div>
+  <div style="flex:1;min-width:0;">
+    <p style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#ec4899;margin-bottom:4px;">{e.get('vibe','').upper()}</p>
+    <h3 style="font-size:1.15rem;font-weight:800;color:#1e1b4b;margin-bottom:6px;line-height:1.25;">{e.get('title','')[:80]}</h3>
+    <p style="font-size:13px;color:#6b7280;">{_fmt_event_dt(e.get('start_time'))} &middot; {e.get('location_name','')[:40]} &middot; {e.get('price') or 'Free'}</p>
+    {f'<p style="font-size:13px;color:#7c3aed;margin-top:6px;line-height:1.4;">{e.get("match_reason","")[:120]}</p>' if e.get("match_reason") else ''}
+  </div>
+  <a href="{e.get('url','#')}" target="_blank" style="flex-shrink:0;font-size:13px;font-weight:700;color:#4f46e5;text-decoration:none;white-space:nowrap;">View &rarr;</a>
+</div>"""
+
+    body = f"""
+<style>body {{ background: #fdf2f8; }}</style>
+<div style="max-width:680px;margin:0 auto;padding:16px 16px 60px;">
+  <a href="/variants" style="font-size:12px;color:#9ca3af;">&larr; All variants</a>
+  <div style="text-align:center;padding:32px 0 24px;">
+    <p style="font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#4f46e5;margin-bottom:8px;">YOUR WEEK IN BOSTON</p>
+    <h1 style="font-size:2.8rem;font-weight:900;color:#1e1b4b;letter-spacing:-1.5px;line-height:1.05;">What's On</h1>
+  </div>
+  {hero_html}
+  {rest_html if rest_html else '<p style="color:#9ca3af;text-align:center;">No events yet — run the pipeline first.</p>'}
+</div>"""
+    resp = HTMLResponse(_layout("Calendar — Magazine", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/calendar/app", response_class=HTMLResponse)
+async def v_calendar_app(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    events = _get_variant_events()
+
+    cards = ""
+    for e in events:
+        score = int(e.get("score") or 0)
+        vibe_color = {"social": "#f59e0b", "intellectual": "#818cf8", "mixed": "#34d399"}.get(e.get("vibe", "mixed"), "#34d399")
+        cards += f"""
+<a href="{e.get('url','#')}" target="_blank" style="text-decoration:none;display:block;background:#1e1e3a;border-radius:20px;padding:18px 20px;margin-bottom:12px;border:1px solid #2d2d5e;transition:border-color .15s;">
+  <div style="display:flex;align-items:flex-start;gap:14px;">
+    <div style="flex-shrink:0;width:48px;height:48px;border-radius:14px;background:rgba(129,140,248,.15);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:#818cf8;">{score}</div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{vibe_color};margin-bottom:3px;">{e.get('vibe','').upper()}</div>
+      <div style="font-size:15px;font-weight:700;color:#e2e8f0;line-height:1.25;margin-bottom:5px;">{e.get('title','')[:70]}</div>
+      <div style="font-size:12px;color:#6b7280;">{_fmt_event_dt(e.get('start_time'))} &middot; {e.get('location_name','')[:35]}</div>
+      {f'<div style="font-size:12px;color:#818cf8;margin-top:4px;">{e.get("price") or "Free"}</div>' if e.get("price") else ''}
+    </div>
+    <div style="color:#4b5563;font-size:16px;flex-shrink:0;">&rsaquo;</div>
+  </div>
+</a>"""
+
+    body = f"""
+<style>
+html, body {{ background: #0f0f1a !important; color: #e2e8f0; }}
+.app-content {{ background: #0f0f1a !important; }}
+</style>
+<div style="max-width:480px;margin:0 auto;padding:8px 16px 100px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <div>
+      <a href="/variants" style="font-size:11px;color:#4b5563;">&larr; variants</a>
+      <h1 style="font-size:22px;font-weight:800;color:#e2e8f0;margin-top:4px;">This Week</h1>
+    </div>
+    <div style="font-size:12px;color:#6b7280;">{len(events)} picks</div>
+  </div>
+  {cards if cards else '<p style="color:#4b5563;text-align:center;padding:40px 0;">No events yet.</p>'}
+</div>
+<nav style="position:fixed;bottom:0;left:0;right:0;background:#1e1e3a;border-top:1px solid #2d2d5e;display:flex;justify-content:space-around;padding:12px 0 20px;z-index:100;">
+  <a href="/v/calendar/app" style="text-align:center;color:#818cf8;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">📅</div>Events</a>
+  <a href="/v/taste/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">🏆</div>Taste</a>
+  <a href="/v/groups/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">👥</div>Groups</a>
+  <a href="/v/profile/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">👤</div>Profile</a>
+</nav>"""
+    resp = HTMLResponse(_layout("Calendar — App", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+# ── Taste variants ────────────────────────────────────────────────────────────
+
+@app.get("/v/taste/dense", response_class=HTMLResponse)
+async def v_taste_dense(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    user_id = current_user["id"] if current_user else 1
+    db.seed_taste_items(user_id)
+    items = db.get_taste_items(user_id)
+    pair = db.get_taste_matchup_pair(user_id)
+
+    min_elo = min((i["elo_rating"] for i in items), default=1000)
+    max_elo = max((i["elo_rating"] for i in items), default=1000)
+    rng = max_elo - min_elo or 1
+
+    pair_html = ""
+    if pair:
+        a, b = pair[0], pair[1]
+        pair_html = f"""
+<div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px;font-size:12px;color:#374151;">
+  <span style="color:#9ca3af;font-weight:600;">Next:</span>
+  <strong>{a['label']}</strong>
+  <span style="color:#9ca3af;">vs</span>
+  <strong>{b['label']}</strong>
+  <a href="/taste" style="margin-left:auto;font-size:11px;font-weight:700;color:#4f46e5;">Rank &rarr;</a>
+</div>"""
+
+    rows = ""
+    for rank, item in enumerate(items, 1):
+        pct = round((item["elo_rating"] - min_elo) / rng * 100)
+        rows += f"""<tr>
+          <td style="font-size:12px;font-weight:700;color:#9ca3af;width:28px;">#{rank}</td>
+          <td style="font-size:12px;font-weight:600;color:#374151;">{item['label']}</td>
+          <td style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;">{item['category']}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="width:80px;height:4px;background:#f3f4f6;border-radius:2px;overflow:hidden;">
+                <div style="height:100%;width:{pct}%;background:#818cf8;border-radius:2px;"></div>
+              </div>
+              <span style="font-size:11px;font-weight:700;color:#818cf8;">{round(item['elo_rating'])}</span>
+            </div>
+          </td>
+        </tr>"""
+
+    body = f"""
+<style>body {{ background: #f8fafc; }}</style>
+<div style="max-width:600px;margin:0 auto;padding:12px 16px 40px;">
+  <a href="/variants" style="font-size:12px;color:#6b7280;">&larr; All variants</a>
+  <div style="display:flex;align-items:baseline;gap:10px;margin:8px 0 10px;">
+    <h1 style="font-size:15px;font-weight:700;color:#374151;">Taste Stack</h1>
+    <span style="font-size:12px;color:#9ca3af;">{len(items)} activities &middot; Dense view</span>
+  </div>
+  {pair_html}
+  <table style="width:100%;border-collapse:collapse;background:white;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.06);">
+    <thead><tr>
+      <th style="background:#f8fafc;color:#9ca3af;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:left;">#</th>
+      <th style="background:#f8fafc;color:#9ca3af;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:left;">Activity</th>
+      <th style="background:#f8fafc;color:#9ca3af;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:left;">Category</th>
+      <th style="background:#f8fafc;color:#9ca3af;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:left;">Elo</th>
+    </tr></thead>
+    <tbody>{rows if rows else '<tr><td colspan="4" style="color:#9ca3af;text-align:center;padding:20px;font-size:12px;">No items yet — visit /taste to add some.</td></tr>'}</tbody>
+  </table>
+</div>"""
+    resp = HTMLResponse(_layout("Taste — Dense", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/taste/magazine", response_class=HTMLResponse)
+async def v_taste_magazine(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    user_id = current_user["id"] if current_user else 1
+    db.seed_taste_items(user_id)
+    items = db.get_taste_items(user_id)
+    pair = db.get_taste_matchup_pair(user_id)
+    matchup_count = db.get_taste_matchup_count(user_id)
+
+    min_elo = min((i["elo_rating"] for i in items), default=1000)
+    max_elo = max((i["elo_rating"] for i in items), default=1000)
+    rng = max_elo - min_elo or 1
+
+    CAT_COLORS = {"music": "#f59e0b", "social": "#3b82f6", "arts": "#ec4899",
+                  "intellectual": "#8b5cf6", "active": "#22c55e", "food": "#f97316",
+                  "maker": "#06b6d4", "general": "#6b7280"}
+
+    top3 = items[:3]
+    top3_html = ""
+    for rank, item in enumerate(top3, 1):
+        pct = round((item["elo_rating"] - min_elo) / rng * 100)
+        col = CAT_COLORS.get(item["category"], "#6b7280")
+        size = ["2rem", "1.5rem", "1.25rem"][rank - 1]
+        top3_html += f"""
+<div style="margin-bottom:24px;padding-bottom:24px;{'border-bottom:1px solid rgba(255,255,255,.1);' if rank < 3 else ''}">
+  <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:{col};margin-bottom:6px;">#{rank} {item['category'].upper()}</div>
+  <h3 style="font-size:{size};font-weight:900;color:white;margin-bottom:10px;line-height:1.1;">{item['label']}</h3>
+  <div style="background:rgba(255,255,255,.15);border-radius:4px;height:6px;overflow:hidden;max-width:300px;">
+    <div style="height:100%;width:{pct}%;background:{col};border-radius:4px;"></div>
+  </div>
+  <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:4px;">{round(item['elo_rating'])} Elo &middot; {pct}th percentile</div>
+</div>"""
+
+    rest_html = ""
+    for rank, item in enumerate(items[3:], 4):
+        col = CAT_COLORS.get(item["category"], "#6b7280")
+        rest_html += f"""
+<div style="background:white;border-radius:14px;padding:18px 20px;margin-bottom:12px;display:flex;align-items:center;gap:16px;box-shadow:0 2px 8px rgba(0,0,0,.05);">
+  <span style="font-size:24px;font-weight:900;color:#e5e7eb;min-width:32px;">#{rank}</span>
+  <div style="flex:1;">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:{col};margin-bottom:2px;">{item['category']}</div>
+    <div style="font-size:16px;font-weight:700;color:#1e1b4b;">{item['label']}</div>
+  </div>
+  <div style="font-size:14px;font-weight:800;color:#4f46e5;">{round(item['elo_rating'])}</div>
+</div>"""
+
+    matchup_html = ""
+    if pair:
+        a, b = pair[0], pair[1]
+        matchup_html = f"""
+<div style="background:linear-gradient(135deg,#4f46e5,#ec4899);border-radius:20px;padding:28px;margin:32px 0;color:white;text-align:center;">
+  <p style="font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;opacity:.7;margin-bottom:12px;">NEXT MATCHUP</p>
+  <h3 style="font-size:1.4rem;font-weight:800;margin-bottom:6px;">{a['label']}</h3>
+  <p style="opacity:.6;margin-bottom:6px;">vs</p>
+  <h3 style="font-size:1.4rem;font-weight:800;margin-bottom:16px;">{b['label']}</h3>
+  <a href="/taste" style="display:inline-block;background:white;color:#4f46e5;font-weight:800;font-size:14px;padding:10px 28px;border-radius:50px;text-decoration:none;">Choose one &rarr;</a>
+</div>"""
+
+    body = f"""
+<style>body {{ background: #f5f3ff; }}</style>
+<div style="max-width:640px;margin:0 auto;padding:16px 16px 60px;">
+  <a href="/variants" style="font-size:12px;color:#9ca3af;">&larr; All variants</a>
+  <div style="text-align:center;padding:32px 0 24px;">
+    <p style="font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#4f46e5;margin-bottom:8px;">YOUR TASTE PROFILE</p>
+    <h1 style="font-size:3rem;font-weight:900;color:#1e1b4b;letter-spacing:-1.5px;line-height:1;">What You Love</h1>
+    <p style="color:#6b7280;margin-top:8px;">{matchup_count} matchups completed &middot; {len(items)} activities ranked</p>
+  </div>
+  <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:20px;padding:28px;margin-bottom:24px;color:white;">
+    <p style="font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#818cf8;margin-bottom:16px;">TOP 3</p>
+    {top3_html if top3_html else '<p style="color:rgba(255,255,255,.4);">No items yet. Visit /taste to add some.</p>'}
+  </div>
+  {matchup_html}
+  {rest_html}
+</div>"""
+    resp = HTMLResponse(_layout("Taste — Magazine", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/taste/app", response_class=HTMLResponse)
+async def v_taste_app(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    user_id = current_user["id"] if current_user else 1
+    db.seed_taste_items(user_id)
+    items = db.get_taste_items(user_id)
+    pair = db.get_taste_matchup_pair(user_id)
+    matchup_count = db.get_taste_matchup_count(user_id)
+
+    min_elo = min((i["elo_rating"] for i in items), default=1000)
+    max_elo = max((i["elo_rating"] for i in items), default=1000)
+    rng = max_elo - min_elo or 1
+
+    CAT_COLORS = {"music": "#f59e0b", "social": "#3b82f6", "arts": "#ec4899",
+                  "intellectual": "#8b5cf6", "active": "#22c55e", "food": "#f97316",
+                  "maker": "#06b6d4", "general": "#6b7280"}
+
+    pair_html = ""
+    if pair:
+        a, b = pair[0], pair[1]
+        col_a = CAT_COLORS.get(a["category"], "#6b7280")
+        col_b = CAT_COLORS.get(b["category"], "#6b7280")
+        pair_html = f"""
+<div style="background:#1e1e3a;border-radius:20px;padding:20px;margin-bottom:16px;border:1px solid #2d2d5e;">
+  <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#6366f1;margin-bottom:12px;text-align:center;">QUICK PICK</div>
+  <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-bottom:12px;">
+    <a href="/taste" style="background:#0f0f1a;border:2px solid {col_a};border-radius:16px;padding:16px 12px;text-align:center;text-decoration:none;">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:{col_a};margin-bottom:4px;">{a['category']}</div>
+      <div style="font-size:14px;font-weight:700;color:#e2e8f0;">{a['label']}</div>
+    </a>
+    <span style="font-size:14px;font-weight:900;color:#4b5563;">vs</span>
+    <a href="/taste" style="background:#0f0f1a;border:2px solid {col_b};border-radius:16px;padding:16px 12px;text-align:center;text-decoration:none;">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:{col_b};margin-bottom:4px;">{b['category']}</div>
+      <div style="font-size:14px;font-weight:700;color:#e2e8f0;">{b['label']}</div>
+    </a>
+  </div>
+  <a href="/taste" style="display:block;text-align:center;font-size:12px;color:#6b7280;text-decoration:none;">Tap to decide &rarr;</a>
+</div>"""
+
+    items_html = ""
+    for rank, item in enumerate(items, 1):
+        pct = round((item["elo_rating"] - min_elo) / rng * 100)
+        col = CAT_COLORS.get(item["category"], "#6b7280")
+        items_html += f"""
+<div style="background:#1e1e3a;border-radius:16px;padding:14px 16px;margin-bottom:10px;border:1px solid #2d2d5e;display:flex;align-items:center;gap:12px;">
+  <span style="font-size:13px;font-weight:800;color:#4b5563;min-width:24px;">#{rank}</span>
+  <div style="flex:1;min-width:0;">
+    <div style="font-size:14px;font-weight:600;color:#e2e8f0;">{item['label']}</div>
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:{col};margin-top:2px;">{item['category']}</div>
+  </div>
+  <div>
+    <div style="width:60px;height:4px;background:#2d2d5e;border-radius:2px;overflow:hidden;margin-bottom:3px;">
+      <div style="height:100%;width:{pct}%;background:linear-gradient(90deg,#818cf8,#c084fc);border-radius:2px;"></div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:#818cf8;text-align:right;">{round(item['elo_rating'])}</div>
+  </div>
+</div>"""
+
+    body = f"""
+<style>
+html, body {{ background: #0f0f1a !important; color: #e2e8f0; }}
+.app-content {{ background: #0f0f1a !important; }}
+</style>
+<div style="max-width:480px;margin:0 auto;padding:8px 16px 100px;">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px;">
+    <div>
+      <a href="/variants" style="font-size:11px;color:#4b5563;">&larr; variants</a>
+      <h1 style="font-size:22px;font-weight:800;color:#e2e8f0;margin-top:4px;">Taste Stack</h1>
+    </div>
+    <div style="font-size:12px;color:#6b7280;">{matchup_count} votes</div>
+  </div>
+  {pair_html}
+  {items_html if items_html else '<p style="color:#4b5563;text-align:center;padding:40px 0;">No items yet.</p>'}
+</div>
+<nav style="position:fixed;bottom:0;left:0;right:0;background:#1e1e3a;border-top:1px solid #2d2d5e;display:flex;justify-content:space-around;padding:12px 0 20px;z-index:100;">
+  <a href="/v/calendar/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">📅</div>Events</a>
+  <a href="/v/taste/app" style="text-align:center;color:#818cf8;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">🏆</div>Taste</a>
+  <a href="/v/groups/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">👥</div>Groups</a>
+  <a href="/v/profile/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">👤</div>Profile</a>
+</nav>"""
+    resp = HTMLResponse(_layout("Taste — App", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+# ── Groups variants ───────────────────────────────────────────────────────────
+
+@app.get("/v/groups/dense", response_class=HTMLResponse)
+async def v_groups_dense(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    groups = db.get_all_groups()
+
+    rows = ""
+    for g in groups:
+        is_member = db.is_group_member(g["id"], current_user["id"]) if current_user else False
+        member_badge = f'<span style="font-size:10px;font-weight:700;color:#166534;background:#dcfce7;padding:1px 7px;border-radius:8px;">member</span>' if is_member else ""
+        rows += f"""<tr>
+          <td style="font-size:12px;font-weight:600;color:#374151;">{g['name']} {member_badge}</td>
+          <td style="font-size:12px;color:#9ca3af;text-align:center;">{g['member_count']}</td>
+          <td style="font-size:12px;">
+            <a href="/group/{g['slug']}" style="color:#1e40af;font-weight:600;">View</a>
+          </td>
+        </tr>"""
+
+    body = f"""
+<style>body {{ background: #f8fafc; }}</style>
+<div style="max-width:640px;margin:0 auto;padding:12px 16px 40px;">
+  <a href="/variants" style="font-size:12px;color:#6b7280;">&larr; All variants</a>
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin:8px 0 10px;">
+    <h1 style="font-size:15px;font-weight:700;color:#374151;">Groups</h1>
+    <div style="display:flex;gap:8px;">
+      <span style="font-size:12px;color:#9ca3af;">{len(groups)} group{"s" if len(groups) != 1 else ""}</span>
+      <a href="/group/create" style="font-size:12px;font-weight:700;color:#4f46e5;">+ Create</a>
+    </div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;background:white;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.06);">
+    <thead><tr>
+      <th style="background:#f8fafc;color:#9ca3af;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:left;">Name</th>
+      <th style="background:#f8fafc;color:#9ca3af;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center;">Members</th>
+      <th style="background:#f8fafc;color:#9ca3af;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:left;">Action</th>
+    </tr></thead>
+    <tbody>{rows if rows else '<tr><td colspan="3" style="color:#9ca3af;text-align:center;padding:20px;font-size:12px;">No groups yet.</td></tr>'}</tbody>
+  </table>
+</div>"""
+    resp = HTMLResponse(_layout("Groups — Dense", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/groups/magazine", response_class=HTMLResponse)
+async def v_groups_magazine(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    groups = db.get_all_groups()
+
+    ACCENT_PAIRS = [
+        ("#4f46e5", "#818cf8"), ("#ec4899", "#f472b6"), ("#0ea5e9", "#38bdf8"),
+        ("#10b981", "#34d399"), ("#f59e0b", "#fbbf24"), ("#8b5cf6", "#a78bfa"),
+    ]
+
+    cards_html = ""
+    for idx, g in enumerate(groups):
+        is_member = db.is_group_member(g["id"], current_user["id"]) if current_user else False
+        base, light = ACCENT_PAIRS[idx % len(ACCENT_PAIRS)]
+        action_html = f'<a href="/group/{g["slug"]}" style="display:inline-block;background:{base};color:white;font-weight:700;font-size:13px;padding:10px 20px;border-radius:50px;text-decoration:none;">View group &rarr;</a>'
+        if current_user and not is_member:
+            action_html = f'''<form action="/group/{g['slug']}/join" method="post" style="display:inline;">
+              <button type="submit" style="background:{base};color:white;border:none;font-weight:700;font-size:13px;padding:10px 20px;border-radius:50px;cursor:pointer;">Join group &rarr;</button>
+            </form>'''
+        member_label = f'<span style="background:rgba(255,255,255,.15);color:white;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">You&apos;re a member</span>' if is_member else ""
+        cards_html += f"""
+<div style="background:linear-gradient(135deg,{base},{light});border-radius:20px;padding:28px;margin-bottom:20px;color:white;position:relative;overflow:hidden;">
+  <div style="position:absolute;bottom:-30px;right:-30px;width:120px;height:120px;background:rgba(255,255,255,.06);border-radius:50%;"></div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+    <h2 style="font-size:1.6rem;font-weight:900;line-height:1.1;flex:1;">{g['name']}</h2>
+    {member_label}
+  </div>
+  <p style="font-size:14px;opacity:.75;margin-bottom:16px;">{g['member_count']} member{"s" if g['member_count'] != 1 else ""}</p>
+  {action_html}
+</div>"""
+
+    body = f"""
+<style>body {{ background: #fdf4ff; }}</style>
+<div style="max-width:640px;margin:0 auto;padding:16px 16px 60px;">
+  <a href="/variants" style="font-size:12px;color:#9ca3af;">&larr; All variants</a>
+  <div style="text-align:center;padding:32px 0 24px;">
+    <p style="font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#4f46e5;margin-bottom:8px;">SHARED EXPERIENCES</p>
+    <h1 style="font-size:3rem;font-weight:900;color:#1e1b4b;letter-spacing:-1.5px;">Your Groups</h1>
+  </div>
+  {cards_html if cards_html else '<div style="text-align:center;padding:40px 0;color:#9ca3af;">No groups yet.</div>'}
+  <div style="text-align:center;margin-top:8px;">
+    <a href="/group/create" style="display:inline-block;background:white;border:2px solid #4f46e5;color:#4f46e5;font-weight:800;font-size:14px;padding:12px 28px;border-radius:50px;text-decoration:none;">+ Create a group</a>
+  </div>
+</div>"""
+    resp = HTMLResponse(_layout("Groups — Magazine", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/groups/app", response_class=HTMLResponse)
+async def v_groups_app(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    groups = db.get_all_groups()
+
+    ICON_COLORS = ["#818cf8", "#34d399", "#f472b6", "#fbbf24", "#38bdf8", "#a78bfa"]
+
+    items_html = ""
+    for idx, g in enumerate(groups):
+        is_member = db.is_group_member(g["id"], current_user["id"]) if current_user else False
+        col = ICON_COLORS[idx % len(ICON_COLORS)]
+        initials = g["name"][:2].upper()
+        member_dot = f'<div style="width:8px;height:8px;background:#34d399;border-radius:50%;flex-shrink:0;"></div>' if is_member else ""
+        items_html += f"""
+<a href="/group/{g['slug']}" style="text-decoration:none;display:flex;align-items:center;gap:14px;background:#1e1e3a;border-radius:16px;padding:14px 16px;margin-bottom:10px;border:1px solid #2d2d5e;">
+  <div style="width:44px;height:44px;border-radius:14px;background:{col};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:white;flex-shrink:0;">{initials}</div>
+  <div style="flex:1;min-width:0;">
+    <div style="font-size:15px;font-weight:700;color:#e2e8f0;">{g['name']}</div>
+    <div style="font-size:12px;color:#6b7280;">{g['member_count']} member{"s" if g['member_count'] != 1 else ""}</div>
+  </div>
+  {member_dot}
+  <div style="color:#4b5563;font-size:16px;">&rsaquo;</div>
+</a>"""
+
+    body = f"""
+<style>
+html, body {{ background: #0f0f1a !important; color: #e2e8f0; }}
+.app-content {{ background: #0f0f1a !important; }}
+</style>
+<div style="max-width:480px;margin:0 auto;padding:8px 16px 100px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <div>
+      <a href="/variants" style="font-size:11px;color:#4b5563;">&larr; variants</a>
+      <h1 style="font-size:22px;font-weight:800;color:#e2e8f0;margin-top:4px;">Groups</h1>
+    </div>
+    <a href="/group/create" style="background:#4f46e5;color:white;font-size:12px;font-weight:700;padding:7px 16px;border-radius:20px;text-decoration:none;">+ Create</a>
+  </div>
+  {items_html if items_html else '<p style="color:#4b5563;text-align:center;padding:40px 0;">No groups yet.</p>'}
+</div>
+<nav style="position:fixed;bottom:0;left:0;right:0;background:#1e1e3a;border-top:1px solid #2d2d5e;display:flex;justify-content:space-around;padding:12px 0 20px;z-index:100;">
+  <a href="/v/calendar/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">📅</div>Events</a>
+  <a href="/v/taste/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">🏆</div>Taste</a>
+  <a href="/v/groups/app" style="text-align:center;color:#818cf8;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">👥</div>Groups</a>
+  <a href="/v/profile/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">👤</div>Profile</a>
+</nav>"""
+    resp = HTMLResponse(_layout("Groups — App", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+# ── Profile variants ──────────────────────────────────────────────────────────
+
+@app.get("/v/profile/dense", response_class=HTMLResponse)
+async def v_profile_dense(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+
+    if not current_user:
+        body = """
+<div style="max-width:500px;margin:0 auto;padding:12px 16px 40px;">
+  <a href="/variants" style="font-size:12px;color:#6b7280;">&larr; All variants</a>
+  <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;padding:20px;margin-top:10px;font-size:13px;color:#374151;">
+    Not logged in. <a href="/login" style="color:#1e40af;font-weight:600;">Sign in</a> to view your profile.
+  </div>
+</div>"""
+    else:
+        settings = Settings()
+        home_lat = current_user.get("home_lat") or settings.latitude
+        home_lon = current_user.get("home_lon") or settings.longitude
+        fields = [
+            ("Name", current_user.get("name") or "—"),
+            ("Email", current_user.get("email") or "—"),
+            ("Location", current_user.get("location_query") or "—"),
+            ("Home lat", str(home_lat)[:10]),
+            ("Home lon", str(home_lon)[:10]),
+            ("Member since", (current_user.get("created_at") or "")[:10]),
+        ]
+        rows = "".join(f"""<tr>
+          <td style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;padding:6px 10px;border-bottom:1px solid #f3f4f6;white-space:nowrap;">{k}</td>
+          <td style="font-size:12px;color:#374151;padding:6px 10px;border-bottom:1px solid #f3f4f6;">{v}</td>
+        </tr>""" for k, v in fields)
+        body = f"""
+<div style="max-width:500px;margin:0 auto;padding:12px 16px 40px;">
+  <a href="/variants" style="font-size:12px;color:#6b7280;">&larr; All variants</a>
+  <div style="display:flex;align-items:baseline;gap:10px;margin:8px 0 10px;">
+    <h1 style="font-size:15px;font-weight:700;color:#374151;">Profile</h1>
+    <span style="font-size:12px;color:#9ca3af;">Dense view</span>
+  </div>
+  <table style="width:100%;border-collapse:collapse;background:white;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.06);">
+    <tbody>{rows}</tbody>
+  </table>
+  <div style="margin-top:10px;display:flex;gap:8px;">
+    <a href="/profile" style="font-size:12px;font-weight:600;color:#4f46e5;">Edit profile &rarr;</a>
+  </div>
+</div>"""
+
+    resp = HTMLResponse(_layout("Profile — Dense", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/profile/magazine", response_class=HTMLResponse)
+async def v_profile_magazine(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+
+    if not current_user:
+        body = """
+<div style="max-width:600px;margin:0 auto;padding:16px 16px 60px;text-align:center;">
+  <a href="/variants" style="font-size:12px;color:#9ca3af;">&larr; All variants</a>
+  <div style="padding:60px 0;">
+    <h2 style="font-size:2rem;font-weight:900;color:#1e1b4b;margin-bottom:12px;">Sign in to view your profile</h2>
+    <a href="/login" style="display:inline-block;background:linear-gradient(135deg,#4f46e5,#ec4899);color:white;font-weight:800;font-size:14px;padding:12px 28px;border-radius:50px;text-decoration:none;">Sign in &rarr;</a>
+  </div>
+</div>"""
+    else:
+        settings = Settings()
+        name = current_user.get("name") or current_user.get("email", "").split("@")[0]
+        email = current_user.get("email") or ""
+        location = current_user.get("location_query") or "Not set"
+        initials = name[:2].upper() if name else "?"
+        body = f"""
+<div style="max-width:600px;margin:0 auto;padding:16px 16px 60px;">
+  <a href="/variants" style="font-size:12px;color:#9ca3af;">&larr; All variants</a>
+  <div style="background:linear-gradient(135deg,#4f46e5,#ec4899);border-radius:20px;padding:40px 32px;margin:16px 0 24px;color:white;text-align:center;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;background:rgba(255,255,255,.07);border-radius:50%;"></div>
+    <div style="width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;margin:0 auto 16px;">{initials}</div>
+    <h1 style="font-size:2.2rem;font-weight:900;margin-bottom:4px;line-height:1.1;">{name}</h1>
+    <p style="opacity:.7;font-size:14px;">{email}</p>
+    <p style="opacity:.6;font-size:13px;margin-top:4px;">{location}</p>
+  </div>
+  <div style="background:white;border-radius:20px;padding:28px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+    <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#9ca3af;margin-bottom:20px;">Account Details</h2>
+    <div style="margin-bottom:16px;">
+      <div style="font-size:12px;color:#9ca3af;margin-bottom:3px;">Full Name</div>
+      <div style="font-size:16px;font-weight:600;color:#1e1b4b;">{name}</div>
+    </div>
+    <div style="margin-bottom:16px;">
+      <div style="font-size:12px;color:#9ca3af;margin-bottom:3px;">Email</div>
+      <div style="font-size:16px;font-weight:600;color:#1e1b4b;">{email}</div>
+    </div>
+    <div>
+      <div style="font-size:12px;color:#9ca3af;margin-bottom:3px;">Location</div>
+      <div style="font-size:16px;font-weight:600;color:#1e1b4b;">{location}</div>
+    </div>
+  </div>
+  <div style="text-align:center;">
+    <a href="/profile" style="display:inline-block;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;font-weight:800;font-size:14px;padding:12px 28px;border-radius:50px;text-decoration:none;">Edit profile &rarr;</a>
+  </div>
+</div>"""
+
+    resp = HTMLResponse(_layout("Profile — Magazine", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/profile/app", response_class=HTMLResponse)
+async def v_profile_app(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+
+    if not current_user:
+        not_logged_in = """
+<div style="max-width:480px;margin:0 auto;padding:8px 16px 100px;text-align:center;">
+  <a href="/variants" style="font-size:11px;color:#4b5563;">&larr; variants</a>
+  <div style="padding:60px 0;">
+    <div style="font-size:48px;margin-bottom:16px;">👤</div>
+    <h2 style="font-size:20px;font-weight:800;color:#e2e8f0;margin-bottom:12px;">Not signed in</h2>
+    <a href="/login" style="display:inline-block;background:#4f46e5;color:white;font-weight:700;font-size:14px;padding:12px 28px;border-radius:20px;text-decoration:none;">Sign in</a>
+  </div>
+</div>"""
+        body = not_logged_in
+    else:
+        settings = Settings()
+        name = current_user.get("name") or current_user.get("email", "").split("@")[0]
+        email = current_user.get("email") or ""
+        location = current_user.get("location_query") or "Not set"
+        member_since = (current_user.get("created_at") or "")[:10]
+        initials = name[:2].upper() if name else "?"
+
+        sections = [
+            ("Account", [
+                ("Name", name),
+                ("Email", email),
+            ]),
+            ("Location", [
+                ("City", location),
+                ("Member since", member_since),
+            ]),
+        ]
+
+        sections_html = ""
+        for section_title, fields in sections:
+            fields_html = ""
+            for i, (label, value) in enumerate(fields):
+                border = "border-bottom:1px solid #2d2d5e;" if i < len(fields) - 1 else ""
+                fields_html += f"""
+<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 0;{border}">
+  <span style="font-size:14px;color:#6b7280;">{label}</span>
+  <span style="font-size:14px;font-weight:600;color:#e2e8f0;">{value}</span>
+</div>"""
+            sections_html += f"""
+<div style="background:#1e1e3a;border-radius:20px;padding:4px 20px;margin-bottom:16px;border:1px solid #2d2d5e;">
+  <p style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#4b5563;padding:12px 0 4px;">{section_title}</p>
+  {fields_html}
+</div>"""
+
+        body = f"""
+<div style="max-width:480px;margin:0 auto;padding:8px 16px 100px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+    <a href="/variants" style="font-size:11px;color:#4b5563;">&larr; variants</a>
+    <a href="/profile" style="font-size:12px;font-weight:700;color:#818cf8;text-decoration:none;">Edit</a>
+  </div>
+  <div style="text-align:center;margin-bottom:28px;">
+    <div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#ec4899);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:white;margin:0 auto 12px;">{initials}</div>
+    <h1 style="font-size:20px;font-weight:800;color:#e2e8f0;">{name}</h1>
+    <p style="font-size:13px;color:#6b7280;">{email}</p>
+  </div>
+  {sections_html}
+</div>"""
+
+    app_body = f"""
+<style>
+html, body {{ background: #0f0f1a !important; color: #e2e8f0; }}
+.app-content {{ background: #0f0f1a !important; }}
+</style>
+{body}
+<nav style="position:fixed;bottom:0;left:0;right:0;background:#1e1e3a;border-top:1px solid #2d2d5e;display:flex;justify-content:space-around;padding:12px 0 20px;z-index:100;">
+  <a href="/v/calendar/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">📅</div>Events</a>
+  <a href="/v/taste/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">🏆</div>Taste</a>
+  <a href="/v/groups/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">👥</div>Groups</a>
+  <a href="/v/profile/app" style="text-align:center;color:#818cf8;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">👤</div>Profile</a>
+</nav>"""
+    resp = HTMLResponse(_layout("Profile — App", app_body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
