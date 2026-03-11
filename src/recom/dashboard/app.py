@@ -3828,7 +3828,7 @@ async def search_page(request: Request, response: Response):
                         ${e.score ? '<span style="background:#f1f5f9;color:#374151;font-size:11px;font-weight:800;padding:2px 8px;border-radius:8px;">'+e.score+'</span>' : ''}
                     </div>
                 </div>
-                <p style="margin:4px 0 6px;font-size:12px;color:#6b7280;">${e.start_time ? new Date(e.start_time).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'Anytime'} · ${e.location_name || ''}</p>
+                <p style="margin:4px 0 6px;font-size:12px;color:#6b7280;">${e.start_time ? (isNaN(new Date(e.start_time)) ? (e.start_time_raw || e.start_time) : new Date(e.start_time).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})) : (e.start_time_raw || 'Date TBD')} · ${e.location_name || ''}</p>
                 <p style="margin:0;font-size:13px;color:#6d28d9;">${e.reason || ''}</p>
             </div>
         `).join('');
@@ -3985,7 +3985,7 @@ def _search_web_fallback(query: str, settings: Settings) -> list[dict]:
         user_msg = (
             f'Find events matching: "{query}" near {location}. '
             "Search for real upcoming events and return JSON:\n"
-            '{"events": [{"title": "...", "date": "...", "venue": "...", "url": "...", "description": "..."}]}\n'
+            '{"events": [{"title": "...", "date": "YYYY-MM-DDTHH:MM (ISO 8601 format, use best guess if exact time unknown, e.g. 2026-03-15T19:00)", "venue": "...", "url": "...", "description": "..."}]}\n'
             "Return 3-5 events max. Return ONLY the JSON, no other text."
         )
         resp = client.messages.create(
@@ -4008,10 +4008,22 @@ def _search_web_fallback(query: str, settings: Settings) -> list[dict]:
         data = json.loads(text)
         results = []
         for ev in data.get("events", [])[:5]:
+            # Parse date: try ISO first, then common formats, fallback to raw string
+            raw_date = ev.get("date") or ""
+            parsed_date = None
+            if raw_date:
+                from datetime import datetime as _dt
+                for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%B %d, %Y", "%b %d, %Y", "%m/%d/%Y"):
+                    try:
+                        parsed_date = _dt.strptime(raw_date.strip()[:len(fmt)+4], fmt).isoformat()
+                        break
+                    except (ValueError, IndexError):
+                        continue
             results.append({
                 "event_id": f"web_{hash(ev.get('title','') + ev.get('url','')) % 10**8:08x}",
                 "title": ev.get("title", ""),
-                "start_time": ev.get("date"),
+                "start_time": parsed_date,
+                "start_time_raw": raw_date if not parsed_date else None,
                 "location_name": ev.get("venue", ""),
                 "url": ev.get("url", ""),
                 "score": 0,

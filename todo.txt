@@ -2,6 +2,572 @@
 # Format: [timestamp] TASK: description
 # Status: DONE / IN_PROGRESS / DONE
 
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# PRIORITY 1 — DO THIS FIRST. DO NOT SKIP. DO NOT MARK PARTIAL.
+# This task is NOT done until the acceptance criteria ALL pass.
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# [2026-03-11] TASK: CalDAV server — real sub-calendar support
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#
+# WHY: Calendar subscription is recom's core product. Right now users
+# get dumb .ics feed URLs they have to manually subscribe to one by one.
+# A CalDAV server lets them add ONE account and auto-discover all their
+# sub-calendars (my recs, my RSVPs, friend picks, groups) with native
+# toggle/color support. This is how iCloud and Exchange work.
+#
+# WHAT TO BUILD:
+# Implement a CalDAV server inside the existing FastAPI app. You may use
+# Radicale as a library OR implement the CalDAV protocol handlers directly.
+# Pick whichever approach you're more confident in — but the end result
+# must pass the acceptance criteria below. No half measures.
+#
+# === Architecture decisions (pick one, justify in commit message) ===
+#
+# Option A — Radicale as WSGI middleware:
+#   - pip install radicale
+#   - Write custom storage backend that reads from our SQLite DB
+#   - Write custom auth plugin that validates user tokens
+#   - Mount Radicale as WSGI app inside FastAPI (or run on separate port)
+#   - Route: /caldav/{token}/ → Radicale
+#
+# Option B — Native CalDAV in FastAPI:
+#   - Implement PROPFIND + REPORT + GET handlers directly
+#   - PROPFIND /caldav/{token}/ → list sub-calendars (XML multistatus)
+#   - PROPFIND /caldav/{token}/{cal-name}/ → calendar properties
+#   - REPORT /caldav/{token}/{cal-name}/ → VCALENDAR with events
+#   - GET /caldav/{token}/{cal-name}/{uid}.ics → single event
+#   - Must return proper DAV: headers and XML responses
+#
+# Either way, the URL structure is:
+#   /caldav/{token}/                     → principal / calendar-home
+#   /caldav/{token}/my-recs/             → kept events from latest run
+#   /caldav/{token}/my-rsvps/            → RSVP'd events only
+#   /caldav/{token}/friend-{name}/       → group-mate's events (if shared group)
+#   /caldav/{token}/group-{slug}/        → group blend calendar
+#
+# === Calendar metadata (required per sub-calendar) ===
+#   - displayname (X-WR-CALNAME): human-readable name
+#   - calendar-color: different per type (recs=blue, rsvps=green, friends=orange, groups=purple)
+#   - supported-calendar-component-set: VEVENT
+#   - getctag / sync-token: change detection (use run_id or max updated_at)
+#   - Read-only (no PUT/DELETE support needed for MVP)
+#
+# === Auth ===
+#   - CalDAV apps send Basic Auth: username={token}, password={token}
+#   - Validate token against users table (same tokens as /u/{token}/ routes)
+#   - Return 401 with WWW-Authenticate: Basic header if invalid
+#
+# === Onboarding page update ===
+# Update /u/{token}/cal to show platform-specific CalDAV setup instructions:
+#   - Apple Calendar: Settings → Accounts → Add CalDAV Account
+#       Server: recom.arthgupta.dev/caldav/{token}
+#       Username: {token}, Password: {token}
+#   - Fantastical/BusyCal: same as Apple
+#   - Google Calendar: does NOT support CalDAV subscriptions.
+#       Show fallback: individual .ics feed URLs (already implemented)
+#   - Outlook: CalDAV URL caldav://recom.arthgupta.dev/caldav/{token}/
+#
+# === ACCEPTANCE CRITERIA (all must pass or task is NOT done) ===
+#
+# 1. PROPFIND on /caldav/{token}/ returns XML listing sub-calendars
+#    Test: curl -X PROPFIND -H "Depth: 1" -u "{token}:{token}" \
+#          http://localhost:8000/caldav/{token}/ | xmllint --format -
+#    Expected: multistatus response with href entries for each sub-calendar
+#
+# 2. REPORT on /caldav/{token}/my-recs/ returns valid VCALENDAR
+#    Test: curl -X REPORT -u "{token}:{token}" \
+#          http://localhost:8000/caldav/{token}/my-recs/
+#    Expected: valid iCal with VEVENT components matching latest run
+#
+# 3. Each sub-calendar has distinct displayname and calendar-color
+#    Test: PROPFIND on each sub-calendar, check XML properties
+#
+# 4. Auth works: invalid token returns 401, valid token returns 207
+#    Test: curl -X PROPFIND http://localhost:8000/caldav/badtoken/
+#    Expected: 401 Unauthorized
+#
+# 5. Apple Calendar can actually add the account and see sub-calendars
+#    Test: Add CalDAV account in macOS Calendar.app with the server URL
+#    Expected: sub-calendars appear, events load, toggles work
+#    THIS IS THE REAL TEST. If curl passes but Calendar.app doesn't work,
+#    the task is NOT done. Debug until it works.
+#
+# 6. /u/{token}/cal page shows CalDAV setup instructions by platform
+#
+# 7. smoke_test.sh passes (add CalDAV endpoint checks)
+#
+# === Files to create/modify ===
+# New: src/recom/caldav/ directory (server, storage, auth)
+# Modify: src/recom/dashboard/app.py (mount CalDAV, update /cal page)
+# Modify: scripts/smoke_test.sh (add CalDAV endpoint tests)
+# Modify: pyproject.toml / uv.lock if adding radicale dependency
+#
+# === What NOT to do ===
+# - Do NOT just add more .ics endpoints and call it done
+# - Do NOT skip this because "Google doesn't support CalDAV" — Apple does
+# - Do NOT mark as partial/done-enough. All 7 acceptance criteria must pass.
+# - Do NOT punt to a future task. This is the task.
+#
+# Status: NOT STARTED
+
+# ============================================================
+# PRIORITY 1.5 — QUICK BUG FIX, DO BEFORE P2
+# [2026-03-11] TASK: Fix "Invalid Date" on web search results
+# ============================================================
+#
+# BUG: Web search results on /search all show "Invalid Date" because
+# Claude returns freeform date strings ("March 15, 2026", "St. Patrick's
+# Day Weekend", etc.) and the frontend does `new Date(e.start_time)`
+# which fails on non-ISO strings.
+#
+# === Root cause (two issues) ===
+#
+# 1. Backend: _search_web_fallback() in app.py (~line 3949) asks Claude for
+#    "date": "..." with no format constraint. Claude returns whatever text
+#    it finds on the web.
+#
+# 2. Frontend: renderResults() (~line 3795) blindly passes start_time to
+#    `new Date()` with no fallback for unparseable strings.
+#
+# === Fix (both ends) ===
+#
+# Backend fix in _search_web_fallback():
+#   Change the prompt to request ISO 8601 dates:
+#     "date": "YYYY-MM-DDTHH:MM" (ISO 8601, use best guess if exact time unknown)
+#   Also add a post-processing step: for each event, try to parse the date
+#   with datetime.fromisoformat(). If it fails, try dateutil.parser.parse()
+#   as a fuzzy fallback. If both fail, set start_time to None.
+#
+# Frontend fix in renderResults():
+#   Change the date rendering from:
+#     new Date(e.start_time).toLocaleDateString(...)
+#   To:
+#     const d = new Date(e.start_time);
+#     (isNaN(d) ? e.start_time : d.toLocaleDateString('en-US',{...})) || 'Date TBD'
+#   So unparseable dates show the raw string, and missing dates show "Date TBD".
+#
+# === Acceptance criteria ===
+# 1. Web search results show actual dates, not "Invalid Date"
+# 2. Dates that Claude can't determine show the raw text or "Date TBD"
+# 3. DB search results (which have ISO dates) still render correctly
+# 4. No new dependencies (dateutil is already in stdlib-adjacent, but
+#    if not installed, just use a try/except around fromisoformat)
+#
+# === Files to modify ===
+# src/recom/dashboard/app.py — _search_web_fallback() + renderResults()
+#
+# Status: DONE
+# Completed: 2026-03-11
+
+# ============================================================
+# PRIORITY 2 — DO AFTER CALDAV
+# [2026-03-11] TASK: Single-event .ics download + "Add to my week" as primary CTA
+# ============================================================
+#
+# WHY: The email-to-calendar handoff is broken. Every email's primary CTA is
+# "Get tickets" (external link). Users see events, click out, and never add
+# them to their calendar. The RSVP buttons exist but feel like a commitment.
+# We need two things: (1) zero-friction single-event calendar add, and
+# (2) a mental model shift where the primary action is "put this on my calendar."
+#
+# === Part 1: Single-event .ics download endpoint ===
+#
+# New endpoint: GET /event/{event_id}.ics
+#   - Returns a VCALENDAR with a single VEVENT for that event
+#   - Content-Type: text/calendar
+#   - Content-Disposition: attachment; filename="{slugified-title}.ics"
+#   - Include: SUMMARY, DTSTART, DTEND (or DURATION:PT2H), LOCATION, URL,
+#     DESCRIPTION (match reason + price + "Get tickets: {url}"), GEO
+#   - No auth required — event data is public
+#   - Clicking this link on any device opens the native "Add to Calendar" dialog
+#
+# Also support per-user variant: GET /u/{token}/event/{event_id}.ics
+#   - Same as above but also sets RSVP to "going" as a side effect
+#   - DESCRIPTION includes personalized match reason from user's ranking
+#   - This is the "Add to my week" action — one click, event on calendar + RSVP'd
+#
+# === Part 2: Email template changes ===
+#
+# In ALL email templates (weekly digest, daily, tonight):
+#
+# Current button hierarchy:
+#   [Get Tickets]  (primary, links to external URL)
+#   [Going] [Maybe] (secondary RSVP buttons)
+#
+# New button hierarchy:
+#   [Add to my week]  (primary, links to /u/{token}/event/{event_id}.ics)
+#   [Get tickets →]   (secondary, text link to external URL)
+#   [Maybe]            (tertiary, existing RSVP-link)
+#
+# "Add to my week" should be the big colored button. "Get tickets" becomes a
+# smaller text link underneath. The .ics download means it works for ALL users
+# regardless of whether they've subscribed to the calendar feed.
+#
+# For the featured/hero event in the weekly digest, make "Add to my week"
+# extra prominent — large button with calendar icon.
+#
+# === Part 3: Confirmation page after .ics add ===
+#
+# When user hits /u/{token}/event/{event_id}.ics, after the .ics downloads,
+# redirect to a confirmation page that shows:
+#   "✓ Added to your calendar"
+#   "{Event title} — {date/time}"
+#   [Open in calendar app]  [Get tickets →]
+#   "Pro tip: Subscribe to get all your picks automatically" → link to /u/{token}/cal
+#
+# This is the gateway drug. Someone who adds 3 individual events eventually
+# subscribes to the full feed.
+#
+# === Acceptance criteria ===
+# 1. GET /event/{event_id}.ics returns valid .ics file (test with icalendar parser)
+# 2. GET /u/{token}/event/{event_id}.ics returns .ics AND creates RSVP
+# 3. Downloaded .ics opens correctly in Apple Calendar, Google Calendar, Outlook
+# 4. Weekly digest email has "Add to my week" as primary button for all events
+# 5. Daily digest email has "Add to my week" as primary button
+# 6. Tonight email has "Add to my week" as primary button
+# 7. Confirmation page shows after download with calendar sub upsell
+# 8. smoke_test.sh updated with .ics endpoint checks
+#
+# === Files to modify ===
+# src/recom/dashboard/app.py — new endpoints + confirmation page
+# src/recom/email/composer.py — all 3 email templates (weekly, daily, tonight)
+# scripts/smoke_test.sh — new endpoint tests
+#
+# Status: NOT STARTED
+
+# ============================================================
+# PRIORITY 3
+# [2026-03-11] TASK: Welcome email focused on calendar setup (onboarding)
+# ============================================================
+#
+# WHY: First-time users get a magic link → land on dashboard → ???. The calendar
+# feed (the actual core product) is buried in a /cal page nobody visits.
+# The first email should sell the calendar, not dump 40 events on them.
+#
+# === When to send ===
+# Triggered when a new user is created (first pipeline run for them, or
+# manual user creation via admin). NOT a cron job — one-time per user.
+# Add a `welcome_sent` boolean column to users table.
+#
+# === Email content ===
+#
+# Subject: "Your event calendar is ready"
+#
+# Body:
+#   "Hey {name},
+#
+#   We found {N} events in Boston this week that match your interests.
+#   Here's how to get them on your calendar:
+#
+#   [+ Add to Apple Calendar]     → webcal:// link to /u/{token}/feed.ics
+#   [+ Add to Google Calendar]    → google calendar subscribe URL
+#   [+ Add to Outlook]            → instructions link
+#
+#   Your calendar updates automatically every week with fresh picks.
+#   Events you RSVP to show up as a separate 'My Plans' calendar.
+#
+#   Here's a preview of this week's top 3:"
+#
+#   {Top 3 events as compact cards with "Add to my week" buttons}
+#
+#   "See all {N} events → {dashboard link}"
+#
+# The calendar setup buttons should be BIG and prominent — this is the
+# primary CTA, not the event cards.
+#
+# === Platform detection ===
+# If possible, detect platform from email client (User-Agent in open tracking,
+# or just ask in the email):
+#   - Apple Mail → show "Add to Apple Calendar" prominently
+#   - Gmail → show "Add to Google Calendar" prominently
+#   - Otherwise → show all 3 options
+#
+# Actually, simpler: just show all 3 options. Don't over-engineer detection.
+#
+# === After CalDAV ships ===
+# Update the welcome email to show CalDAV setup for Apple/Outlook users
+# ("Add one account, get all your calendars") and .ics subscribe for Google users.
+#
+# === Acceptance criteria ===
+# 1. New user creation triggers welcome email (not a cron — immediate or next pipeline run)
+# 2. Email has working calendar subscribe links for Apple/Google/Outlook
+# 3. Email shows top 3 events from their first run
+# 4. `welcome_sent` flag prevents duplicate sends
+# 5. Existing users don't receive it retroactively (only new users from now on)
+#
+# === Files to modify ===
+# src/recom/email/composer.py — new compose_welcome_email()
+# src/recom/email/sender.py — new send_welcome_email()
+# src/recom/main.py — trigger after first run for new user
+# src/recom/db.py — add welcome_sent column to users table
+#
+# Status: NOT STARTED
+
+# ============================================================
+# PRIORITY 4
+# [2026-03-11] TASK: Close the feedback loop — show rating impact in weekly digest
+# ============================================================
+#
+# WHY: Users rate events but never see the effect. Rating feels like shouting
+# into a void. The weekly digest should explicitly tell users their feedback
+# is working, so they keep rating.
+#
+# === Changes to weekly digest email ===
+#
+# Add a "Your feedback is working" section near the top of the weekly email
+# (after the hero event, before the full list). Only show if user has
+# rated 1+ events since last email.
+#
+# Content:
+#   "Based on your {N} ratings last week:"
+#   - "You loved Jazz at Wally's ★★★★★ — here are 3 more live music picks"
+#     {3 events that match the highly-rated event's category/vibe}
+#   - "You skipped Networking Mixer ★★ — we're showing fewer of those"
+#     {only show this for ratings ≤ 2}
+#
+# Implementation:
+#   1. In compose_email(), fetch user's ratings since last run
+#      (attended table: user_id, rating > 0, created_at > last_run_date)
+#   2. For highly rated (4-5★): find events in current run with similar
+#      category/vibe/venue and highlight them as "More like {rated event}"
+#   3. For low rated (1-2★): mention we're deprioritizing that type
+#   4. Keep it brief — max 2-3 feedback items, don't overwhelm
+#
+# Also: inject rating context into the ranking prompt itself.
+# In ranker.py, when building the user context for Claude, add:
+#   "Recent ratings: {event_title} → {N}★ (×{count} events rated)"
+#   "User tends to prefer: {top-rated categories/vibes}"
+#   "User tends to avoid: {low-rated categories/vibes}"
+# This makes the feedback loop ACTUALLY work, not just cosmetically.
+#
+# === Acceptance criteria ===
+# 1. Weekly digest shows "Your feedback" section when user has recent ratings
+# 2. Section links highly-rated events to similar picks in current run
+# 3. Section is hidden when user has no recent ratings (no empty state)
+# 4. Ranking prompt includes recent rating context for the user
+# 5. Email renders correctly (smoke test + browser test pass)
+#
+# === Files to modify ===
+# src/recom/email/composer.py — add feedback section to compose_email()
+# src/recom/ranking/ranker.py — inject rating history into prompt context
+# src/recom/db.py — helper to fetch recent ratings with event metadata
+#
+# Status: NOT STARTED
+
+# ============================================================
+# PRIORITY 5
+# [2026-03-11] TASK: Thursday weekend preview + smarter tonight email timing
+# ============================================================
+#
+# WHY: The "tonight" email at 4pm Friday is too late for planning. Most social
+# people already have Friday plans by then. Split into two emails:
+#   - Thursday evening: "Your weekend" (planning mode, all Fri/Sat/Sun picks)
+#   - Friday/Saturday 4pm: "Still free tonight?" (impulse mode, only if no RSVPs)
+#
+# === Part 1: Thursday "Weekend Preview" email (NEW) ===
+#
+# Trigger: Thursday 6pm (new cron entry)
+# Only send if: there are 3+ events scoring ≥ 25 across Fri/Sat/Sun
+#
+# Content:
+#   Subject: "Your weekend: {N} things to do"
+#
+#   Organized by day:
+#     FRIDAY
+#       {top 3-5 Friday events with "Add to my week" buttons}
+#     SATURDAY
+#       {top 3-5 Saturday events}
+#     SUNDAY
+#       {top 3-5 Sunday events}
+#
+#   Footer: "Bring friends?" link to share with group
+#
+# This is the PLANNING email. Users read it Thursday night and decide
+# what to do this weekend. The CTA is "Add to my week" (per task #2).
+#
+# === Part 2: Smarter "tonight" email ===
+#
+# Current: sends at 4pm Fri+Sat if user has no "going" RSVPs tonight
+# Change: keep the same logic but reframe as a rescue/impulse email
+#
+# New subject: "Still free tonight? Here are 3 ideas"
+# New tone: casual, spontaneous, low-commitment
+#   "Nothing on the calendar tonight? Here's what's happening:"
+#   {3 events, emphasize ones that are free, walkable, or drop-in friendly}
+#   Primary CTA: "I'm in" (RSVP going)
+#
+# The tonight email should feel different from the Thursday preview —
+# Thursday is planning, tonight is impulse.
+#
+# === Part 3: Cron changes ===
+# Add to scripts/install_cron.sh:
+#   Thursday 6pm: python scripts/send_weekend_preview.py --all-users
+# Keep existing:
+#   Friday 4pm + Saturday 4pm: python scripts/send_tonight.py --all-users
+#
+# === Acceptance criteria ===
+# 1. New script: scripts/send_weekend_preview.py
+# 2. Thursday 6pm cron entry installed by install_cron.sh
+# 3. Weekend preview email shows Fri/Sat/Sun events organized by day
+# 4. Weekend preview uses "Add to my week" as primary CTA
+# 5. Weekend preview skips sending if < 3 weekend events
+# 6. Tonight email reframed with new subject/tone
+# 7. Both emails pass smoke_test.sh / email preview
+# 8. Logs to state/weekend.log
+#
+# === Files to create/modify ===
+# New: scripts/send_weekend_preview.py
+# New: src/recom/email/composer.py — compose_weekend_email()
+# Modify: scripts/send_tonight.py — updated subject/tone
+# Modify: scripts/install_cron.sh — add Thursday 6pm entry
+#
+# Status: NOT STARTED
+
+# ============================================================
+# PRIORITY 6
+# [2026-03-11] TASK: "Bring friends?" — group coordination from email
+# ============================================================
+#
+# WHY: Right now group coordination requires visiting the dashboard. But
+# the user sees an event in their email and thinks "John would love this."
+# Let them ping their group directly from the email with one click.
+#
+# === New email element ===
+# On every event card in weekly/daily/weekend emails, add a small link:
+#   "Bring friends? →"
+#
+# Link: /api/ping-group?event_id={id}&u={token}
+#
+# === What the ping does ===
+# GET /api/ping-group?event_id={id}&u={token}
+#   1. Look up user's groups (most users have 1 group)
+#   2. If exactly 1 group: send notification to all group members
+#   3. If multiple groups: show a quick picker page ("Which group?")
+#   4. If no groups: show "Create a group to share events with friends" + invite flow
+#
+# Notification to group members (email):
+#   Subject: "{User} is eyeing {Event Title} — you in?"
+#   Body:
+#     "{User} thinks this looks fun:"
+#     {Event card: title, date, venue}
+#     [I'm in!]  → RSVP going for recipient
+#     [Maybe]    → RSVP maybe for recipient
+#     [Nah]      → dismiss (no RSVP)
+#
+# This is lightweight — NOT a group chat, NOT a thread. Just a one-shot
+# ping that shows up in each member's inbox with a one-click response.
+# Think of it like forwarding an email but with built-in RSVP buttons.
+#
+# === Rate limiting ===
+# Max 3 pings per user per day (prevent spam)
+# Max 1 ping per event per group (don't re-ping same event)
+# Store in DB: ping_log table (user_id, event_id, group_id, sent_at)
+#
+# === Acceptance criteria ===
+# 1. "Bring friends?" link appears on event cards in all email templates
+# 2. GET /api/ping-group sends notification email to group members
+# 3. Notification email has working RSVP buttons for each recipient
+# 4. Rate limited: 3/day per user, 1 per event per group
+# 5. Handles edge cases: no groups, multiple groups, user pinging themselves (skip)
+# 6. ping_log table created in db.py
+# 7. smoke_test.sh includes /api/ping-group endpoint test
+#
+# === Files to modify ===
+# src/recom/dashboard/app.py — new /api/ping-group endpoint
+# src/recom/email/composer.py — add "Bring friends?" to event cards
+# src/recom/email/sender.py — new send_group_ping() function
+# src/recom/db.py — ping_log table + rate limit helpers
+#
+# Status: NOT STARTED
+
+# ============================================================
+# PRIORITY 7
+# [2026-03-11] TASK: Dashboard nav restructure + page consolidation
+# ============================================================
+#
+# WHY: Dashboard has too many pages. Some are useless (Venues, standalone
+# Taste), some are great but hidden (Search, Bucket List). Restructure
+# the nav to surface what matters and fold the rest into existing pages.
+#
+# === New nav bar (logged-in users) ===
+# Events | Search | Groups | Profile
+#
+# That's it. Four links. Currently it's: Events | Taste | Groups | Profile
+# Change: remove Taste, add Search.
+#
+# === Pages to kill ===
+#
+# 1. /taste (standalone page)
+#    - Taste matchups already happen via daily email (better UX there)
+#    - Kill the dedicated page route (keep route alive, just remove from nav)
+#    - Keep /api/taste/vote and /api/taste/vote-link (email still uses them)
+#    - Keep taste_items and taste_matchups tables (data is still used in ranking)
+#    - MOVE the radar/spider chart (taste profile visualization) to Profile page
+#      It's a great visual — 8 axes (music, social, arts, etc.) from Elo averages.
+#      Show it prominently in Profile, labeled "Your Taste Profile"
+#    - The radar chart fetches from /api/taste/radar — keep that endpoint
+#    - Optionally: add a small "Quick taste quiz" widget below the radar in Profile
+#      (5-vote inline widget, not a full page)
+#
+# 2. /venues (standalone page)
+#    - Venue taste data is useful as a signal but not as a page
+#    - Kill the route
+#    - Keep venue data in DB (still used for ranking context)
+#    - Move any useful venue info into event cards on main page:
+#      e.g., "You've been to this venue 3x, avg ★★★★" as a badge
+#
+# === Pages to fold into Profile ===
+#
+# 3. /attended → becomes a section/tab within /profile
+#    - "My History" tab showing attended events with ratings
+#    - Same content, just nested under Profile instead of a separate nav item
+#
+# 4. /u/{token}/cal → becomes a section/tab within /profile
+#    - "My Calendars" tab showing subscription links + CalDAV setup
+#    - Should be the FIRST tab for new users (most important action)
+#    - Keep the standalone /u/{token}/cal route working (emails link to it)
+#      but make it redirect to /profile#calendars or similar
+#
+# === Pages to fold into Events ===
+#
+# 5. Bucket List → section on main Events page
+#    - Add a "Seasonal Ideas" or "Bucket List" collapsible section
+#      below the calendar/event list
+#    - Shows current bucket list suggestions from latest run
+#    - Same content as current /bucket-list page, just inline
+#
+# === Search promotion ===
+#
+# 6. /search → add to main nav bar
+#    - Already exists and works well
+#    - Just needs to be in the nav instead of hidden
+#
+# === Implementation order ===
+# Do these changes in this order to minimize breakage:
+# 1. Add Search to nav
+# 2. Add Bucket List section to main Events page
+# 3. Fold Attended into Profile
+# 4. Fold Calendar subs into Profile
+# 5. Remove Taste from nav (keep route alive but un-linked)
+# 6. Remove Venues from nav (keep route alive but un-linked)
+# Don't delete routes — just remove nav links. Old bookmarks should still work.
+#
+# === Acceptance criteria ===
+# 1. Nav shows exactly: Events | Search | Groups | Profile
+# 2. /search is accessible from nav
+# 3. Bucket list section visible on main Events page
+# 4. /profile has tabs/sections for: Settings, History, Calendars
+# 5. /taste and /venues still work (not 404) but are not in nav
+# 6. All admin links unchanged (admin bar stays as-is)
+# 7. smoke_test.sh passes
+# 8. browser_test.py passes
+#
+# === Files to modify ===
+# src/recom/dashboard/app.py — nav HTML, Profile page, Events page
+# scripts/smoke_test.sh — update expected nav structure if tested
+#
+# Status: NOT STARTED
+
 # ============================================================
 # [2026-03-09 22:30] TASK: Add RSVP links to per-user iCal feed
 # ============================================================
