@@ -1,0 +1,67 @@
+# Boston/Cambridge Event Newsletter Signup Links
+# Compiled 2026-03-11
+# Subscribe to these manually for the newsletter scanner (newsletter_senders.txt)
+
+# ── GENERAL EVENT AGGREGATORS ──────────────────────────────────────────────────
+The Boston Calendar (weekly 50+ events)     https://www.thebostoncalendar.com/newsletter
+Boston.com Things To Do (Thu/Fri)           https://www.boston.com/newsletters-things-to-do/
+Boston.com All Newsletters                  https://www.boston.com/newsletter-signup/
+Boston Magazine                             https://www.bostonmagazine.com/newsletters/
+Boston Central (weekly family+general)      https://www.bostoncentral.com/newsletter.php
+Meet Boston (official tourism)              https://www.meetboston.com/plan/e-newsletter/
+City of Boston Updates                      https://newsletters.boston.gov/subscribe
+Do617 (music/nightlife)                     https://do617.com/ (footer signup)
+
+# ── MUSEUMS & GALLERIES ────────────────────────────────────────────────────────
+Museum of Science                           https://www.mos.org/email-signup
+Gardner Museum                              https://www.gardnermuseum.org/ (footer signup)
+Harvard Art Museums                         https://harvardartmuseums.org/ (footer signup)
+MFA Boston                                  https://www.mfa.org/ (footer signup)
+ICA Boston                                  https://www.icaboston.org/ (footer signup)
+Peabody Essex Museum                        https://www.pem.org/ (footer signup)
+MIT Museum                                  https://mitmuseum.mit.edu/ (mailing list signup)
+Boston Athenaeum                            https://community.bostonathenaeum.org/ (community portal)
+deCordova / The Trustees                    https://thetrustees.org/ (footer signup)
+
+# ── PERFORMING ARTS ────────────────────────────────────────────────────────────
+BSO (Boston Symphony Orchestra)             https://www.bso.org/newsletter
+A.R.T. (American Repertory Theater)         https://americanrepertorytheater.org/ (footer signup)
+Huntington Theatre                          https://www.huntingtontheatre.org/ (footer signup)
+ArtsEmerson                                 https://artsemerson.org/ (footer signup)
+Boston Lyric Opera                          https://blo.org/ (footer signup)
+Boston Ballet                               https://www.bostonballet.org/ (footer signup)
+Global Arts Live                            https://www.globalartslive.org/ (footer signup)
+Boston Center for the Arts                  https://bostonarts.org/ (footer signup)
+ArtsBoston                                  https://www.artsboston.org/ (footer signup)
+
+# ── MUSIC VENUES / PROMOTERS ──────────────────────────────────────────────────
+Bowery Presents Boston                      https://www.bowerypresents.com/boston/newsletter/
+Crossroads Presents                         https://crossroadspresents.com/ (footer signup)
+Crystal Ballroom Somerville                 https://www.crystalballroomboston.com/ (e-newsletter signup)
+House of Blues Boston                        https://boston.houseofblues.com/ (footer signup)
+Big Night Live                              https://bignightlive.com/ (footer signup)
+Roadrunner                                  https://roadrunnerboston.com/ (footer signup)
+Leader Bank Pavilion                        https://www.leaderbankpavilion.com/ (footer signup)
+Berklee Performance Center                  https://www.berklee.edu/BPC/calendar (check footer)
+
+# ── COMEDY ─────────────────────────────────────────────────────────────────────
+Improv Asylum                               https://improvasylum.com/ (footer signup)
+Nick's Comedy Stop                          https://www.nickscomedystop.com/ (check footer)
+Laugh Boston                                https://laughboston.com/ (via Improv Asylum)
+
+# ── CINEMA ─────────────────────────────────────────────────────────────────────
+Coolidge Corner Theatre                     https://coolidge.org/ (footer signup)
+Brattle Theatre                             https://brattlefilm.org/ (footer signup)
+
+# ── FOOD & DRINK ───────────────────────────────────────────────────────────────
+Boston Wine & Food Festival                 https://www.boswineandfoodfestival.com/ (check footer)
+Boston Local Food                           https://www.bostonlocalfood.org/ (check footer)
+
+# ── TECH / STARTUP ─────────────────────────────────────────────────────────────
+Startup Boston                              https://www.startupbos.org/ (check footer)
+
+# ── ALREADY-USED SOURCES (for completeness) ───────────────────────────────────
+Eventbrite Boston                           https://www.eventbrite.com/ (account preferences)
+Bandsintown                                 https://www.bandsintown.com/ (follows-based alerts)
+Resident Advisor                            https://ra.co/ (account preferences)
+Ticketmaster                                https://www.ticketmaster.com/ (account preferences)

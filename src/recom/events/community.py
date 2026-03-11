@@ -138,11 +138,101 @@ async def fetch_brattle_events(settings: Settings) -> list[Event]:
 async def fetch_coolidge_events(settings: Settings) -> list[Event]:
     """Scrape Coolidge Corner Theatre events and special screenings."""
     return await _scrape_events_page(
-        url="https://coolidge.org/films",
+        url="https://coolidge.org/films-events/upcoming-programs",
         source_id="coolidge",
         venue_name="Coolidge Corner Theatre",
         venue_address="290 Harvard St, Brookline, MA 02446",
         organizer="Coolidge Corner Theatre",
         category="arts",
         base_url="https://coolidge.org",
+    )
+
+
+# ── Bowery Presents Boston ───────────────────────────────────────────────────
+
+async def fetch_bowery_events(settings: Settings) -> list[Event]:
+    """Scrape Bowery Presents Boston — covers Roadrunner, Sinclair, Royale."""
+    return await _scrape_events_page(
+        url="https://www.bowerypresents.com/boston/calendar/",
+        source_id="bowery",
+        venue_name="Bowery Presents Boston",
+        venue_address="Boston, MA",
+        organizer="Bowery Presents",
+        category="music",
+        base_url="https://www.bowerypresents.com",
+    )
+
+
+# ── Crossroads Presents ─────────────────────────────────────────────────────
+
+async def fetch_crossroads_events(settings: Settings) -> list[Event]:
+    """Scrape Crossroads Presents — covers Paradise Rock Club, Brighton Music Hall, MGM."""
+    return await _scrape_events_page(
+        url="https://crossroadspresents.com/pages/events",
+        source_id="crossroads",
+        venue_name="Crossroads Presents",
+        venue_address="Boston, MA",
+        organizer="Crossroads Presents",
+        category="music",
+        base_url="https://crossroadspresents.com",
+    )
+
+
+# ── ArtsEmerson ─────────────────────────────────────────────────────────────
+
+async def fetch_artsemerson_events(settings: Settings) -> list[Event]:
+    """Scrape ArtsEmerson — international performances at Emerson College venues."""
+    return await _scrape_events_page(
+        url="https://artsemerson.org/calendar/",
+        source_id="artsemerson",
+        venue_name="ArtsEmerson",
+        venue_address="Boston, MA 02116",
+        organizer="ArtsEmerson",
+        category="arts",
+        base_url="https://artsemerson.org",
+    )
+
+
+# ── BSO (Boston Symphony Orchestra) ─────────────────────────────────────────
+
+async def fetch_bso_events(settings: Settings) -> list[Event]:
+    """Scrape BSO events at Symphony Hall."""
+    return await _scrape_events_page(
+        url="https://www.bso.org/events",
+        source_id="bso",
+        venue_name="Symphony Hall",
+        venue_address="301 Massachusetts Ave, Boston, MA 02115",
+        organizer="Boston Symphony Orchestra",
+        category="music",
+        base_url="https://www.bso.org",
+    )
+
+
+# ── City of Boston Events ───────────────────────────────────────────────────
+
+async def fetch_boston_gov_events(settings: Settings) -> list[Event]:
+    """Scrape City of Boston official events page."""
+    return await _scrape_events_page(
+        url="https://www.boston.gov/events",
+        source_id="boston_gov",
+        venue_name="Boston",
+        venue_address="Boston, MA",
+        organizer="City of Boston",
+        category="social",
+        base_url="https://www.boston.gov",
+    )
+
+
+# ── Improv Asylum ───────────────────────────────────────────────────────────
+
+async def fetch_improv_asylum_events(settings: Settings) -> list[Event]:
+    """Scrape Improv Asylum comedy shows."""
+    return await _scrape_events_page(
+        url="https://improvasylum.com/events/",
+        source_id="improv_asylum",
+        venue_name="Improv Asylum",
+        venue_address="216 Hanover St, Boston, MA 02113",
+        organizer="Improv Asylum",
+        category="comedy",
+        base_url="https://improvasylum.com",
     )
