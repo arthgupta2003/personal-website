@@ -243,6 +243,19 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS retro_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    query TEXT NOT NULL,
+    db_result_count INTEGER NOT NULL DEFAULT 0,
+    web_result_count INTEGER NOT NULL DEFAULT 0,
+    web_results_json TEXT,
+    analysis TEXT,
+    gap_reason TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
 """
 
 
@@ -769,7 +782,7 @@ class Database:
             return {}
         placeholders = ",".join("?" for _ in event_ids)
         rows = self.conn.execute(
-            f"""SELECT r.event_id, r.user_id, u.name as user_name, r.status
+            f"""SELECT r.event_id, r.user_id, u.name as user_name, u.email as user_email, r.status
                 FROM rsvps r JOIN users u ON u.id = r.user_id
                 WHERE r.event_id IN ({placeholders})""",
             event_ids,
@@ -1289,3 +1302,262 @@ class Database:
             (user_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # --- Retro log (search gap retrospective) ---
+
+    def save_retro(self, user_id: int, query: str, db_count: int, web_count: int,
+                   web_results_json: str = "", analysis: str = "", gap_reason: str = "") -> int:
+        # Ensure retro_log table exists (migration for older DBs)
+        self.conn.execute("""CREATE TABLE IF NOT EXISTS retro_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            query TEXT NOT NULL,
+            db_result_count INTEGER NOT NULL DEFAULT 0,
+            web_result_count INTEGER NOT NULL DEFAULT 0,
+            web_results_json TEXT,
+            analysis TEXT,
+            gap_reason TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )""")
+        cur = self.conn.execute(
+            """INSERT INTO retro_log (user_id, query, db_result_count, web_result_count,
+               web_results_json, analysis, gap_reason, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, query, db_count, web_count, web_results_json,
+             analysis, gap_reason, datetime.now().isoformat()),
+        )
+        self.conn.commit()
+        return cur.lastrowid
+
+    def get_retros(self, user_id: int | None = None, limit: int = 50) -> list[dict]:
+        try:
+            if user_id is not None:
+                rows = self.conn.execute(
+                    "SELECT * FROM retro_log WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+                    (user_id, limit),
+                ).fetchall()
+            else:
+                rows = self.conn.execute(
+                    "SELECT * FROM retro_log ORDER BY created_at DESC LIMIT ?", (limit,)
+                ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception:
+            return []
+
+    # --- Analytics: north star metrics ---
+
+    def get_north_star_metrics(self, user_id: int = 1, days: int = 90) -> dict:
+        """Compute attend_rate × avg_rating and related metrics."""
+        cutoff = f"datetime('now', '-{days} days')"
+
+        shown = self.conn.execute(
+            f"""SELECT COUNT(DISTINCT rk.event_id) FROM rankings rk
+                JOIN runs r ON r.id = rk.run_id
+                WHERE r.user_id = ? AND rk.keep = 1
+                AND r.timestamp > {cutoff}""",
+            (user_id,),
+        ).fetchone()[0] or 1
+
+        attended_rows = self.conn.execute(
+            f"""SELECT a.rating FROM attended a
+                WHERE a.user_id = ? AND a.attended_at > {cutoff}""",
+            (user_id,),
+        ).fetchall()
+        attended = len(attended_rows)
+        ratings = [r["rating"] for r in attended_rows if r["rating"] is not None]
+        avg_rating = sum(ratings) / len(ratings) if ratings else 0
+        attend_rate = attended / shown
+
+        north_star = attend_rate * (avg_rating / 5.0) if avg_rating else 0
+
+        rsvps_going = self.conn.execute(
+            f"""SELECT COUNT(DISTINCT rv.event_id) FROM rsvps rv
+                JOIN runs r ON r.id = rv.run_id
+                WHERE rv.user_id = ? AND rv.status = 'going'
+                AND r.timestamp > {cutoff}""",
+            (user_id,),
+        ).fetchone()[0] or 0
+
+        discovery_attended = self.conn.execute(
+            f"""SELECT COUNT(*) FROM attended a
+                JOIN rankings rk ON rk.event_id = a.event_id
+                JOIN runs r ON r.id = rk.run_id
+                WHERE a.user_id = ? AND rk.keep = 1
+                AND a.attended_at > {cutoff}
+                AND rk.score < 70""",
+            (user_id,),
+        ).fetchone()[0] or 0
+        discovery_rate = discovery_attended / max(attended, 1)
+
+        run_stats = self.conn.execute(
+            f"""SELECT r.id, r.timestamp,
+                    COUNT(DISTINCT rk.event_id) as kept,
+                    COUNT(DISTINCT a.event_id) as attended_count,
+                    AVG(a.rating) as avg_rating
+                FROM runs r
+                LEFT JOIN rankings rk ON rk.run_id = r.id AND rk.keep = 1
+                LEFT JOIN attended a ON a.run_id = r.id AND a.user_id = r.user_id
+                WHERE r.user_id = ? AND r.timestamp > {cutoff}
+                GROUP BY r.id ORDER BY r.timestamp DESC""",
+            (user_id,),
+        ).fetchall()
+
+        return {
+            "north_star": round(north_star * 100, 1),
+            "attend_rate": round(attend_rate * 100, 1),
+            "avg_rating": round(avg_rating, 2),
+            "discovery_rate": round(discovery_rate * 100, 1),
+            "total_shown": shown,
+            "total_attended": attended,
+            "total_rated": len(ratings),
+            "rsvps_going": rsvps_going,
+            "run_stats": [dict(r) for r in run_stats],
+        }
+
+    def get_ranking_analysis(self, user_id: int = 1, run_id: int | None = None) -> dict:
+        """Score distribution and attended-vs-recommended overlap."""
+        if run_id is None:
+            row = self.conn.execute(
+                "SELECT id FROM runs WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1",
+                (user_id,),
+            ).fetchone()
+            run_id = row["id"] if row else None
+
+        if not run_id:
+            return {"score_buckets": [], "dim_avgs": {}, "attended_scores": [], "top_events": [],
+                    "total": 0, "kept": 0, "run_id": None}
+
+        all_scores = self.conn.execute(
+            "SELECT score, keep, vibe FROM rankings WHERE run_id = ?", (run_id,)
+        ).fetchall()
+
+        buckets = [0] * 11
+        kept_buckets = [0] * 11
+        for row in all_scores:
+            s = row["score"] or 0
+            b = min(int(s / 10), 10)
+            buckets[b] += 1
+            if row["keep"]:
+                kept_buckets[b] += 1
+
+        dim_avgs = self.conn.execute(
+            """SELECT
+                AVG(interest_score) as interest, AVG(social_score) as social,
+                AVG(urgency_score) as urgency, AVG(logistics_score) as logistics,
+                AVG(friend_score) as friend, AVG(discovery_score) as discovery,
+                AVG(quality_score) as quality
+               FROM rankings WHERE run_id = ? AND keep = 1""",
+            (run_id,),
+        ).fetchone()
+
+        attended_scores = self.conn.execute(
+            """SELECT rk.score, rk.interest_score, rk.social_score, rk.vibe, e.title
+               FROM attended a
+               JOIN rankings rk ON rk.event_id = a.event_id AND rk.run_id = ?
+               JOIN events e ON e.event_id = a.event_id AND e.run_id = ?
+               WHERE a.user_id = ?""",
+            (run_id, run_id, user_id),
+        ).fetchall()
+
+        top_events = self.conn.execute(
+            """SELECT e.title, rk.score, rk.interest_score, rk.social_score,
+                      rk.urgency_score, rk.logistics_score, rk.friend_score,
+                      rk.discovery_score, rk.quality_score, rk.vibe,
+                      rk.match_reason, rk.keep
+               FROM rankings rk
+               JOIN events e ON e.event_id = rk.event_id AND e.run_id = rk.run_id
+               WHERE rk.run_id = ? AND rk.keep = 1
+               ORDER BY rk.score DESC LIMIT 20""",
+            (run_id,),
+        ).fetchall()
+
+        return {
+            "run_id": run_id,
+            "score_buckets": buckets,
+            "kept_buckets": kept_buckets,
+            "bucket_labels": [f"{i*10}-{i*10+9}" for i in range(11)],
+            "dim_avgs": dict(dim_avgs) if dim_avgs else {},
+            "attended_scores": [dict(r) for r in attended_scores],
+            "top_events": [dict(r) for r in top_events],
+            "total": len(all_scores),
+            "kept": sum(kept_buckets),
+        }
+
+    def get_backtest_data(self, user_id: int = 1) -> dict:
+        """Signal attribution and precision/recall per run."""
+        runs = self.conn.execute(
+            """SELECT r.id, r.timestamp,
+                      COUNT(DISTINCT rk.event_id) as kept_count
+               FROM runs r
+               LEFT JOIN rankings rk ON rk.run_id = r.id AND rk.keep = 1
+               WHERE r.user_id = ?
+               GROUP BY r.id ORDER BY r.timestamp DESC LIMIT 20""",
+            (user_id,),
+        ).fetchall()
+
+        run_stats = []
+        for run in runs:
+            rid = run["id"]
+            attended_ids = {
+                r["event_id"] for r in self.conn.execute(
+                    "SELECT event_id FROM attended WHERE user_id = ? AND run_id = ?",
+                    (user_id, rid),
+                ).fetchall()
+            }
+            kept_ids = {
+                r["event_id"] for r in self.conn.execute(
+                    "SELECT event_id FROM rankings WHERE run_id = ? AND keep = 1", (rid,)
+                ).fetchall()
+            }
+
+            tp = len(attended_ids & kept_ids)
+            fp = len(kept_ids - attended_ids)
+            fn = len(attended_ids - kept_ids)
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+
+            run_stats.append({
+                "run_id": rid,
+                "timestamp": (run["timestamp"] or "")[:10],
+                "kept": run["kept_count"] or 0,
+                "attended": len(attended_ids),
+                "precision": round(precision * 100, 1),
+                "recall": round(recall * 100, 1),
+            })
+
+        # Signal attribution: hit rate above/below median per dimension
+        all_rankings = self.conn.execute(
+            """SELECT rk.interest_score, rk.social_score, rk.urgency_score,
+                      rk.logistics_score, rk.friend_score, rk.discovery_score,
+                      rk.quality_score, rk.score,
+                      CASE WHEN a.event_id IS NOT NULL THEN 1 ELSE 0 END as attended
+               FROM rankings rk
+               JOIN runs r ON r.id = rk.run_id
+               LEFT JOIN attended a ON a.event_id = rk.event_id AND a.user_id = r.user_id
+               WHERE r.user_id = ? AND rk.keep = 1""",
+            (user_id,),
+        ).fetchall()
+
+        dim_lift = {}
+        if all_rankings:
+            dims = ["interest_score", "social_score", "urgency_score", "logistics_score",
+                    "friend_score", "discovery_score", "quality_score"]
+            for dim in dims:
+                vals = sorted([r[dim] or 0 for r in all_rankings])
+                med = vals[len(vals) // 2]
+                high = [r["attended"] for r in all_rankings if (r[dim] or 0) >= med]
+                low = [r["attended"] for r in all_rankings if (r[dim] or 0) < med]
+                hr_high = sum(high) / len(high) if high else 0
+                hr_low = sum(low) / len(low) if low else 0
+                dim_lift[dim.replace("_score", "")] = {
+                    "hr_high": round(hr_high * 100, 1),
+                    "hr_low": round(hr_low * 100, 1),
+                    "lift": round((hr_high - hr_low) * 100, 1),
+                }
+
+        return {
+            "run_stats": run_stats,
+            "dim_lift": dim_lift,
+            "total_rankings": len(all_rankings),
+        }

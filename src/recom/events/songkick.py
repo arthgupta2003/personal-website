@@ -33,7 +33,7 @@ async def fetch_songkick(settings: Settings) -> list[Event]:
 
     now = datetime.now(timezone.utc)
     min_date = now.strftime("%Y-%m-%d")
-    max_date = (now + timedelta(days=10)).strftime("%Y-%m-%d")
+    max_date = (now + timedelta(days=14)).strftime("%Y-%m-%d")
 
     url = f"https://api.songkick.com/api/3.0/metro_areas/{BOSTON_METRO_ID}/calendar.json"
     params = {

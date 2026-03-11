@@ -220,6 +220,79 @@ def test_filters(page: Page, base: str, token: str):
             fail(f"switchView('{view}')", str(e))
 
 
+def test_new_features(page: Page, base: str, token: str):
+    print("\n-- New features --")
+
+    # Set cookie for auth
+    page.context.add_cookies([{
+        "name": "recom_token",
+        "value": token,
+        "domain": base.replace("https://", "").replace("http://", "").split("/")[0],
+        "path": "/",
+    }])
+
+    # /bucket-list loads (no 500, has nav)
+    page.goto(base + "/bucket-list", wait_until="domcontentloaded")
+    page.wait_for_timeout(1000)
+    title = page.title()
+    content = page.content()
+    check("/bucket-list loads (no 500)", "500" not in title and "Internal Server Error" not in content,
+          f"title={title!r}")
+    check("/bucket-list has nav", page.locator("nav").count() > 0)
+
+    # /variants loads and has "UI Variants" text
+    page.goto(base + "/variants", wait_until="domcontentloaded")
+    page.wait_for_timeout(1000)
+    title = page.title()
+    content = page.content()
+    check("/variants loads (no 500)", "500" not in title and "Internal Server Error" not in content,
+          f"title={title!r}")
+    check("/variants has 'UI Variants' text", "UI Variants" in content or "Variant" in content,
+          f"content snippet: {content[:300]!r}")
+
+    # /v/calendar/dense loads (has events or empty state)
+    page.goto(base + "/v/calendar/dense", wait_until="domcontentloaded")
+    page.wait_for_timeout(1000)
+    title = page.title()
+    content = page.content()
+    check("/v/calendar/dense loads (no 500)", "500" not in title and "Internal Server Error" not in content,
+          f"title={title!r}")
+    has_events = "event" in content.lower() or "evt-card" in content
+    has_empty = "no events" in content.lower() or "no runs" in content.lower() or "empty" in content.lower()
+    check("/v/calendar/dense has events or empty state", has_events or has_empty,
+          f"content snippet: {content[:300]!r}")
+
+    # /v/calendar/magazine loads (has events or empty state)
+    page.goto(base + "/v/calendar/magazine", wait_until="domcontentloaded")
+    page.wait_for_timeout(1000)
+    title = page.title()
+    content = page.content()
+    check("/v/calendar/magazine loads (no 500)", "500" not in title and "Internal Server Error" not in content,
+          f"title={title!r}")
+    has_events = "event" in content.lower() or "evt-card" in content
+    has_empty = "no events" in content.lower() or "no runs" in content.lower() or "empty" in content.lower()
+    check("/v/calendar/magazine has events or empty state", has_events or has_empty,
+          f"content snippet: {content[:300]!r}")
+
+    # /taste loads and has Elo-related content
+    page.goto(base + "/taste", wait_until="domcontentloaded")
+    page.wait_for_timeout(1000)
+    content = page.content().lower()
+    check("/taste has Elo-related content",
+          "elo" in content or "matchup" in content or "vote" in content or "taste" in content,
+          f"content snippet: {content[:300]!r}")
+
+    # Admin pages load without 500
+    for path in ["/admin/sources", "/admin/email-preview", "/admin/pipeline",
+                 "/admin/backtest", "/admin/cal-preview", "/admin/ml"]:
+        page.goto(base + path, wait_until="domcontentloaded")
+        page.wait_for_timeout(1000)
+        title = page.title()
+        content = page.content()
+        check(f"{path} loads (no 500)", "500" not in title and "Internal Server Error" not in content,
+              f"title={title!r}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://localhost:8000")
@@ -246,6 +319,7 @@ def main():
             test_unauthenticated(page, base)
             test_authenticated(page, base, token)
             test_filters(page, base, token)
+            test_new_features(page, base, token)
         except Exception:
             fail("test runner crashed", traceback.format_exc())
         finally:

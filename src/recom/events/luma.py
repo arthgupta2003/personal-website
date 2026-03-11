@@ -33,7 +33,7 @@ def _make_id(title: str, date_str: str) -> str:
 
 async def _fetch_via_api(settings: Settings) -> list[Event]:
     now = datetime.now(timezone.utc)
-    end = now + timedelta(days=10)
+    end = now + timedelta(days=14)
 
     params = {
         "geo_latitude": str(settings.latitude),

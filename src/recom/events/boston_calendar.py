@@ -82,7 +82,7 @@ async def _fetch_boston_calendar(client: httpx.AsyncClient) -> list[Event]:
     events: list[Event] = []
 
     now = datetime.now(timezone.utc)
-    cutoff = now + timedelta(days=10)
+    cutoff = now + timedelta(days=14)
 
     # Find every parent div that contains an h3 > a (event title link)
     seen_titles: set[str] = set()
@@ -164,7 +164,7 @@ async def _fetch_do617(client: httpx.AsyncClient) -> list[Event]:
     events: list[Event] = []
 
     now = datetime.now(timezone.utc)
-    cutoff = now + timedelta(days=10)
+    cutoff = now + timedelta(days=14)
 
     cards = soup.select(
         "div.event-card, "
@@ -240,7 +240,7 @@ async def _fetch_artsboston(client: httpx.AsyncClient) -> list[Event]:
     events: list[Event] = []
 
     now = datetime.now(timezone.utc)
-    cutoff = now + timedelta(days=10)
+    cutoff = now + timedelta(days=14)
 
     cards = soup.select(
         "div.event-card, "

@@ -6,6 +6,7 @@
 #   bash scripts/smoke_test.sh              # unauthenticated checks only
 #   bash scripts/smoke_test.sh test@example.com   # also run auth flow (creates/fetches test user)
 
+RECOM_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BASE="http://localhost:8000"
 PASS=0
 FAIL=0
@@ -33,11 +34,28 @@ check "/" "200"
 check "/landing" "200"
 check "/admin" "200"
 check "/admin/sources" "200"
+# Admin pages that require auth (redirect to login → 307)
+check "/admin/email-preview" "307" "/admin/email-preview (unauth→307)"
+check "/admin/cal-preview" "307" "/admin/cal-preview (unauth→307)"
+check "/admin/ml" "307" "/admin/ml (unauth→307)"
+# Admin pages that are public (200)
+check "/admin/pipeline" "200"
+check "/admin/backtest" "200"
+check "/admin/retros" "200"
+check "/admin/ranking-analysis" "200"
 check "/login" "200"
 check "/feed.ics" "200"
 check "/taste" "200"
 check "/groups" "200"
 check "/attended" "200"
+check "/bucket-list" "200"
+check "/variants" "200"
+check "/v/calendar/dense" "200"
+check "/v/calendar/magazine" "200"
+check "/v/calendar/app" "200"
+check "/v/taste/dense" "200"
+check "/v/groups/dense" "200"
+check "/v/profile/dense" "200"
 
 # Auth-required pages (redirect without cookie)
 check "/venues" "307" "/venues (unauth→307)"
@@ -50,6 +68,12 @@ code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/search" \
 [ "$code" = "401" ] && { echo "  PASS /api/search unauth (401)"; ((PASS++)); } \
   || { echo "  FAIL /api/search unauth — expected 401, got $code"; ((FAIL++)); }
 
+# POST /api/taste/vote unauthenticated → 401 or 307
+code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/taste/vote" \
+  -H "Content-Type: application/json" -d '{"winner":"a","loser":"b"}')
+[ "$code" = "401" ] || [ "$code" = "307" ] && { echo "  PASS /api/taste/vote unauth ($code)"; ((PASS++)); } \
+  || { echo "  FAIL /api/taste/vote unauth — expected 401 or 307, got $code"; ((FAIL++)); }
+
 # Authenticated flow (requires --email arg)
 TEST_EMAIL="${1:-}"
 if [ -n "$TEST_EMAIL" ]; then
@@ -57,9 +81,7 @@ if [ -n "$TEST_EMAIL" ]; then
   echo "-- Authenticated (email: $TEST_EMAIL) --"
 
   # Create/ensure user exists and get their token
-  TOKEN=$(PYTHONPATH=/workspace/src:/workspace/.venv/lib/python3.14/site-packages /home/claude/.local/share/uv/python/cpython-3.14.3-linux-x86_64-gnu/bin/python3.14 - <<PYEOF
-import sys
-sys.path.insert(0, '/workspace/src')
+  TOKEN=$(cd "$RECOM_DIR" && uv run python -c "
 from recom.config import Settings
 from recom.db import Database
 s = Settings()
@@ -67,8 +89,7 @@ db = Database(s.db_path)
 uid = db.create_user('$TEST_EMAIL', 'Smoke Test')
 user = db.get_user(uid)
 print(user['user_token'])
-PYEOF
-)
+" 2>/dev/null)
 
   if [ -z "$TOKEN" ]; then
     echo "  FAIL Could not get/create test user token"
@@ -76,7 +97,7 @@ PYEOF
   else
     echo "  INFO token=${TOKEN}"
     # All auth pages should now return 200
-    for path in /venues /search /profile /taste; do
+    for path in /venues /search /profile /taste /bucket-list; do
       check "$path" "200" "$path (authed)" "$TOKEN"
     done
 

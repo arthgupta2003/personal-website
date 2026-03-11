@@ -78,7 +78,7 @@ query($lat: Float!, $lon: Float!, $startDateRange: DateTime, $endDateRange: Date
 
 async def _fetch_via_graphql(settings: Settings) -> list[Event]:
     now = datetime.now(timezone.utc)
-    end = now + timedelta(days=10)
+    end = now + timedelta(days=14)
 
     variables = {
         "lat": settings.latitude,

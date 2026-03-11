@@ -562,6 +562,13 @@ async def run_history():
         <a href="/admin/sources" style="font-size:13px;color:#4f46e5;font-weight:600;">📡 Source Health</a>
         <a href="/admin/interests" style="font-size:13px;color:#4f46e5;font-weight:600;">🧠 Interest Profile</a>
         <a href="/admin/email-preview" style="font-size:13px;color:#4f46e5;font-weight:600;">✉ Email Preview</a>
+        <a href="/admin/metrics" style="font-size:13px;color:#4f46e5;font-weight:600;">📊 Metrics</a>
+        <a href="/admin/ranking-analysis" style="font-size:13px;color:#4f46e5;font-weight:600;">🔍 Ranking Analysis</a>
+        <a href="/admin/pipeline" style="font-size:13px;color:#4f46e5;font-weight:600;">⚙️ Pipeline</a>
+        <a href="/admin/backtest" style="font-size:13px;color:#4f46e5;font-weight:600;">🧪 Backtest</a>
+        <a href="/admin/retros" style="font-size:13px;color:#4f46e5;font-weight:600;">🔭 Retros</a>
+        <a href="/admin/cal-preview" style="font-size:13px;color:#4f46e5;font-weight:600;">📅 Cal Preview</a>
+        <a href="/admin/ml" style="font-size:13px;color:#4f46e5;font-weight:600;">🤖 ML Model</a>
     </div>
     <table>
         <thead><tr>
@@ -1358,7 +1365,7 @@ function renderMatchup() {{
   const vs = document.getElementById('matchup-vs');
   const eq = document.getElementById('equal-btn');
   if (!PAIR) {{
-    vs.innerHTML = '<div class="congrats" style="grid-column:1/-1"><p style="font-size:1.1rem;color:#818cf8;font-weight:700;">You\'ve ranked everything!</p><p style="margin-top:8px;">Add more activities to keep refining your taste.</p></div>';
+    vs.innerHTML = '<div class="congrats" style="grid-column:1/-1"><p style="font-size:1.1rem;color:#818cf8;font-weight:700;">You&apos;ve ranked everything!</p><p style="margin-top:8px;">Add more activities to keep refining your taste.</p></div>';
     eq.style.display = 'none';
     return;
   }}
@@ -1546,7 +1553,9 @@ fetch('/api/taste/radar').then(r => r.json()).then(d => {{
 async def taste_vote(request: Request):
     db = get_db()
     current_user = _get_current_user(request)
-    user_id = current_user["id"] if current_user else 1
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    user_id = current_user["id"]
     body = await request.json()
     item_a_id = int(body["item_a_id"])
     item_b_id = int(body["item_b_id"])
@@ -1559,6 +1568,59 @@ async def taste_vote(request: Request):
     count = db.get_taste_matchup_count(user_id)
     streak = db.get_taste_streak(user_id)
     return {"ok": True, "items": items, "next_pair": list(pair) if pair else None, "matchup_count": count, "streak": streak}
+
+
+@app.get("/api/taste/vote-link", response_class=HTMLResponse)
+async def taste_vote_link(
+    request: Request,
+    a: int = Query(...),
+    b: int = Query(...),
+    winner: str = Query(""),
+    u: str = Query(""),
+):
+    """GET-based taste vote for email links. Records matchup and returns confirmation page."""
+    db = get_db()
+    token = u or request.cookies.get(COOKIE_NAME, "")
+    user = db.get_user_by_token(token) if token else None
+    user_id = user["id"] if user else 1
+
+    winner_id = int(winner) if winner.strip().isdigit() else None
+    db.record_taste_matchup(user_id, a, b, winner_id)
+
+    # Get labels for confirmation
+    item_a = next((i for i in db.get_taste_items(user_id) if i["id"] == a), None)
+    item_b = next((i for i in db.get_taste_items(user_id) if i["id"] == b), None)
+    winner_item = next((i for i in db.get_taste_items(user_id) if i["id"] == winner_id), None) if winner_id else None
+
+    label_a = item_a["label"] if item_a else f"Item {a}"
+    label_b = item_b["label"] if item_b else f"Item {b}"
+    chosen = winner_item["label"] if winner_item else "Equal"
+    winner_color = "#4f46e5" if winner_id == a else ("#ec4899" if winner_id == b else "#6b7280")
+
+    dashboard_url = Settings().dashboard_url
+    taste_url = f"{dashboard_url}/taste?u={u}" if u else f"{dashboard_url}/taste"
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="3;url={taste_url}"></head>
+<body style="font-family:-apple-system,sans-serif;background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+<div style="text-align:center;padding:32px;max-width:360px;">
+  <div style="font-size:48px;margin-bottom:12px;">✓</div>
+  <h2 style="color:#1e293b;margin:0 0 8px;">Voted!</h2>
+  <p style="color:#6b7280;margin:0 0 16px;">
+    You chose <strong style="color:{winner_color};">{chosen}</strong><br>
+    <span style="font-size:12px;">{label_a} vs {label_b}</span>
+  </p>
+  <a href="{taste_url}" style="display:inline-block;padding:10px 24px;background:#4f46e5;color:white;border-radius:8px;text-decoration:none;font-weight:600;">
+    View Taste Profile →
+  </a>
+  <p style="font-size:11px;color:#9ca3af;margin-top:12px;">Redirecting in 3s…</p>
+</div>
+</body></html>"""
+    resp = HTMLResponse(html)
+    if user and u:
+        _set_token_cookie(resp, user["user_token"])
+    return resp
 
 
 @app.post("/api/taste/add")
@@ -3878,6 +3940,7 @@ async def api_search(request: Request):
         results = results[:5]
 
     # Tier 3: web fallback if still < 3 results
+    web_results = []
     if len(results) < 3:
         logger.info("Search tier 3: web fallback for %r", query)
         web_results = await _asyncio_run_in_executor(_search_web_fallback, query, settings)
@@ -3885,6 +3948,22 @@ async def api_search(request: Request):
         for r in web_results:
             if r["event_id"] not in existing_ids:
                 results.append(r)
+
+        # Save retro log for search gap analysis
+        try:
+            import asyncio as _asyncio
+            _loop = _asyncio.get_running_loop()
+            gap_reason = "db_miss" if not results else "partial_db"
+            web_json = json.dumps([r.get("title", "") for r in web_results[:5]])
+            await _loop.run_in_executor(
+                None, lambda: db.save_retro(
+                    current_user["id"], query,
+                    len([r for r in results if r.get("source_tier") == "db"]),
+                    len(web_results), web_json, "", gap_reason,
+                )
+            )
+        except Exception:
+            pass
 
     tier = "web" if results and results[-1].get("source_tier") == "web" else "db"
     return JSONResponse({"results": results[:5], "tier": tier})
@@ -4157,6 +4236,9 @@ async def group_ical_feed(slug: str, min_score: int = 40):
         text = _html.unescape(text)
         return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
 
+    from datetime import timezone as _tz
+    utcnow = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
+
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -4164,6 +4246,8 @@ async def group_ical_feed(slug: str, min_score: int = 40):
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         f"X-WR-CALNAME:Recom - {_ical_escape(group['name'])}",
+        "X-APPLE-CALENDAR-COLOR:#f59e0b",
+        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     ]
 
     for e in kept[:50]:
@@ -4182,10 +4266,13 @@ async def group_ical_feed(slug: str, min_score: int = 40):
         score = int(e.get("score") or 0)
         reason = _ical_escape(e.get("match_reason") or "")
         eid = e.get("event_id", "")
+        vibe = e.get("vibe", "mixed")
+        lat, lon = e.get("lat"), e.get("lon")
 
         # Add RSVP info to description
         rsvp_lines = []
-        for rv in rsvps_map.get(eid, []):
+        event_rsvps = rsvps_map.get(eid, [])
+        for rv in event_rsvps:
             rv_label = {"going": "Going", "maybe": "Maybe", "cant": "Can't go"}.get(rv["status"], rv["status"])
             rsvp_lines.append(f"{rv['user_name']}: {rv_label}")
         rsvp_text = "\\n".join(rsvp_lines) if rsvp_lines else ""
@@ -4193,18 +4280,44 @@ async def group_ical_feed(slug: str, min_score: int = 40):
         if rsvp_text:
             desc_parts.append(f"\\nRSVPs:\\n{rsvp_text}")
 
+        # Determine if anyone is "going" for TRANSP
+        has_going = any(rv["status"] == "going" for rv in event_rsvps)
+
         uid = f"{eid}@recom-group-{slug}"
-        lines.extend([
+        vevent_lines = [
             "BEGIN:VEVENT",
             f"UID:{uid}",
+            f"DTSTAMP:{utcnow}",
             f"DTSTART:{dtstart}",
             f"SUMMARY:[{score}] {title}",
             f"LOCATION:{location}",
             f"URL:{url}",
             f"DESCRIPTION:{_ical_escape('\\n'.join(desc_parts))}",
+            f"CATEGORIES:{vibe}",
+            f"TRANSP:{'OPAQUE' if has_going else 'TRANSPARENT'}",
             "DURATION:PT2H",
-            "END:VEVENT",
+        ]
+        if lat and lon:
+            vevent_lines.append(f"GEO:{lat};{lon}")
+        # ATTENDEE lines for group member RSVPs
+        partstat_map = {"going": "ACCEPTED", "maybe": "TENTATIVE", "cant": "DECLINED"}
+        for rv in event_rsvps:
+            ps = partstat_map.get(rv["status"])
+            if ps:
+                cn = _ical_escape(rv.get("user_name", ""))
+                email = rv.get("user_email", "")
+                if email:
+                    vevent_lines.append(f"ATTENDEE;PARTSTAT={ps};CN={cn}:mailto:{email}")
+        # Reminder alarm
+        vevent_lines.extend([
+            "BEGIN:VALARM",
+            "TRIGGER:-PT2H",
+            "ACTION:DISPLAY",
+            f"DESCRIPTION:Reminder: {title}",
+            "END:VALARM",
         ])
+        vevent_lines.append("END:VEVENT")
+        lines.extend(vevent_lines)
 
     lines.append("END:VCALENDAR")
     return Response(
@@ -4229,6 +4342,9 @@ async def ical_feed(min_score: int = 55):
     events = db.get_run_events(run_id)
     kept = [e for e in events if e.get("keep") and (e.get("score") or 0) >= min_score]
 
+    from datetime import timezone as _tz
+    utcnow = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
+
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -4237,6 +4353,8 @@ async def ical_feed(min_score: int = 55):
         "METHOD:PUBLISH",
         "X-WR-CALNAME:Recom Events",
         "X-WR-CALDESC:Personalized event recommendations for Boston/Cambridge",
+        "X-APPLE-CALENDAR-COLOR:#4f46e5",
+        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     ]
 
     def _ical_escape(text: str) -> str:
@@ -4319,17 +4437,23 @@ async def ical_feed(min_score: int = 55):
             km = 6371 * 2 * _math.atan2(_math.sqrt(a), _math.sqrt(1-a))
             dist_str = f"\\n📍 {km:.1f}km from home"
 
-        lines.extend([
+        vevent_lines = [
             "BEGIN:VEVENT",
             _fold_line(f"UID:{uid}"),
+            f"DTSTAMP:{utcnow}",
             f"DTSTART:{dtstart}",
             _fold_line(f"SUMMARY:[{score}] {title}"),
             _fold_line(f"LOCATION:{location}"),
             _fold_line(f"URL:{url}"),
             _fold_line(f"DESCRIPTION:{price}\\nScore: {score}/100{dist_str}\\n{reason}"),
+            f"CATEGORIES:{vibe}",
+            "TRANSP:TRANSPARENT",
             "DURATION:PT2H",
-            "END:VEVENT",
-        ])
+        ]
+        if lat and lon:
+            vevent_lines.append(f"GEO:{lat};{lon}")
+        vevent_lines.append("END:VEVENT")
+        lines.extend(vevent_lines)
 
     lines.append("END:VCALENDAR")
     ical_text = "\r\n".join(lines)
@@ -4813,14 +4937,13 @@ async def user_ical_feed(token: str, min_score: int = 55):
     """Per-user shareable iCal feed. The token in the URL IS the auth."""
     db = get_db()
     user = db.get_user_by_token(token)
+    _empty_cal = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//recom//Event Recommender//EN\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Recom Events\r\nEND:VCALENDAR"
     if not user:
-        return Response(content="BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR",
-                       media_type="text/calendar")
+        return Response(content=_empty_cal, media_type="text/calendar")
 
     run = db.get_user_latest_run(user["id"])
     if not run:
-        return Response(content="BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR",
-                       media_type="text/calendar")
+        return Response(content=_empty_cal, media_type="text/calendar")
 
     events = db.get_run_events(run["id"])
     kept = [e for e in events if e.get("keep") and (e.get("score") or 0) >= min_score]
@@ -4839,18 +4962,31 @@ async def user_ical_feed(token: str, min_score: int = 55):
             return line
         chunks = []
         while len(encoded) > 75:
-            chunk = encoded[:75]
-            # Don't split a multi-byte char
-            while len(chunk) > 0 and (chunk[-1] & 0xC0) == 0x80:
-                chunk = chunk[:-1]
-            chunks.append(chunk.decode("utf-8"))
-            encoded = encoded[len(chunk):]
-        chunks.append(encoded.decode("utf-8"))
+            cut = 75
+            # Don't split a multi-byte UTF-8 char: back up if we're in the middle of one
+            while cut > 0 and (encoded[cut] & 0xC0) == 0x80:
+                cut -= 1
+            if cut == 0:
+                cut = 75  # safety: shouldn't happen, but avoid infinite loop
+            chunks.append(encoded[:cut].decode("utf-8"))
+            encoded = encoded[cut:]
+        if encoded:
+            chunks.append(encoded.decode("utf-8"))
         return "\r\n ".join(chunks)
 
+    from datetime import timezone as _tz
+    utcnow = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
+
     user_name = user.get("name") or user.get("email", "")
+    user_email = user.get("email", "")
     settings = Settings()
     dashboard_url = settings.dashboard_url
+
+    # Get user's RSVPs for ATTENDEE/TRANSP
+    user_rsvp_rows = db.conn.execute(
+        "SELECT event_id, status FROM rsvps WHERE user_id = ?", (user["id"],)
+    ).fetchall()
+    user_rsvp_map = {r["event_id"]: r["status"] for r in user_rsvp_rows}
 
     lines = [
         "BEGIN:VCALENDAR",
@@ -4859,6 +4995,8 @@ async def user_ical_feed(token: str, min_score: int = 55):
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         f"X-WR-CALNAME:Recom — {_ical_escape(user_name)}'s Picks",
+        "X-APPLE-CALENDAR-COLOR:#818cf8",
+        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     ]
 
     kept.sort(key=lambda x: -(x.get("score") or 0))
@@ -4880,6 +5018,8 @@ async def user_ical_feed(token: str, min_score: int = 55):
         price = _ical_escape(e.get("price") or "Free")
         eid = e.get("event_id", "")
         uid = f"{eid}@recom-user-{token}"
+        vibe = e.get("vibe", "mixed")
+        lat, lon = e.get("lat"), e.get("lon")
 
         # Build RSVP links for the description
         enc_title = _urlparse.quote_plus(raw_title)
@@ -4887,17 +5027,42 @@ async def user_ical_feed(token: str, min_score: int = 55):
         rsvp_maybe = f"{dashboard_url}/api/rsvp-link?event_id={eid}&status=maybe&u={token}&title={enc_title}"
         desc = f"{price}\\nScore: {score}/100\\n{reason}\\n\\nRSVP Going: {rsvp_going}\\nRSVP Maybe: {rsvp_maybe}"
 
-        lines.extend([
+        # RSVP status for this user
+        user_rsvp_status = user_rsvp_map.get(eid)
+        is_going = user_rsvp_status == "going"
+
+        vevent_lines = [
             "BEGIN:VEVENT",
             f"UID:{uid}",
+            f"DTSTAMP:{utcnow}",
             f"DTSTART:{dtstart}",
-            f"SUMMARY:[{score}] {title}",
-            f"LOCATION:{location}",
-            f"URL:{url}",
-            f"DESCRIPTION:{desc}",
+            _ical_fold(f"SUMMARY:[{score}] {title}"),
+            _ical_fold(f"LOCATION:{location}"),
+            _ical_fold(f"URL:{url}"),
+            _ical_fold(f"DESCRIPTION:{desc}"),
+            f"CATEGORIES:{vibe}",
+            f"TRANSP:{'OPAQUE' if is_going else 'TRANSPARENT'}",
             "DURATION:PT2H",
-            "END:VEVENT",
+        ]
+        if lat and lon:
+            vevent_lines.append(f"GEO:{lat};{lon}")
+        # ATTENDEE for user's own RSVP
+        if user_rsvp_status and user_email:
+            partstat_map = {"going": "ACCEPTED", "maybe": "TENTATIVE", "cant": "DECLINED"}
+            ps = partstat_map.get(user_rsvp_status)
+            if ps:
+                cn = _ical_escape(user_name)
+                vevent_lines.append(f"ATTENDEE;PARTSTAT={ps};CN={cn}:mailto:{user_email}")
+        # Reminder alarm
+        vevent_lines.extend([
+            "BEGIN:VALARM",
+            "TRIGGER:-PT2H",
+            "ACTION:DISPLAY",
+            f"DESCRIPTION:Reminder: {title}",
+            "END:VALARM",
         ])
+        vevent_lines.append("END:VEVENT")
+        lines.extend(vevent_lines)
 
     lines.append("END:VCALENDAR")
     return Response(
@@ -4918,15 +5083,21 @@ async def user_rsvps_ical(token: str):
         return Response(content="BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR",
                        media_type="text/calendar")
 
+    from datetime import timezone as _tz
+    utcnow = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
+
     user_id = user["id"]
     user_name = user.get("name") or user.get("email", "")
+    user_email = user.get("email", "")
 
     # Get all RSVPs for this user with event details
     rows = db.conn.execute(
         """SELECT r.status, r.event_id, e.title, e.start_time, e.location_name,
-                  e.url, e.price, e.description
+                  e.url, e.price, e.description, e.lat, e.lon,
+                  COALESCE(rk.vibe, 'mixed') as vibe
            FROM rsvps r
            JOIN events e ON e.event_id = r.event_id
+           LEFT JOIN rankings rk ON rk.event_id = r.event_id AND rk.run_id = e.run_id
            WHERE r.user_id = ? AND r.status IN ('going', 'maybe')
            ORDER BY e.start_time ASC LIMIT 100""",
         (user_id,),
@@ -4963,18 +5134,41 @@ async def user_rsvps_ical(token: str):
         url = ev.get("url") or ""
         price = _ical_escape(ev.get("price") or "Free")
         eid = ev.get("event_id", "")
-        status_label = "✓ Going" if status == "going" else "? Maybe"
-        lines.extend([
+        vibe = ev.get("vibe", "mixed")
+        lat, lon = ev.get("lat"), ev.get("lon")
+        is_going = status == "going"
+        status_label = "✓ Going" if is_going else "? Maybe"
+
+        vevent_lines = [
             "BEGIN:VEVENT",
             f"UID:{eid}@rsvps-{token}",
+            f"DTSTAMP:{utcnow}",
             f"DTSTART:{dtstart}",
             f"SUMMARY:{status_label}: {title}",
             f"LOCATION:{location}",
             f"URL:{url}",
             f"DESCRIPTION:{price}",
+            f"CATEGORIES:{vibe}",
+            f"TRANSP:{'OPAQUE' if is_going else 'TRANSPARENT'}",
             "DURATION:PT2H",
-            "END:VEVENT",
+        ]
+        if lat and lon:
+            vevent_lines.append(f"GEO:{lat};{lon}")
+        # ATTENDEE for user's RSVP
+        if user_email:
+            partstat = "ACCEPTED" if is_going else "TENTATIVE"
+            cn = _ical_escape(user_name)
+            vevent_lines.append(f"ATTENDEE;PARTSTAT={partstat};CN={cn}:mailto:{user_email}")
+        # Reminder alarm
+        vevent_lines.extend([
+            "BEGIN:VALARM",
+            "TRIGGER:-PT2H",
+            "ACTION:DISPLAY",
+            f"DESCRIPTION:Reminder: {title}",
+            "END:VALARM",
         ])
+        vevent_lines.append("END:VEVENT")
+        lines.extend(vevent_lines)
 
     lines.append("END:VCALENDAR")
     return Response(
@@ -5045,7 +5239,7 @@ def run():
 
 
 # ---------------------------------------------------------------------------
-# UI Variant Routes — /variants index + 12 variant pages
+# UI Variant Routes — /variants index + 15 variant pages
 # ---------------------------------------------------------------------------
 
 def _get_variant_events() -> list[dict]:
@@ -5093,7 +5287,7 @@ async def variants_index(request: Request):
 .section-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #818cf8; margin: 28px 0 8px; }
 </style>
 <h1>UI Variants</h1>
-<p style="color:#6b7280;margin-bottom:8px;">13 experimental layouts for 4 main pages. Each shows real data.</p>
+<p style="color:#6b7280;margin-bottom:8px;">16 experimental layouts for 4 main pages. Each shows real data.</p>
 
 <div class="section-label">Calendar / Events</div>
 <div class="variants-grid">
@@ -5114,6 +5308,42 @@ async def variants_index(request: Request):
     <h3>Calendar — App</h3>
     <p>Dark theme, rounded cards, sticky bottom nav, iOS/Android native feel.</p>
     <a href="/v/calendar/app">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#06b6d4;">
+    <span class="tag" style="background:#06b6d4;color:white;">Timeline</span>
+    <h3>Calendar — Timeline</h3>
+    <p>Vertical day-planner with time axis, colored blocks by vibe, CSS grid week view.</p>
+    <a href="/v/calendar/timeline">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#f472b6;">
+    <span class="tag" style="background:#f472b6;color:white;">Cards</span>
+    <h3>Calendar — Cards</h3>
+    <p>Pinterest-style masonry grid, pastel category cards, hover reveal details.</p>
+    <a href="/v/calendar/cards">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#a3a3a3;">
+    <span class="tag" style="background:#404040;color:white;">Minimal</span>
+    <h3>Calendar — Minimal</h3>
+    <p>Notion-inspired list, ultra-clean whitespace, expandable rows, score bars.</p>
+    <a href="/v/calendar/minimal">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#1DB954;">
+    <span class="tag" style="background:#1DB954;color:white;">Wrapped</span>
+    <h3>Calendar — Spotify</h3>
+    <p>Spotify Wrapped aesthetic &mdash; dark bg, bold type, gradient glows, time buckets.</p>
+    <a href="/v/calendar/spotify">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#3b82f6;">
+    <span class="tag" style="background:#3b82f6;color:white;">Map</span>
+    <h3>Calendar — Map</h3>
+    <p>Events grouped by neighborhood &mdash; Cambridge, Back Bay, Fenway &mdash; proximity focus.</p>
+    <a href="/v/calendar/map">View variant &rarr;</a>
+  </div>
+  <div class="variant-card" style="border-left-color:#f97316;">
+    <span class="tag" style="background:#f97316;color:white;">Social</span>
+    <h3>Calendar — Social</h3>
+    <p>Who&apos;s going view &mdash; friends first, bring-a-friend picks, solo adventures.</p>
+    <a href="/v/calendar/social">View variant &rarr;</a>
   </div>
 </div>
 
@@ -5342,6 +5572,820 @@ html, body {{ background: #0f0f1a !important; color: #e2e8f0; }}
   <a href="/v/profile/app" style="text-align:center;color:#6b7280;text-decoration:none;font-size:10px;font-weight:700;"><div style="font-size:20px;margin-bottom:2px;">👤</div>Profile</a>
 </nav>"""
     resp = HTMLResponse(_layout("Calendar — App", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/calendar/timeline", response_class=HTMLResponse)
+async def v_calendar_timeline(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    events = _get_variant_events()
+
+    # Group events by day-of-week, extract hour for positioning
+    from collections import defaultdict
+    days_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    day_events = defaultdict(list)
+    min_hour, max_hour = 24, 0
+    for e in events:
+        try:
+            dt = datetime.fromisoformat(e.get("start_time", ""))
+            day_key = dt.strftime("%a")
+            hour = dt.hour + dt.minute / 60
+            min_hour = min(min_hour, int(dt.hour))
+            max_hour = max(max_hour, int(dt.hour) + 1)
+            day_events[day_key].append((e, dt, hour))
+        except Exception:
+            pass
+
+    if min_hour > max_hour:
+        min_hour, max_hour = 17, 23
+    min_hour = max(0, min_hour - 1)
+    max_hour = min(24, max_hour + 1)
+    total_hours = max_hour - min_hour
+
+    # Build time axis labels
+    time_labels = ""
+    for h in range(min_hour, max_hour + 1):
+        top_pct = ((h - min_hour) / total_hours) * 100
+        label = f"{h % 12 or 12}{'am' if h < 12 else 'pm'}"
+        time_labels += f'<div class="tl-time" style="top:{top_pct}%;">{label}</div>\n'
+
+    # Build day columns
+    day_cols = ""
+    vibe_gradients = {
+        "social": "linear-gradient(135deg, #fbbf24, #f97316)",
+        "intellectual": "linear-gradient(135deg, #818cf8, #06b6d4)",
+        "mixed": "linear-gradient(135deg, #34d399, #06b6d4)",
+    }
+    for day in days_order:
+        blocks = ""
+        for e, dt, hour in day_events.get(day, []):
+            top_pct = ((hour - min_hour) / total_hours) * 100
+            score = int(e.get("score") or 0)
+            vibe = e.get("vibe", "mixed")
+            grad = vibe_gradients.get(vibe, vibe_gradients["mixed"])
+            title = e.get("title", "")[:35]
+            time_str = dt.strftime("%-I:%M %p")
+            loc = e.get("location_name", "")[:25]
+            blocks += f"""<a href="{e.get('url','#')}" target="_blank" class="tl-block" style="top:{top_pct}%;background:{grad};" title="{e.get('title','')}">
+              <div class="tl-block-score">{score}</div>
+              <div class="tl-block-title">{title}</div>
+              <div class="tl-block-meta">{time_str}</div>
+              <div class="tl-block-meta">{loc}</div>
+            </a>\n"""
+        has_events = " tl-day-active" if day_events.get(day) else ""
+        day_cols += f'<div class="tl-day{has_events}"><div class="tl-day-label">{day}</div><div class="tl-day-col">{blocks}</div></div>\n'
+
+    body = f"""
+<style>
+body {{ background: #0c0c1d; color: #e2e8f0; }}
+.tl-wrap {{ max-width: 1000px; margin: 0 auto; padding: 16px 20px 60px; }}
+.tl-back {{ font-size: 12px; color: #6b7280; text-decoration: none; }}
+.tl-back:hover {{ color: #a5b4fc; }}
+.tl-title {{ font-size: 24px; font-weight: 800; color: #e2e8f0; margin: 12px 0 4px; letter-spacing: -0.5px; }}
+.tl-sub {{ font-size: 13px; color: #6b7280; margin-bottom: 24px; }}
+.tl-grid {{ display: grid; grid-template-columns: 56px repeat(7, 1fr); gap: 0; min-height: {total_hours * 64}px; position: relative; }}
+.tl-axis {{ position: relative; border-right: 1px solid #1e1e3a; }}
+.tl-time {{ position: absolute; right: 8px; transform: translateY(-50%); font-size: 11px; font-weight: 600; color: #4b5563; font-family: 'SF Mono', 'Fira Code', monospace; }}
+.tl-day {{ display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,.04); }}
+.tl-day-label {{ text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #4b5563; padding: 8px 0 12px; background: rgba(255,255,255,.02); border-bottom: 1px solid rgba(255,255,255,.06); }}
+.tl-day-active .tl-day-label {{ color: #a5b4fc; background: rgba(129,140,248,.06); }}
+.tl-day-col {{ position: relative; flex: 1; min-height: {total_hours * 64}px; }}
+.tl-block {{ position: absolute; left: 4px; right: 4px; min-height: 56px; border-radius: 10px; padding: 8px 10px; text-decoration: none; color: white; display: block; box-shadow: 0 4px 12px rgba(0,0,0,.3); transition: transform .15s, box-shadow .15s; cursor: pointer; overflow: hidden; }}
+.tl-block::after {{ content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,.1) 0%, transparent 40%); border-radius: 10px; pointer-events: none; }}
+.tl-block:hover {{ transform: translateY(-2px) scale(1.02); box-shadow: 0 8px 24px rgba(0,0,0,.5); }}
+.tl-block-score {{ font-size: 18px; font-weight: 900; opacity: .9; float: right; margin: -2px 0 0 8px; }}
+.tl-block-title {{ font-size: 12px; font-weight: 700; line-height: 1.3; margin-bottom: 3px; }}
+.tl-block-meta {{ font-size: 10px; opacity: .75; }}
+/* Hour grid lines */
+.tl-day-col::before {{ content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(180deg, transparent 0px, transparent {64 - 1}px, rgba(255,255,255,.03) {64 - 1}px, rgba(255,255,255,.03) 64px); pointer-events: none; }}
+</style>
+<div class="tl-wrap">
+  <a href="/variants" class="tl-back">&larr; All variants</a>
+  <h1 class="tl-title">Week Timeline</h1>
+  <p class="tl-sub">{len(events)} events &middot; Day planner view</p>
+  <div class="tl-grid">
+    <div class="tl-axis">{time_labels}</div>
+    {day_cols}
+  </div>
+</div>"""
+    resp = HTMLResponse(_layout("Calendar — Timeline", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/calendar/cards", response_class=HTMLResponse)
+async def v_calendar_cards(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    events = _get_variant_events()
+
+    category_styles = {
+        "music": ("#fce7f3", "#be185d", "🎵"),
+        "tech": ("#dbeafe", "#1e40af", "💻"),
+        "food": ("#fef3c7", "#92400e", "🍽"),
+        "sports": ("#d1fae5", "#065f46", "⚽"),
+        "arts": ("#ede9fe", "#5b21b6", "🎨"),
+        "comedy": ("#fff7ed", "#c2410c", "😂"),
+        "social": ("#fce7f3", "#9d174d", "🎉"),
+        "networking": ("#e0e7ff", "#3730a3", "🤝"),
+        "outdoor": ("#dcfce7", "#166534", "🌿"),
+        "film": ("#f3e8ff", "#7c3aed", "🎬"),
+        "education": ("#cffafe", "#155e75", "📚"),
+    }
+    default_style = ("#f1f5f9", "#334155", "📌")
+
+    cards = ""
+    for i, e in enumerate(events):
+        score = int(e.get("score") or 0)
+        # Guess category from vibe/title keywords
+        title_lower = ((e.get("title") or "") + " " + (e.get("category") or "")).lower()
+        cat_key = "social"
+        for k in category_styles:
+            if k in title_lower:
+                cat_key = k
+                break
+        vibe = e.get("vibe", "")
+        if vibe == "intellectual" and cat_key == "social":
+            cat_key = "tech"
+        bg, fg, emoji = category_styles.get(cat_key, default_style)
+
+        score_bg = "#dcfce7" if score >= 70 else "#fef9c3" if score >= 40 else "#fee2e2"
+        score_fg = "#166534" if score >= 70 else "#854d0e" if score >= 40 else "#991b1b"
+        match_reason = e.get("match_reason", "")
+        title = e.get("title", "")[:80]
+        loc = e.get("location_name", "")[:40]
+        time_str = _fmt_event_dt(e.get("start_time"))
+        price = e.get("price") or "Free"
+        desc = e.get("description", "")[:100]
+
+        cards += f"""<div class="pin-card" style="background:{bg};--card-fg:{fg};">
+          <div class="pin-emoji">{emoji}</div>
+          <div class="pin-score" style="background:{score_bg};color:{score_fg};">{score}</div>
+          <h3 class="pin-title" style="color:{fg};">{title}</h3>
+          <div class="pin-venue">{loc}</div>
+          <div class="pin-time">{time_str}</div>
+          <div class="pin-price">{price}</div>
+          {f'<div class="pin-desc">{desc}</div>' if desc and i % 3 == 0 else ''}
+          <div class="pin-reason">{match_reason[:120]}</div>
+          <a href="{e.get('url','#')}" target="_blank" class="pin-link">View event &rarr;</a>
+        </div>\n"""
+
+    body = f"""
+<style>
+body {{ background: #faf5ef; }}
+.pin-wrap {{ max-width: 1060px; margin: 0 auto; padding: 16px 20px 60px; }}
+.pin-back {{ font-size: 12px; color: #a3a3a3; text-decoration: none; }}
+.pin-back:hover {{ color: #737373; }}
+.pin-header {{ text-align: center; margin: 20px 0 32px; }}
+.pin-header h1 {{ font-size: 32px; font-weight: 900; color: #1c1917; letter-spacing: -1px; }}
+.pin-header p {{ font-size: 14px; color: #a3a3a3; margin-top: 4px; }}
+.pin-grid {{ column-count: 3; column-gap: 20px; }}
+@media (max-width: 800px) {{ .pin-grid {{ column-count: 2; }} }}
+@media (max-width: 500px) {{ .pin-grid {{ column-count: 1; }} }}
+.pin-card {{ break-inside: avoid; border-radius: 16px; padding: 24px; margin-bottom: 20px;
+             position: relative; transition: transform .2s, box-shadow .2s; cursor: default; }}
+.pin-card:hover {{ transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,.1); }}
+.pin-card:hover .pin-reason {{ max-height: 60px; opacity: 1; margin-top: 10px; }}
+.pin-emoji {{ font-size: 36px; margin-bottom: 12px; }}
+.pin-score {{ position: absolute; top: 16px; right: 16px; font-size: 13px; font-weight: 800;
+              padding: 4px 10px; border-radius: 20px; }}
+.pin-title {{ font-size: 16px; font-weight: 800; line-height: 1.3; margin-bottom: 8px; }}
+.pin-venue {{ font-size: 13px; color: var(--card-fg); opacity: .7; margin-bottom: 2px; }}
+.pin-time {{ font-size: 12px; color: var(--card-fg); opacity: .6; margin-bottom: 4px; }}
+.pin-price {{ font-size: 12px; font-weight: 700; color: var(--card-fg); opacity: .8; }}
+.pin-desc {{ font-size: 12px; color: var(--card-fg); opacity: .5; line-height: 1.4; margin-top: 8px; }}
+.pin-reason {{ font-size: 11px; color: var(--card-fg); opacity: 0; max-height: 0; overflow: hidden;
+               transition: all .25s ease; line-height: 1.4; font-style: italic; }}
+.pin-link {{ display: inline-block; margin-top: 12px; font-size: 12px; font-weight: 700;
+             color: var(--card-fg); text-decoration: none; opacity: .7; }}
+.pin-link:hover {{ opacity: 1; }}
+</style>
+<div class="pin-wrap">
+  <a href="/variants" class="pin-back">&larr; All variants</a>
+  <div class="pin-header">
+    <h1>Your Event Board</h1>
+    <p>{len(events)} curated picks this week</p>
+  </div>
+  <div class="pin-grid">
+    {cards if cards else '<p style="color:#a3a3a3;text-align:center;padding:40px;column-span:all;">No events yet &mdash; run the pipeline first.</p>'}
+  </div>
+</div>"""
+    resp = HTMLResponse(_layout("Calendar — Cards", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/calendar/minimal", response_class=HTMLResponse)
+async def v_calendar_minimal(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    events = _get_variant_events()
+
+    # Group by day
+    from collections import defaultdict
+    day_groups = defaultdict(list)
+    for e in events:
+        try:
+            dt = datetime.fromisoformat(e.get("start_time", ""))
+            day_key = dt.strftime("%A, %B %-d")
+            day_groups[day_key].append((e, dt))
+        except Exception:
+            day_groups["Other"].append((e, None))
+
+    sections = ""
+    idx = 0
+    for day, items in day_groups.items():
+        rows = ""
+        for e, dt in items:
+            score = int(e.get("score") or 0)
+            bar_color = "#22c55e" if score >= 70 else "#eab308" if score >= 40 else "#ef4444"
+            bar_width = max(3, score)
+            time_str = dt.strftime("%-I:%M %p") if dt else ""
+            title = e.get("title", "")[:70]
+            loc = e.get("location_name", "")[:45]
+            match_reason = e.get("match_reason", "")
+            desc = e.get("description", "")[:180]
+            price = e.get("price") or "Free"
+            url = e.get("url", "#")
+
+            rows += f"""<div class="mn-row" onclick="this.classList.toggle(&apos;mn-expanded&apos;)">
+              <div class="mn-bar" style="background:{bar_color};height:{bar_width}%;"></div>
+              <div class="mn-main">
+                <div class="mn-top">
+                  <span class="mn-title">{title}</span>
+                  <span class="mn-time">{time_str}</span>
+                </div>
+                <div class="mn-loc">{loc}</div>
+                <div class="mn-detail">
+                  <div class="mn-detail-row"><span class="mn-label">Score</span> <span class="mn-val">{score}/100</span></div>
+                  <div class="mn-detail-row"><span class="mn-label">Price</span> <span class="mn-val">{price}</span></div>
+                  {f'<div class="mn-detail-row"><span class="mn-label">Why</span> <span class="mn-val mn-reason">{match_reason[:150]}</span></div>' if match_reason else ''}
+                  {f'<div class="mn-detail-row"><span class="mn-val mn-desc">{desc}</span></div>' if desc else ''}
+                  <a href="{url}" target="_blank" class="mn-ext">Open event &nearr;</a>
+                </div>
+              </div>
+            </div>\n"""
+            idx += 1
+
+        sections += f"""<div class="mn-day">
+          <div class="mn-day-label">{day}</div>
+          {rows}
+        </div>\n"""
+
+    body = f"""
+<style>
+body {{ background: #ffffff; }}
+.mn-wrap {{ max-width: 680px; margin: 0 auto; padding: 20px 24px 80px; font-family: -apple-system, 'Inter', sans-serif; }}
+.mn-back {{ font-size: 12px; color: #d4d4d4; text-decoration: none; }}
+.mn-back:hover {{ color: #a3a3a3; }}
+.mn-header {{ margin: 32px 0 40px; }}
+.mn-header h1 {{ font-size: 28px; font-weight: 700; color: #171717; letter-spacing: -0.5px; }}
+.mn-header p {{ font-size: 13px; color: #d4d4d4; margin-top: 4px; }}
+.mn-day {{ margin-bottom: 32px; }}
+.mn-day-label {{ font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 12px;
+                 font-weight: 600; color: #a3a3a3; letter-spacing: 0.5px; padding-bottom: 8px;
+                 border-bottom: 1px solid #f5f5f5; margin-bottom: 4px; }}
+.mn-row {{ display: flex; align-items: stretch; padding: 12px 0; border-bottom: 1px solid #fafafa;
+           cursor: pointer; transition: background .15s; position: relative; }}
+.mn-row:hover {{ background: #fafafa; }}
+.mn-bar {{ width: 3px; border-radius: 3px; flex-shrink: 0; margin-right: 16px; min-height: 100%;
+           transition: width .15s; }}
+.mn-row:hover .mn-bar {{ width: 4px; }}
+.mn-main {{ flex: 1; min-width: 0; }}
+.mn-top {{ display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }}
+.mn-title {{ font-size: 15px; font-weight: 600; color: #171717; line-height: 1.4; }}
+.mn-time {{ font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 12px;
+            color: #a3a3a3; white-space: nowrap; flex-shrink: 0; }}
+.mn-loc {{ font-size: 13px; color: #a3a3a3; margin-top: 2px; }}
+.mn-detail {{ max-height: 0; overflow: hidden; transition: max-height .3s ease, opacity .2s ease;
+              opacity: 0; margin-top: 0; }}
+.mn-expanded .mn-detail {{ max-height: 300px; opacity: 1; margin-top: 10px; }}
+.mn-detail-row {{ display: flex; gap: 8px; margin-bottom: 4px; font-size: 13px; }}
+.mn-label {{ color: #a3a3a3; font-weight: 600; min-width: 44px; flex-shrink: 0; }}
+.mn-val {{ color: #525252; }}
+.mn-reason {{ font-style: italic; line-height: 1.4; }}
+.mn-desc {{ color: #a3a3a3; font-size: 12px; line-height: 1.5; }}
+.mn-ext {{ display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 600;
+           color: #2563eb; text-decoration: none; }}
+.mn-ext:hover {{ color: #1d4ed8; }}
+/* Expand hint */
+.mn-row::after {{ content: '+'; position: absolute; right: 0; top: 14px; font-size: 14px;
+                  color: #e5e5e5; font-weight: 300; transition: transform .2s; }}
+.mn-expanded::after {{ content: '-'; color: #a3a3a3; }}
+</style>
+<div class="mn-wrap">
+  <a href="/variants" class="mn-back">&larr; All variants</a>
+  <div class="mn-header">
+    <h1>This Week</h1>
+    <p>{len(events)} events</p>
+  </div>
+  {sections if sections else '<p style="color:#d4d4d4;text-align:center;padding:40px 0;">No events yet &mdash; run the pipeline first.</p>'}
+</div>"""
+    resp = HTMLResponse(_layout("Calendar — Minimal", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/calendar/spotify", response_class=HTMLResponse)
+async def v_calendar_spotify(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    events = _get_variant_events()
+
+    # Group events into time buckets
+    from collections import defaultdict
+    top_pick = events[0] if events else None
+    weekend_events = []
+    weeknight_events = []
+    for e in events[1:] if top_pick else []:
+        try:
+            dt = datetime.fromisoformat(e.get("start_time", ""))
+            if dt.weekday() >= 5:  # Sat/Sun
+                weekend_events.append(e)
+            else:
+                weeknight_events.append(e)
+        except Exception:
+            weeknight_events.append(e)
+
+    def _vibe_color(vibe: str) -> str:
+        v = (vibe or "").lower()
+        if "social" in v:
+            return "#1DB954"
+        if "intellectual" in v:
+            return "#B3A1FF"
+        return "#FF6B6B"
+
+    def _score_ring(score: int, color: str) -> str:
+        pct = min(100, max(0, score))
+        deg = int(pct * 3.6)
+        return f"""<div class="sp-ring" style="background:conic-gradient({color} {deg}deg, #2a2a2a {deg}deg);">
+          <div class="sp-ring-inner">{score}</div>
+        </div>"""
+
+    def _event_card(e: dict, idx: int) -> str:
+        score = int(e.get("score") or 0)
+        vibe = e.get("vibe", "mixed")
+        vc = _vibe_color(vibe)
+        title = e.get("title", "")[:65]
+        loc = e.get("location_name", "")[:40]
+        price = e.get("price") or "Free"
+        url = e.get("url", "#")
+        try:
+            dt = datetime.fromisoformat(e.get("start_time", ""))
+            time_str = dt.strftime("%a %-I:%M %p")
+        except Exception:
+            time_str = ""
+        return f"""<div class="sp-card" style="animation-delay:{idx*0.08}s;">
+          <div class="sp-card-left">
+            {_score_ring(score, vc)}
+          </div>
+          <div class="sp-card-body">
+            <a href="{url}" target="_blank" class="sp-card-title">{title}</a>
+            <div class="sp-card-meta">
+              <span class="sp-vibe-dot" style="background:{vc};"></span>
+              <span>{vibe}</span>
+              <span class="sp-sep">&bull;</span>
+              <span>{time_str}</span>
+              <span class="sp-sep">&bull;</span>
+              <span>{price}</span>
+            </div>
+            <div class="sp-card-loc">{loc}</div>
+          </div>
+        </div>"""
+
+    # Hero section for top pick
+    hero_html = ""
+    if top_pick:
+        tp_score = int(top_pick.get("score") or 0)
+        tp_vibe = top_pick.get("vibe", "mixed")
+        tp_vc = _vibe_color(tp_vibe)
+        tp_title = top_pick.get("title", "")[:80]
+        tp_loc = top_pick.get("location_name", "")[:50]
+        tp_reason = top_pick.get("match_reason", "")[:200]
+        tp_price = top_pick.get("price") or "Free"
+        tp_url = top_pick.get("url", "#")
+        try:
+            tp_dt = datetime.fromisoformat(top_pick.get("start_time", ""))
+            tp_time = tp_dt.strftime("%A, %B %-d &middot; %-I:%M %p")
+        except Exception:
+            tp_time = ""
+        hero_html = f"""<div class="sp-hero">
+          <div class="sp-hero-glow" style="background:radial-gradient(ellipse at center, {tp_vc}33 0%, transparent 70%);"></div>
+          <div class="sp-hero-label">Your Top Pick</div>
+          <h2 class="sp-hero-title">{tp_title}</h2>
+          <div class="sp-hero-time">{tp_time}</div>
+          <div class="sp-hero-loc">{tp_loc}</div>
+          <div class="sp-hero-ring-wrap">
+            <div class="sp-hero-ring" style="background:conic-gradient({tp_vc} {int(tp_score*3.6)}deg, #2a2a2a {int(tp_score*3.6)}deg);">
+              <div class="sp-hero-ring-inner">{tp_score}</div>
+            </div>
+            <span class="sp-hero-vibe" style="color:{tp_vc};">{tp_vibe}</span>
+            <span class="sp-hero-price">{tp_price}</span>
+          </div>
+          {f'<div class="sp-hero-reason">{tp_reason}</div>' if tp_reason else ''}
+          <a href="{tp_url}" target="_blank" class="sp-hero-btn" style="background:{tp_vc};">Open Event</a>
+        </div>"""
+
+    def _section(label: str, items: list, start_idx: int) -> str:
+        if not items:
+            return ""
+        cards = "".join(_event_card(e, start_idx + i) for i, e in enumerate(items))
+        return f"""<div class="sp-section">
+          <h3 class="sp-section-label">{label}</h3>
+          {cards}
+        </div>"""
+
+    sections = _section("This Weekend", weekend_events, 0)
+    sections += _section("Weeknight Gems", weeknight_events, len(weekend_events))
+
+    body = f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
+body {{ background: #121212 !important; color: #ffffff; }}
+.sp-wrap {{ max-width: 640px; margin: 0 auto; padding: 20px 20px 80px; font-family: 'Inter', -apple-system, sans-serif; }}
+.sp-back {{ font-size: 12px; color: #535353; text-decoration: none; transition: color .2s; }}
+.sp-back:hover {{ color: #b3b3b3; }}
+.sp-header {{ margin: 24px 0 0; }}
+.sp-header h1 {{ font-size: 32px; font-weight: 900; letter-spacing: -1px; background: linear-gradient(135deg, #1DB954, #B3A1FF, #FF6B6B);
+                 -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }}
+.sp-header p {{ font-size: 13px; color: #535353; margin-top: 4px; }}
+/* Hero */
+.sp-hero {{ position: relative; background: #181818; border-radius: 16px; padding: 40px 32px 32px;
+            margin: 28px 0 36px; overflow: hidden; }}
+.sp-hero-glow {{ position: absolute; top: -60px; left: 50%; transform: translateX(-50%); width: 400px;
+                 height: 300px; pointer-events: none; z-index: 0; }}
+.sp-hero > * {{ position: relative; z-index: 1; }}
+.sp-hero-label {{ font-size: 11px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase;
+                  color: #b3b3b3; margin-bottom: 12px; }}
+.sp-hero-title {{ font-size: 28px; font-weight: 900; letter-spacing: -0.5px; line-height: 1.2; margin-bottom: 8px; }}
+.sp-hero-time {{ font-size: 14px; color: #b3b3b3; font-weight: 600; }}
+.sp-hero-loc {{ font-size: 13px; color: #535353; margin-top: 2px; }}
+.sp-hero-ring-wrap {{ display: flex; align-items: center; gap: 16px; margin: 20px 0 16px; }}
+.sp-hero-ring {{ width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center;
+                 justify-content: center; flex-shrink: 0; }}
+.sp-hero-ring-inner {{ width: 50px; height: 50px; border-radius: 50%; background: #181818;
+                       display: flex; align-items: center; justify-content: center;
+                       font-size: 22px; font-weight: 900; color: #fff; }}
+.sp-hero-vibe {{ font-size: 14px; font-weight: 700; text-transform: capitalize; }}
+.sp-hero-price {{ font-size: 13px; color: #b3b3b3; }}
+.sp-hero-reason {{ font-size: 13px; color: #b3b3b3; line-height: 1.5; margin-top: 8px;
+                   font-style: italic; border-left: 3px solid #333; padding-left: 12px; }}
+.sp-hero-btn {{ display: inline-block; margin-top: 16px; padding: 10px 28px; border-radius: 500px;
+                color: #000; font-size: 14px; font-weight: 800; text-decoration: none;
+                letter-spacing: 0.5px; transition: transform .15s, opacity .15s; }}
+.sp-hero-btn:hover {{ transform: scale(1.04); opacity: .9; }}
+/* Sections */
+.sp-section {{ margin-bottom: 32px; }}
+.sp-section-label {{ font-size: 22px; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 16px; color: #fff; }}
+/* Cards */
+.sp-card {{ display: flex; gap: 16px; align-items: center; background: #181818; border-radius: 12px;
+            padding: 16px; margin-bottom: 8px; transition: background .2s, transform .15s;
+            animation: sp-fadein .4s ease both; }}
+.sp-card:hover {{ background: #282828; transform: translateX(4px); }}
+@keyframes sp-fadein {{ from {{ opacity: 0; transform: translateY(8px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+.sp-card-left {{ flex-shrink: 0; }}
+.sp-ring {{ width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center;
+            justify-content: center; }}
+.sp-ring-inner {{ width: 34px; height: 34px; border-radius: 50%; background: #181818;
+                  display: flex; align-items: center; justify-content: center;
+                  font-size: 14px; font-weight: 800; color: #fff; }}
+.sp-card:hover .sp-ring-inner {{ background: #282828; }}
+.sp-card-body {{ flex: 1; min-width: 0; }}
+.sp-card-title {{ font-size: 15px; font-weight: 700; color: #fff; text-decoration: none;
+                  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.sp-card-title:hover {{ text-decoration: underline; }}
+.sp-card-meta {{ display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: #b3b3b3; }}
+.sp-vibe-dot {{ width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }}
+.sp-sep {{ color: #535353; }}
+.sp-card-loc {{ font-size: 12px; color: #535353; margin-top: 2px; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }}
+/* Empty */
+.sp-empty {{ text-align: center; padding: 60px 20px; color: #535353; font-size: 14px; }}
+</style>
+<div class="sp-wrap">
+  <a href="/variants" class="sp-back">&larr; All variants</a>
+  <div class="sp-header">
+    <h1>Your Week, Wrapped</h1>
+    <p>{len(events)} events curated for you</p>
+  </div>
+  {hero_html}
+  {sections if sections else '<div class="sp-empty">No events yet &mdash; run the pipeline first.</div>'}
+</div>"""
+    resp = HTMLResponse(_layout("Calendar — Spotify", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/calendar/map", response_class=HTMLResponse)
+async def v_calendar_map(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    events = _get_variant_events()
+
+    # Neighborhood keyword matching
+    NEIGHBORHOODS = {
+        "Cambridge": ["cambridge", "central sq", "harvard sq", "kendall", "porter sq", "inman", "mit ", "mass ave"],
+        "Somerville": ["somerville", "davis sq", "union sq", "assembly"],
+        "Back Bay": ["back bay", "newbury", "copley", "boylston"],
+        "Fenway": ["fenway", "lansdowne", "kenmore"],
+        "South End": ["south end", "tremont", "washington st"],
+        "Seaport": ["seaport", "waterfront", "fan pier", "ica"],
+        "Downtown": ["downtown", "faneuil", "government center", "park st", "state st", "chinatown", "theater district"],
+        "Allston / Brighton": ["allston", "brighton", "harvard ave"],
+        "Jamaica Plain": ["jamaica plain", "jp ", "centre st"],
+        "Brookline": ["brookline", "coolidge"],
+    }
+
+    from collections import defaultdict
+    area_groups: dict[str, list[dict]] = defaultdict(list)
+    for e in events:
+        loc = (e.get("location_name") or "").lower()
+        matched = False
+        for area, keywords in NEIGHBORHOODS.items():
+            if any(kw in loc for kw in keywords):
+                area_groups[area].append(e)
+                matched = True
+                break
+        if not matched:
+            if loc.strip():
+                area_groups["Other"].append(e)
+            else:
+                area_groups["Online / TBD"].append(e)
+
+    # Sort areas by event count descending
+    sorted_areas = sorted(area_groups.items(), key=lambda x: -len(x[1]))
+
+    area_colors = {
+        "Cambridge": "#3b82f6", "Somerville": "#8b5cf6", "Back Bay": "#ec4899",
+        "Fenway": "#f97316", "South End": "#ef4444", "Seaport": "#06b6d4",
+        "Downtown": "#eab308", "Allston / Brighton": "#84cc16",
+        "Jamaica Plain": "#10b981", "Brookline": "#6366f1",
+        "Other": "#9ca3af", "Online / TBD": "#d1d5db",
+    }
+
+    sections_html = ""
+    for area, items in sorted_areas:
+        ac = area_colors.get(area, "#9ca3af")
+        event_rows = ""
+        for e in items:
+            score = int(e.get("score") or 0)
+            dot_color = "#22c55e" if score >= 70 else "#eab308" if score >= 40 else "#ef4444"
+            title = e.get("title", "")[:60]
+            loc_name = e.get("location_name", "")[:50]
+            price = e.get("price") or "Free"
+            url = e.get("url", "#")
+            vibe = (e.get("vibe") or "").capitalize()
+            try:
+                dt = datetime.fromisoformat(e.get("start_time", ""))
+                time_str = dt.strftime("%a %-I:%M %p")
+            except Exception:
+                time_str = ""
+            event_rows += f"""<div class="mp-event">
+              <div class="mp-dot" style="background:{dot_color};"></div>
+              <div class="mp-event-body">
+                <a href="{url}" target="_blank" class="mp-event-title">{title}</a>
+                <div class="mp-event-detail">
+                  <span>{time_str}</span>
+                  {f'<span class="mp-pipe">|</span><span>{loc_name}</span>' if loc_name else ''}
+                  <span class="mp-pipe">|</span><span>{price}</span>
+                  {f'<span class="mp-pipe">|</span><span class="mp-vibe">{vibe}</span>' if vibe else ''}
+                </div>
+              </div>
+              <div class="mp-score" style="color:{dot_color};">{score}</div>
+            </div>"""
+        sections_html += f"""<div class="mp-area">
+          <div class="mp-area-header">
+            <div class="mp-area-icon" style="background:{ac};"></div>
+            <h3 class="mp-area-name">{area}</h3>
+            <span class="mp-area-count">{len(items)} event{'s' if len(items) != 1 else ''}</span>
+          </div>
+          {event_rows}
+        </div>"""
+
+    body = f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+body {{ background: #f8fafc !important; }}
+.mp-wrap {{ max-width: 720px; margin: 0 auto; padding: 20px 24px 80px; font-family: 'Inter', -apple-system, sans-serif; }}
+.mp-back {{ font-size: 12px; color: #9ca3af; text-decoration: none; }}
+.mp-back:hover {{ color: #6b7280; }}
+.mp-header {{ margin: 20px 0 8px; }}
+.mp-header h1 {{ font-size: 24px; font-weight: 700; color: #111827; letter-spacing: -0.5px; }}
+.mp-header p {{ font-size: 13px; color: #9ca3af; margin-top: 2px; }}
+.mp-legend {{ display: flex; gap: 16px; margin: 16px 0 24px; font-size: 12px; color: #6b7280; }}
+.mp-legend-item {{ display: flex; align-items: center; gap: 4px; }}
+.mp-legend-dot {{ width: 8px; height: 8px; border-radius: 50%; }}
+/* Area sections */
+.mp-area {{ background: #ffffff; border-radius: 12px; padding: 0; margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }}
+.mp-area-header {{ display: flex; align-items: center; gap: 10px; padding: 14px 20px;
+                   border-bottom: 1px solid #f3f4f6; }}
+.mp-area-icon {{ width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }}
+.mp-area-name {{ font-size: 15px; font-weight: 700; color: #111827; flex: 1; }}
+.mp-area-count {{ font-size: 12px; color: #9ca3af; font-weight: 500; background: #f3f4f6;
+                  padding: 2px 10px; border-radius: 10px; }}
+/* Event rows */
+.mp-event {{ display: flex; align-items: center; gap: 12px; padding: 12px 20px;
+             border-bottom: 1px solid #f9fafb; transition: background .15s; }}
+.mp-event:last-child {{ border-bottom: none; }}
+.mp-event:hover {{ background: #f9fafb; }}
+.mp-dot {{ width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }}
+.mp-event-body {{ flex: 1; min-width: 0; }}
+.mp-event-title {{ font-size: 14px; font-weight: 600; color: #111827; text-decoration: none;
+                   display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.mp-event-title:hover {{ color: #3b82f6; }}
+.mp-event-detail {{ display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; font-size: 12px; color: #9ca3af; }}
+.mp-pipe {{ color: #e5e7eb; }}
+.mp-vibe {{ text-transform: capitalize; font-weight: 500; }}
+.mp-score {{ font-size: 14px; font-weight: 700; flex-shrink: 0; min-width: 28px; text-align: right; }}
+.mp-empty {{ text-align: center; padding: 60px 20px; color: #9ca3af; font-size: 14px; }}
+</style>
+<div class="mp-wrap">
+  <a href="/variants" class="mp-back">&larr; All variants</a>
+  <div class="mp-header">
+    <h1>Events by Neighborhood</h1>
+    <p>{len(events)} events across {len(sorted_areas)} areas</p>
+  </div>
+  <div class="mp-legend">
+    <div class="mp-legend-item"><div class="mp-legend-dot" style="background:#22c55e;"></div> High score</div>
+    <div class="mp-legend-item"><div class="mp-legend-dot" style="background:#eab308;"></div> Medium</div>
+    <div class="mp-legend-item"><div class="mp-legend-dot" style="background:#ef4444;"></div> Low</div>
+  </div>
+  {sections_html if sections_html else '<div class="mp-empty">No events yet &mdash; run the pipeline first.</div>'}
+</div>"""
+    resp = HTMLResponse(_layout("Calendar — Map", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/calendar/social", response_class=HTMLResponse)
+async def v_calendar_social(request: Request):
+    db = get_db()
+    current_user = _get_current_user(request)
+    events = _get_variant_events()
+
+    # Get friend RSVPs
+    user_id = current_user["id"] if current_user else 1
+    runs = db.get_runs()
+    run_id = runs[0]["id"] if runs else 0
+    friend_rsvps = db.get_friend_rsvps_for_run(user_id, run_id) if run_id else {}
+
+    # Categorize events
+    friends_going = []
+    bring_a_friend = []
+    solo_adventures = []
+    for e in events:
+        eid = e.get("event_id", "")
+        friends = friend_rsvps.get(eid, [])
+        friend_score = int(e.get("friend_score") or 0)
+        discovery_score = int(e.get("discovery_score") or 0)
+        if friends:
+            e["_friends"] = friends
+            friends_going.append(e)
+        elif friend_score >= 10:
+            bring_a_friend.append(e)
+        else:
+            solo_adventures.append(e)
+
+    def _initials(name: str) -> str:
+        parts = name.replace("?", "").replace("\u2605", "").strip().split()
+        if len(parts) >= 2:
+            return (parts[0][0] + parts[1][0]).upper()
+        return parts[0][0].upper() if parts else "?"
+
+    def _avatar_html(friends: list[str]) -> str:
+        avatars = ""
+        colors = ["#f97316", "#8b5cf6", "#06b6d4", "#ec4899", "#10b981"]
+        for i, f in enumerate(friends[:5]):
+            initials = _initials(f)
+            c = colors[i % len(colors)]
+            going = "\u2605" in f
+            border = f"border:2px solid {c};" if going else f"border:2px dashed {c};"
+            avatars += f'<div class="sc-avatar" style="background:{c}22;color:{c};{border}z-index:{5-i};margin-left:{"-8px" if i > 0 else "0"};">{initials}</div>'
+        count = len(friends)
+        label = f"{count} friend{'s' if count != 1 else ''} going"
+        return f'<div class="sc-avatars">{avatars}<span class="sc-friend-label">{label}</span></div>'
+
+    def _social_card(e: dict, show_friends: bool = False, badge: str = "") -> str:
+        score = int(e.get("score") or 0)
+        title = e.get("title", "")[:60]
+        loc = e.get("location_name", "")[:45]
+        price = e.get("price") or "Free"
+        url = e.get("url", "#")
+        vibe = (e.get("vibe") or "").capitalize()
+        friend_score = int(e.get("friend_score") or 0)
+        discovery_score = int(e.get("discovery_score") or 0)
+        match_reason = e.get("match_reason", "")[:120]
+        try:
+            dt = datetime.fromisoformat(e.get("start_time", ""))
+            time_str = dt.strftime("%a %b %-d, %-I:%M %p")
+        except Exception:
+            time_str = ""
+        friends_html = _avatar_html(e.get("_friends", [])) if show_friends and e.get("_friends") else ""
+        badge_html = f'<span class="sc-badge">{badge}</span>' if badge else ""
+        return f"""<div class="sc-card">
+          <div class="sc-card-top">
+            <div class="sc-card-info">
+              {badge_html}
+              <a href="{url}" target="_blank" class="sc-card-title">{title}</a>
+              <div class="sc-card-when">{time_str}</div>
+              <div class="sc-card-where">{loc}</div>
+            </div>
+            <div class="sc-card-score">{score}</div>
+          </div>
+          {friends_html}
+          <div class="sc-card-footer">
+            <span class="sc-tag">{vibe}</span>
+            <span class="sc-tag">{price}</span>
+            {f'<span class="sc-tag sc-tag-friend">Group-friendly ({friend_score}/15)</span>' if friend_score >= 8 else ''}
+            {f'<span class="sc-tag sc-tag-discover">Discovery ({discovery_score}/15)</span>' if discovery_score >= 8 else ''}
+          </div>
+          {f'<div class="sc-card-reason">{match_reason}</div>' if match_reason else ''}
+        </div>"""
+
+    def _section(icon: str, title: str, subtitle: str, items: list, show_friends: bool, badge: str) -> str:
+        if not items:
+            return ""
+        cards = "".join(_social_card(e, show_friends=show_friends, badge=badge) for e in items)
+        return f"""<div class="sc-section">
+          <div class="sc-section-header">
+            <span class="sc-section-icon">{icon}</span>
+            <div>
+              <h3 class="sc-section-title">{title}</h3>
+              <p class="sc-section-sub">{subtitle}</p>
+            </div>
+          </div>
+          {cards}
+        </div>"""
+
+    sections_html = ""
+    sections_html += _section(
+        "&#x1F44B;", "Friends Going",
+        f"{len(friends_going)} events your group-mates RSVP&apos;d to",
+        friends_going, show_friends=True, badge="")
+    sections_html += _section(
+        "&#x1F91D;", "Bring a Friend",
+        "High group-friendliness &mdash; great for plans with others",
+        bring_a_friend, show_friends=False, badge="Great for groups")
+    sections_html += _section(
+        "&#x1F9ED;", "Solo Adventures",
+        "High discovery potential &mdash; try something new on your own",
+        solo_adventures, show_friends=False, badge="Solo pick")
+
+    body = f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+body {{ background: #FFF7F5 !important; }}
+.sc-wrap {{ max-width: 680px; margin: 0 auto; padding: 20px 20px 80px; font-family: 'Inter', -apple-system, sans-serif; }}
+.sc-back {{ font-size: 12px; color: #d4a89a; text-decoration: none; }}
+.sc-back:hover {{ color: #c97b68; }}
+.sc-header {{ margin: 20px 0 28px; }}
+.sc-header h1 {{ font-size: 26px; font-weight: 800; color: #1a1a1a; letter-spacing: -0.5px; }}
+.sc-header p {{ font-size: 13px; color: #c4a69a; margin-top: 4px; }}
+/* Section */
+.sc-section {{ margin-bottom: 32px; }}
+.sc-section-header {{ display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }}
+.sc-section-icon {{ font-size: 24px; }}
+.sc-section-title {{ font-size: 18px; font-weight: 800; color: #1a1a1a; }}
+.sc-section-sub {{ font-size: 12px; color: #b0917e; margin-top: 1px; }}
+/* Card */
+.sc-card {{ background: #ffffff; border-radius: 16px; padding: 18px 20px 14px; margin-bottom: 10px;
+            box-shadow: 0 1px 4px rgba(180,120,90,.08); transition: transform .15s, box-shadow .15s; }}
+.sc-card:hover {{ transform: translateY(-2px); box-shadow: 0 4px 16px rgba(180,120,90,.12); }}
+.sc-card-top {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }}
+.sc-card-info {{ flex: 1; min-width: 0; }}
+.sc-card-title {{ font-size: 15px; font-weight: 700; color: #1a1a1a; text-decoration: none;
+                  display: block; line-height: 1.3; }}
+.sc-card-title:hover {{ color: #f97316; }}
+.sc-card-when {{ font-size: 12px; color: #b0917e; margin-top: 4px; font-weight: 500; }}
+.sc-card-where {{ font-size: 12px; color: #d4bfb3; margin-top: 1px; }}
+.sc-card-score {{ font-size: 22px; font-weight: 800; color: #f97316; flex-shrink: 0; }}
+/* Badge */
+.sc-badge {{ display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+             letter-spacing: 1px; background: #FFF0EB; color: #f97316; padding: 2px 8px;
+             border-radius: 6px; margin-bottom: 4px; }}
+/* Avatars */
+.sc-avatars {{ display: flex; align-items: center; margin: 10px 0 4px; }}
+.sc-avatar {{ width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center;
+              justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }}
+.sc-friend-label {{ font-size: 12px; color: #b0917e; margin-left: 10px; font-weight: 500; }}
+/* Footer tags */
+.sc-card-footer {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }}
+.sc-tag {{ font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
+           background: #f5ebe7; color: #8b6e5d; text-transform: capitalize; }}
+.sc-tag-friend {{ background: #FFF0EB; color: #f97316; }}
+.sc-tag-discover {{ background: #EFF6FF; color: #3b82f6; }}
+/* Reason */
+.sc-card-reason {{ font-size: 12px; color: #c4a69a; line-height: 1.5; margin-top: 8px;
+                   font-style: italic; padding-left: 10px; border-left: 2px solid #f5ebe7; }}
+/* Empty */
+.sc-empty {{ text-align: center; padding: 60px 20px; color: #d4bfb3; font-size: 14px; }}
+</style>
+<div class="sc-wrap">
+  <a href="/variants" class="sc-back">&larr; All variants</a>
+  <div class="sc-header">
+    <h1>Social Calendar</h1>
+    <p>{len(events)} events &mdash; {len(friends_going)} with friends, {len(bring_a_friend)} group-friendly, {len(solo_adventures)} solo</p>
+  </div>
+  {sections_html if sections_html else '<div class="sc-empty">No events yet &mdash; run the pipeline first.</div>'}
+</div>"""
+    resp = HTMLResponse(_layout("Calendar — Social", body, current_user))
     return _maybe_set_cookie(request, resp, current_user)
 
 
@@ -5902,3 +6946,1001 @@ html, body {{ background: #0f0f1a !important; color: #e2e8f0; }}
 </nav>"""
     resp = HTMLResponse(_layout("Profile — App", app_body, current_user))
     return _maybe_set_cookie(request, resp, current_user)
+
+
+# ─── Admin: North Star Metrics ────────────────────────────────────────────────
+
+@app.get("/admin/metrics", response_class=HTMLResponse)
+async def admin_metrics(request: Request, days: int = 90):
+    db = get_db()
+    metrics = db.get_north_star_metrics(user_id=1, days=days)
+
+    run_rows = ""
+    for rs in metrics["run_stats"]:
+        att = rs.get("attended_count") or 0
+        kept = rs.get("kept") or 0
+        rate = f"{att/max(kept,1)*100:.0f}%" if kept else "—"
+        avg_r = f"{rs['avg_rating']:.1f}" if rs.get("avg_rating") else "—"
+        run_rows += f"""<tr>
+          <td>{(rs.get("timestamp") or "")[:10]}</td>
+          <td>{kept}</td>
+          <td>{att}</td>
+          <td>{rate}</td>
+          <td>{avg_r}</td>
+        </tr>"""
+
+    ns = metrics["north_star"]
+    ns_color = "#22c55e" if ns >= 10 else ("#f59e0b" if ns >= 5 else "#ef4444")
+    ar = metrics["attend_rate"]
+    dr = metrics["discovery_rate"]
+
+    body = f"""
+<div style="max-width:900px;margin:0 auto;padding:24px 16px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+    <a href="/admin" style="color:#6b7280;font-size:13px;">&larr; Admin</a>
+    <h1 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">North Star Metrics</h1>
+    <form method="get" style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+      <label style="font-size:13px;color:#6b7280;">Last</label>
+      <select name="days" onchange="this.form.submit()" style="font-size:13px;padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;">
+        <option value="30" {"selected" if days==30 else ""}>30 days</option>
+        <option value="90" {"selected" if days==90 else ""}>90 days</option>
+        <option value="180" {"selected" if days==180 else ""}>180 days</option>
+        <option value="365" {"selected" if days==365 else ""}>1 year</option>
+      </select>
+    </form>
+  </div>
+
+  <!-- Big north star number -->
+  <div style="background:#f8fafc;border:2px solid {ns_color};border-radius:16px;padding:28px;margin-bottom:24px;text-align:center;">
+    <div style="font-size:48px;font-weight:900;color:{ns_color};">{ns}</div>
+    <div style="font-size:15px;font-weight:700;color:#1e293b;margin-top:4px;">North Star Score</div>
+    <div style="font-size:12px;color:#6b7280;margin-top:4px;">attend_rate × avg_rating/5 × 100</div>
+  </div>
+
+  <!-- KPI grid -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:28px;">
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#2563eb;">{ar}%</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:2px;">Attend Rate</div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#7c3aed;">{metrics["avg_rating"]}/5</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:2px;">Avg Rating</div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#059669;">{dr}%</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:2px;">Discovery Rate</div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#d97706;">{metrics["rsvps_going"]}</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:2px;">RSVPs Going</div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#6b7280;">{metrics["total_attended"]}</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:2px;">Total Attended</div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#6b7280;">{metrics["total_rated"]}</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:2px;">Rated Events</div>
+    </div>
+  </div>
+
+  <!-- Per-run table -->
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+    <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">Per-Run Stats</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="background:#f8fafc;color:#6b7280;font-size:12px;text-transform:uppercase;">
+          <th style="padding:8px 16px;text-align:left;">Date</th>
+          <th style="padding:8px;text-align:right;">Kept</th>
+          <th style="padding:8px;text-align:right;">Attended</th>
+          <th style="padding:8px;text-align:right;">Rate</th>
+          <th style="padding:8px;text-align:right;">Avg★</th>
+        </tr>
+      </thead>
+      <tbody>{run_rows or "<tr><td colspan='5' style='padding:16px;text-align:center;color:#9ca3af;'>No runs yet</td></tr>"}</tbody>
+    </table>
+  </div>
+
+  <div style="text-align:center;margin-top:16px;">
+    <a href="/admin/backtest" style="display:inline-block;padding:8px 20px;background:#2563eb;color:white;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">View Backtest &rarr;</a>
+    <a href="/admin/ranking-analysis" style="display:inline-block;margin-left:8px;padding:8px 20px;background:#7c3aed;color:white;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">Score Analysis &rarr;</a>
+  </div>
+</div>"""
+    return HTMLResponse(_layout("Metrics — Admin", body))
+
+
+# ─── Admin: Ranking Analysis ──────────────────────────────────────────────────
+
+@app.get("/admin/ranking-analysis", response_class=HTMLResponse)
+async def admin_ranking_analysis(request: Request, run_id: int | None = None):
+    db = get_db()
+    data = db.get_ranking_analysis(user_id=1, run_id=run_id)
+
+    # Build bar chart HTML for score distribution
+    buckets = data["score_buckets"]
+    kept_buckets = data["kept_buckets"]
+    labels = data["bucket_labels"]
+    max_bucket = max(buckets) if buckets else 1
+
+    bars_html = ""
+    for i, (b, k, lbl) in enumerate(zip(buckets, kept_buckets, labels)):
+        total_h = int(b / max(max_bucket, 1) * 100)
+        kept_h = int(k / max(max_bucket, 1) * 100)
+        bars_html += f"""
+        <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:0;">
+          <div style="font-size:10px;color:#6b7280;margin-bottom:2px;">{b}</div>
+          <div style="width:100%;height:100px;background:#f1f5f9;border-radius:4px 4px 0 0;position:relative;display:flex;align-items:flex-end;">
+            <div style="width:100%;height:{total_h}%;background:#e2e8f0;border-radius:4px 4px 0 0;position:relative;">
+              <div style="width:100%;height:{int(k/max(b,1)*100)}%;background:#2563eb;border-radius:4px 4px 0 0;position:absolute;bottom:0;"></div>
+            </div>
+          </div>
+          <div style="font-size:9px;color:#9ca3af;margin-top:2px;writing-mode:vertical-rl;transform:rotate(180deg);height:40px;text-align:center;">{lbl}</div>
+        </div>"""
+
+    # Dimension averages radar
+    dim_avgs = data["dim_avgs"]
+    dim_rows = ""
+    dims_order = ["interest", "social", "urgency", "logistics", "friend", "discovery", "quality"]
+    for d in dims_order:
+        val = dim_avgs.get(d) or 0
+        pct = int(val / 15 * 100)
+        color = "#2563eb" if pct >= 60 else ("#f59e0b" if pct >= 40 else "#ef4444")
+        dim_rows += f"""<div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+            <span style="color:#374151;text-transform:capitalize;">{d}</span>
+            <span style="color:#6b7280;font-weight:600;">{val:.1f}/15</span>
+          </div>
+          <div style="height:6px;background:#f1f5f9;border-radius:3px;">
+            <div style="width:{pct}%;height:100%;background:{color};border-radius:3px;"></div>
+          </div>
+        </div>"""
+
+    # Top events table
+    top_rows = ""
+    for ev in data["top_events"]:
+        score = ev.get("score") or 0
+        vibe = ev.get("vibe") or "mixed"
+        color_map = {"social": "#ec4899", "intellectual": "#2563eb", "mixed": "#059669"}
+        vc = color_map.get(vibe, "#6b7280")
+        top_rows += f"""<tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:8px 12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;">{ev.get("title","")[:60]}</td>
+          <td style="padding:8px;text-align:center;"><span style="background:#eff6ff;color:#2563eb;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:700;">{score:.0f}</span></td>
+          <td style="padding:8px;text-align:center;"><span style="background:{vc}22;color:{vc};padding:2px 8px;border-radius:12px;font-size:11px;">{vibe}</span></td>
+          <td style="padding:8px;text-align:center;font-size:11px;color:#6b7280;">{ev.get("interest_score",0):.0f}/{ev.get("social_score",0):.0f}/{ev.get("urgency_score",0):.0f}</td>
+        </tr>"""
+
+    body = f"""
+<div style="max-width:960px;margin:0 auto;padding:24px 16px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+    <a href="/admin" style="color:#6b7280;font-size:13px;">&larr; Admin</a>
+    <h1 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">Ranking Analysis</h1>
+    <span style="margin-left:auto;font-size:13px;color:#6b7280;">Run #{data.get("run_id","—")} &middot; {data["total"]} events &middot; {data["kept"]} kept</span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:28px;">
+    <!-- Score distribution -->
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:20px;">
+      <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:16px;">Score Distribution
+        <span style="margin-left:8px;font-size:11px;font-weight:400;color:#6b7280;">
+          <span style="display:inline-block;width:10px;height:10px;background:#2563eb;border-radius:2px;"></span> kept
+          <span style="margin-left:6px;display:inline-block;width:10px;height:10px;background:#e2e8f0;border-radius:2px;"></span> all
+        </span>
+      </div>
+      <div style="display:flex;gap:4px;align-items:flex-end;height:140px;">
+        {bars_html}
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:#9ca3af;text-align:center;">Keep threshold: 25</div>
+    </div>
+
+    <!-- Dimension averages -->
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:20px;">
+      <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:16px;">Avg Dim Scores (kept)</div>
+      {dim_rows or '<p style="color:#9ca3af;font-size:13px;">No data</p>'}
+    </div>
+  </div>
+
+  <!-- Top events -->
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+    <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">Top 20 Kept Events</div>
+    <table style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr style="background:#f8fafc;color:#6b7280;font-size:11px;text-transform:uppercase;">
+          <th style="padding:8px 12px;text-align:left;">Title</th>
+          <th style="padding:8px;text-align:center;">Score</th>
+          <th style="padding:8px;text-align:center;">Vibe</th>
+          <th style="padding:8px;text-align:center;">Int/Soc/Urg</th>
+        </tr>
+      </thead>
+      <tbody>{top_rows or '<tr><td colspan="4" style="padding:16px;text-align:center;color:#9ca3af;">No data</td></tr>'}</tbody>
+    </table>
+  </div>
+
+  <div style="text-align:center;margin-top:20px;">
+    <a href="/admin/pipeline" style="display:inline-block;padding:8px 20px;background:#7c3aed;color:white;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">Tune Pipeline &rarr;</a>
+  </div>
+</div>"""
+    return HTMLResponse(_layout("Ranking Analysis — Admin", body))
+
+
+# ─── Admin: Pipeline Tuning Playground ────────────────────────────────────────
+
+_DEFAULT_VIBE_WEIGHTS = {
+    "social": {"interest_score": 1.5, "social_score": 2.5, "urgency_score": 1.5,
+               "logistics_score": 1.5, "friend_score": 2.5, "discovery_score": 0.5, "quality_score": 1.0},
+    "intellectual": {"interest_score": 3.5, "social_score": 0.5, "urgency_score": 1.5,
+                     "logistics_score": 1.5, "friend_score": 0.5, "discovery_score": 1.5, "quality_score": 2.0},
+    "mixed": {"interest_score": 2.5, "social_score": 1.5, "urgency_score": 1.5,
+              "logistics_score": 1.5, "friend_score": 1.5, "discovery_score": 1.0, "quality_score": 1.0},
+}
+
+
+def _get_pipeline_config(db) -> dict:
+    """Load pipeline config from app_settings, falling back to defaults."""
+    raw = db.get_setting("pipeline_vibe_weights")
+    if raw:
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+    return _DEFAULT_VIBE_WEIGHTS
+
+
+@app.get("/api/admin/pipeline/config")
+async def api_pipeline_config_get(request: Request):
+    db = get_db()
+    config = _get_pipeline_config(db)
+    threshold = int(db.get_setting("pipeline_threshold", "25") or "25")
+    return JSONResponse({"weights": config, "threshold": threshold,
+                         "defaults": _DEFAULT_VIBE_WEIGHTS})
+
+
+@app.post("/api/admin/pipeline/config")
+async def api_pipeline_config_post(request: Request):
+    db = get_db()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    weights = body.get("weights", {})
+    threshold = body.get("threshold", 25)
+    # Validate weights structure
+    for vibe in ["social", "intellectual", "mixed"]:
+        if vibe not in weights:
+            weights[vibe] = _DEFAULT_VIBE_WEIGHTS[vibe]
+    db.set_setting("pipeline_vibe_weights", json.dumps(weights))
+    db.set_setting("pipeline_threshold", str(int(threshold)))
+    return JSONResponse({"ok": True})
+
+
+@app.get("/admin/pipeline", response_class=HTMLResponse)
+async def admin_pipeline(request: Request):
+    db = get_db()
+    config = _get_pipeline_config(db)
+    threshold = int(db.get_setting("pipeline_threshold", "25") or "25")
+
+    dims = ["interest_score", "social_score", "urgency_score", "logistics_score",
+            "friend_score", "discovery_score", "quality_score"]
+    dim_labels = ["Interest", "Social", "Urgency", "Logistics", "Friend", "Discovery", "Quality"]
+
+    sliders_by_vibe = ""
+    for vibe in ["social", "intellectual", "mixed"]:
+        vibe_weights = config.get(vibe, _DEFAULT_VIBE_WEIGHTS[vibe])
+        default_weights = _DEFAULT_VIBE_WEIGHTS[vibe]
+        vibe_color = {"social": "#ec4899", "intellectual": "#2563eb", "mixed": "#059669"}[vibe]
+        slider_rows = ""
+        for dim, label in zip(dims, dim_labels):
+            val = vibe_weights.get(dim, default_weights.get(dim, 1.0))
+            default_val = default_weights.get(dim, 1.0)
+            slider_rows += f"""
+            <div style="margin-bottom:10px;">
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+                <span style="color:#374151;">{label}</span>
+                <span id="lbl-{vibe}-{dim}" style="color:#6b7280;font-weight:600;">{val}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <input type="range" min="0.1" max="4.0" step="0.1"
+                  value="{val}" data-vibe="{vibe}" data-dim="{dim}"
+                  oninput="updateWeight(this)"
+                  style="flex:1;accent-color:{vibe_color};">
+                <button onclick="resetWeight('{vibe}','{dim}',{default_val})"
+                  style="font-size:10px;padding:2px 6px;border:1px solid #e2e8f0;background:white;border-radius:4px;cursor:pointer;color:#6b7280;">↩</button>
+              </div>
+            </div>"""
+        sliders_by_vibe += f"""
+        <div style="background:white;border:1px solid {vibe_color}44;border-left:3px solid {vibe_color};border-radius:10px;padding:18px;margin-bottom:16px;">
+          <div style="font-size:14px;font-weight:700;color:#1e293b;text-transform:capitalize;margin-bottom:14px;">{vibe} Events</div>
+          {slider_rows}
+        </div>"""
+
+    body = f"""
+<div style="max-width:820px;margin:0 auto;padding:24px 16px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+    <a href="/admin" style="color:#6b7280;font-size:13px;">&larr; Admin</a>
+    <h1 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">Pipeline Tuning</h1>
+    <span style="margin-left:auto;" id="save-status" style="font-size:13px;color:#6b7280;"></span>
+  </div>
+
+  <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#92400e;">
+    Changes here affect future pipeline runs. The weights are stored in app_settings and loaded by the ranker on each run.
+    To apply to an existing run, re-rank from the admin panel.
+  </div>
+
+  <!-- Keep threshold -->
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:20px;">
+    <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:12px;">Keep Threshold (score 0–100)</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <input type="range" min="0" max="60" step="1" value="{threshold}" id="threshold-slider"
+        oninput="document.getElementById('threshold-lbl').textContent=this.value"
+        style="flex:1;accent-color:#7c3aed;">
+      <span id="threshold-lbl" style="font-size:18px;font-weight:800;color:#7c3aed;min-width:32px;">{threshold}</span>
+    </div>
+    <div style="font-size:12px;color:#6b7280;margin-top:6px;">Events below this score are filtered out. Default: 25</div>
+  </div>
+
+  {sliders_by_vibe}
+
+  <div style="display:flex;gap:12px;margin-top:20px;">
+    <button onclick="saveConfig()" style="padding:10px 28px;background:#2563eb;color:white;border-radius:8px;font-size:14px;font-weight:700;border:none;cursor:pointer;">Save Config</button>
+    <button onclick="resetAll()" style="padding:10px 20px;background:white;color:#6b7280;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Reset to Defaults</button>
+  </div>
+</div>
+
+<script>
+const defaults = {json.dumps(_DEFAULT_VIBE_WEIGHTS)};
+let weights = JSON.parse(JSON.stringify(defaults));
+
+// Initialize from current values
+document.querySelectorAll('input[type=range][data-vibe]').forEach(el => {{
+  const vibe = el.dataset.vibe, dim = el.dataset.dim;
+  if (!weights[vibe]) weights[vibe] = {{}};
+  weights[vibe][dim] = parseFloat(el.value);
+}});
+
+function updateWeight(el) {{
+  const vibe = el.dataset.vibe, dim = el.dataset.dim, val = parseFloat(el.value);
+  if (!weights[vibe]) weights[vibe] = {{}};
+  weights[vibe][dim] = val;
+  const lbl = document.getElementById('lbl-' + vibe + '-' + dim);
+  if (lbl) lbl.textContent = val.toFixed(1);
+}}
+
+function resetWeight(vibe, dim, defaultVal) {{
+  weights[vibe][dim] = defaultVal;
+  document.querySelectorAll('input[data-vibe="' + vibe + '"][data-dim="' + dim + '"]').forEach(el => {{
+    el.value = defaultVal;
+  }});
+  const lbl = document.getElementById('lbl-' + vibe + '-' + dim);
+  if (lbl) lbl.textContent = defaultVal.toFixed(1);
+}}
+
+function resetAll() {{
+  weights = JSON.parse(JSON.stringify(defaults));
+  document.querySelectorAll('input[type=range][data-vibe]').forEach(el => {{
+    const vibe = el.dataset.vibe, dim = el.dataset.dim;
+    el.value = defaults[vibe][dim];
+    const lbl = document.getElementById('lbl-' + vibe + '-' + dim);
+    if (lbl) lbl.textContent = defaults[vibe][dim].toFixed(1);
+  }});
+  document.getElementById('threshold-slider').value = 25;
+  document.getElementById('threshold-lbl').textContent = '25';
+}}
+
+async function saveConfig() {{
+  const threshold = parseInt(document.getElementById('threshold-slider').value);
+  const resp = await fetch('/api/admin/pipeline/config', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{weights, threshold}})
+  }});
+  const data = await resp.json();
+  const btn = document.querySelector('button[onclick="saveConfig()"]');
+  if (data.ok) {{
+    btn.textContent = 'Saved!';
+    btn.style.background = '#059669';
+    setTimeout(() => {{ btn.textContent = 'Save Config'; btn.style.background = '#2563eb'; }}, 2000);
+  }} else {{
+    btn.textContent = 'Error';
+    btn.style.background = '#ef4444';
+    setTimeout(() => {{ btn.textContent = 'Save Config'; btn.style.background = '#2563eb'; }}, 2000);
+  }}
+}}
+</script>"""
+    return HTMLResponse(_layout("Pipeline Tuning — Admin", body))
+
+
+# ─── Admin: Backtest ──────────────────────────────────────────────────────────
+
+@app.get("/admin/backtest", response_class=HTMLResponse)
+async def admin_backtest(request: Request):
+    db = get_db()
+    data = db.get_backtest_data(user_id=1)
+
+    # Per-run table
+    run_rows = ""
+    for rs in data["run_stats"]:
+        kept = rs["kept"]
+        attended = rs["attended"]
+        pre = rs["precision"]
+        rec = rs["recall"]
+        pre_color = "#22c55e" if pre >= 20 else ("#f59e0b" if pre >= 10 else "#ef4444")
+        run_rows += f"""<tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:8px 12px;font-size:13px;">{rs["timestamp"]}</td>
+          <td style="padding:8px;text-align:center;font-size:13px;color:#6b7280;">{kept}</td>
+          <td style="padding:8px;text-align:center;font-size:13px;color:#6b7280;">{attended}</td>
+          <td style="padding:8px;text-align:center;">
+            <span style="color:{pre_color};font-weight:700;font-size:13px;">{pre}%</span>
+          </td>
+          <td style="padding:8px;text-align:center;font-size:13px;color:#6b7280;">{rec}%</td>
+        </tr>"""
+
+    # Dimension lift table
+    dim_rows = ""
+    dim_lift = data.get("dim_lift", {})
+    for dim, lift_data in sorted(dim_lift.items(), key=lambda x: -abs(x[1].get("lift", 0))):
+        lift = lift_data["lift"]
+        hr_high = lift_data["hr_high"]
+        hr_low = lift_data["hr_low"]
+        lift_color = "#22c55e" if lift > 5 else ("#ef4444" if lift < -2 else "#f59e0b")
+        bar_w = min(abs(lift) * 3, 80)
+        dim_rows += f"""<tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:8px 12px;font-size:13px;text-transform:capitalize;">{dim}</td>
+          <td style="padding:8px;text-align:center;font-size:12px;color:#6b7280;">{hr_high}%</td>
+          <td style="padding:8px;text-align:center;font-size:12px;color:#6b7280;">{hr_low}%</td>
+          <td style="padding:8px;text-align:center;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="width:{bar_w}px;height:8px;background:{lift_color};border-radius:4px;"></div>
+              <span style="color:{lift_color};font-weight:700;font-size:12px;">{lift:+.1f}pp</span>
+            </div>
+          </td>
+        </tr>"""
+
+    total = data["total_rankings"]
+    body = f"""
+<div style="max-width:960px;margin:0 auto;padding:24px 16px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+    <a href="/admin" style="color:#6b7280;font-size:13px;">&larr; Admin</a>
+    <h1 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">Recommendation Backtest</h1>
+    <span style="margin-left:auto;font-size:13px;color:#6b7280;">{total} ranked events in history</span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+    <!-- Per-run precision/recall -->
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+      <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">
+        Per-Run Precision & Recall
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#f8fafc;color:#6b7280;font-size:11px;text-transform:uppercase;">
+            <th style="padding:8px 12px;text-align:left;">Run</th>
+            <th style="padding:8px;text-align:center;">Kept</th>
+            <th style="padding:8px;text-align:center;">Attended</th>
+            <th style="padding:8px;text-align:center;">Precision</th>
+            <th style="padding:8px;text-align:center;">Recall</th>
+          </tr>
+        </thead>
+        <tbody>{run_rows or '<tr><td colspan="5" style="padding:16px;text-align:center;color:#9ca3af;">No run data</td></tr>'}</tbody>
+      </table>
+    </div>
+
+    <!-- Signal attribution / dimension lift -->
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+      <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">
+        Signal Attribution
+        <span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:6px;">Hit-rate lift (high vs low)</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#f8fafc;color:#6b7280;font-size:11px;text-transform:uppercase;">
+            <th style="padding:8px 12px;text-align:left;">Dimension</th>
+            <th style="padding:8px;text-align:center;">High HR</th>
+            <th style="padding:8px;text-align:center;">Low HR</th>
+            <th style="padding:8px;text-align:left;">Lift</th>
+          </tr>
+        </thead>
+        <tbody>{dim_rows or '<tr><td colspan="4" style="padding:16px;text-align:center;color:#9ca3af;">Not enough data</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ML model section -->
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin-bottom:20px;">
+    <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:10px;">ML Distillation Model</div>
+    <p style="font-size:13px;color:#6b7280;margin:0 0 12px;">Train a logistic regression to predict attendance from dimension scores.
+    Helps diagnose which signals the model over/under-weights compared to actual behavior.</p>
+    <div id="ml-result" style="font-size:13px;color:#6b7280;margin-bottom:12px;"></div>
+    <button onclick="trainML()" id="train-btn"
+      style="padding:8px 20px;background:#7c3aed;color:white;border-radius:8px;font-size:14px;font-weight:600;border:none;cursor:pointer;">
+      Train ML Model
+    </button>
+  </div>
+
+  <div style="text-align:center;">
+    <a href="/admin/metrics" style="display:inline-block;padding:8px 20px;background:#2563eb;color:white;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">&larr; Metrics</a>
+    <a href="/admin/ranking-analysis" style="display:inline-block;margin-left:8px;padding:8px 20px;background:#7c3aed;color:white;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">Score Analysis &rarr;</a>
+  </div>
+</div>
+
+<script>
+async function trainML() {{
+  const btn = document.getElementById('train-btn');
+  const res = document.getElementById('ml-result');
+  btn.disabled = true;
+  btn.textContent = 'Training...';
+  res.textContent = '';
+  try {{
+    const resp = await fetch('/api/admin/ml/train', {{method: 'POST'}});
+    const data = await resp.json();
+    if (data.ok) {{
+      let html = `<div style="color:#059669;font-weight:600;">Trained on ${{data.n_samples}} samples (${{data.n_positive}} attended)</div>`;
+      if (data.importances) {{
+        html += '<div style="margin-top:8px;"><b>Top features:</b><ul style="margin:4px 0 0 16px;padding:0;">';
+        for (const [name, coef] of Object.entries(data.importances).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).slice(0,7)) {{
+          const color = coef > 0 ? '#22c55e' : '#ef4444';
+          html += `<li style="font-size:12px;color:#374151;"><span style="color:${{color}};font-weight:700;">${{coef > 0 ? '+' : ''}}${{coef.toFixed(3)}}</span> ${{name}}</li>`;
+        }}
+        html += '</ul></div>';
+      }}
+      res.innerHTML = html;
+      btn.textContent = 'Re-train';
+    }} else {{
+      res.textContent = 'Error: ' + (data.error || 'Unknown');
+      btn.textContent = 'Train ML Model';
+    }}
+  }} catch(e) {{
+    res.textContent = 'Request failed: ' + e;
+    btn.textContent = 'Train ML Model';
+  }}
+  btn.disabled = false;
+}}
+</script>"""
+    return HTMLResponse(_layout("Backtest — Admin", body))
+
+
+@app.post("/api/admin/ml/train")
+async def api_ml_train(request: Request):
+    """Train ML model from attended history."""
+    import asyncio as _asyncio
+    settings = Settings()
+    db_path = settings.db_path
+    def _train():
+        try:
+            from recom.ranking.ml_model import MLRanker
+            # Create fresh DB connection for this thread
+            db_local = Database(db_path)
+            ranker = MLRanker()
+            return ranker.train(db_local)
+        except Exception as exc:
+            return {"error": str(exc)}
+    loop = _asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, _train)
+    if "error" in result:
+        return JSONResponse({"ok": False, "error": result["error"]})
+    return JSONResponse({
+        "ok": True,
+        "n_samples": result.get("n_samples", 0),
+        "n_positive": result.get("n_positive", 0),
+        "importances": result.get("feature_importances", {}),
+    })
+
+
+# ─── Admin: Search Gap Retrospective ─────────────────────────────────────────
+
+@app.get("/admin/retros", response_class=HTMLResponse)
+async def admin_retros(request: Request):
+    db = get_db()
+    retros = db.get_retros(limit=100)
+
+    rows_html = ""
+    for r in retros:
+        db_c = r.get("db_result_count", 0)
+        web_c = r.get("web_result_count", 0)
+        gap = r.get("gap_reason") or ""
+        gap_color = "#ef4444" if gap == "db_miss" else "#f59e0b"
+        web_titles = ""
+        try:
+            titles = json.loads(r.get("web_results_json") or "[]")
+            web_titles = ", ".join(t[:30] for t in titles[:3]) if titles else "—"
+        except Exception:
+            pass
+        ts = (r.get("created_at") or "")[:16].replace("T", " ")
+        rows_html += f"""<tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:8px 12px;font-size:13px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{r.get('query','')}">
+            {r.get('query','')[:50]}
+          </td>
+          <td style="padding:8px;text-align:center;font-size:12px;color:#6b7280;">{db_c}</td>
+          <td style="padding:8px;text-align:center;font-size:12px;color:#2563eb;font-weight:600;">{web_c}</td>
+          <td style="padding:8px;font-size:12px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{web_titles}</td>
+          <td style="padding:8px;text-align:center;">
+            <span style="background:{gap_color}22;color:{gap_color};padding:2px 8px;border-radius:10px;font-size:11px;">{gap or 'partial'}</span>
+          </td>
+          <td style="padding:8px;text-align:right;font-size:11px;color:#9ca3af;">{ts}</td>
+        </tr>"""
+
+    # Aggregate stats
+    total = len(retros)
+    db_miss = sum(1 for r in retros if r.get("gap_reason") == "db_miss")
+    avg_web = sum(r.get("web_result_count", 0) for r in retros) / max(total, 1)
+
+    # Top queries by web-only results (biggest gaps)
+    by_query: dict[str, int] = {}
+    for r in retros:
+        q = r.get("query", "")
+        by_query[q] = by_query.get(q, 0) + r.get("web_result_count", 0)
+    top_gaps = sorted(by_query.items(), key=lambda x: -x[1])[:10]
+    top_gap_html = "".join(
+        f'<div style="margin-bottom:6px;font-size:13px;"><span style="color:#6b7280;min-width:30px;display:inline-block;">{v}</span> <span style="color:#1e293b;">{q[:60]}</span></div>'
+        for q, v in top_gaps
+    )
+
+    body = f"""
+<div style="max-width:1100px;margin:0 auto;padding:24px 16px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+    <a href="/admin" style="color:#6b7280;font-size:13px;">&larr; Admin</a>
+    <h1 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">Search Gap Retrospective</h1>
+    <span style="margin-left:auto;font-size:13px;color:#6b7280;">{total} searches logged</span>
+  </div>
+
+  <!-- Stats -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#ef4444;">{db_miss}</div>
+      <div style="font-size:12px;color:#6b7280;">DB Miss (web-only results)</div>
+    </div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#2563eb;">{avg_web:.1f}</div>
+      <div style="font-size:12px;color:#6b7280;">Avg Web Results</div>
+    </div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#6b7280;">{total}</div>
+      <div style="font-size:12px;color:#6b7280;">Total Web Fallbacks</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:24px;">
+    <!-- Recent retros table -->
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+      <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">Recent Searches Needing Web Fallback</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;min-width:600px;">
+          <thead>
+            <tr style="background:#f8fafc;color:#6b7280;font-size:11px;text-transform:uppercase;">
+              <th style="padding:8px 12px;text-align:left;">Query</th>
+              <th style="padding:8px;text-align:center;">DB</th>
+              <th style="padding:8px;text-align:center;">Web</th>
+              <th style="padding:8px;text-align:left;">Web Results</th>
+              <th style="padding:8px;text-align:center;">Gap</th>
+              <th style="padding:8px;text-align:right;">Time</th>
+            </tr>
+          </thead>
+          <tbody>{rows_html or '<tr><td colspan="6" style="padding:16px;text-align:center;color:#9ca3af;">No web fallbacks yet — great DB coverage!</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Top gap queries -->
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:20px;">
+      <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:14px;">Top Gap Queries</div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:10px;">Queries with most web-only results = missing sources</div>
+      {top_gap_html or '<p style="color:#9ca3af;font-size:13px;">No gaps yet</p>'}
+    </div>
+  </div>
+
+  <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 16px;font-size:13px;color:#14532d;">
+    <b>How to act on this:</b> Recurring gap queries suggest missing event sources.
+    Add new scrapers in <code>src/recom/events/</code> and register in <code>aggregator.py</code>.
+  </div>
+</div>"""
+    return HTMLResponse(_layout("Search Retros — Admin", body))
+
+
+# ─── Admin: Calendar Feed Preview ────────────────────────────────────────────
+
+@app.get("/admin/cal-preview", response_class=HTMLResponse)
+async def admin_cal_preview(request: Request):
+    """Admin: preview the iCal feed as HTML."""
+    import re as _re
+    current_user = _get_current_user(request)
+    if not current_user or current_user.get("id") != 1:
+        return RedirectResponse("/login")
+
+    db = get_db()
+    settings = Settings()
+    runs = db.get_runs()
+
+    if not runs:
+        body = """
+<div style="max-width:960px;margin:0 auto;padding:24px 16px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+    <a href="/admin" style="color:#6b7280;font-size:13px;">&larr; Admin</a>
+    <h1 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">Calendar Feed Preview</h1>
+  </div>
+  <p style="color:#9ca3af;">No runs yet — run the pipeline first.</p>
+</div>"""
+        return HTMLResponse(_layout("Cal Preview — Admin", body, current_user))
+
+    # Build iCal content by calling the feed endpoint logic inline
+    run_id = runs[0]["id"]
+    events = db.get_run_events(run_id)
+    kept = [e for e in events if e.get("keep") and (e.get("score") or 0) >= 55]
+    kept.sort(key=lambda x: -(x.get("score") or 0))
+
+    # Parse dates for range
+    from datetime import datetime as _dt
+    dates = []
+    for ev in kept:
+        ds = ev.get("date_start") or ""
+        if ds:
+            try:
+                dates.append(_dt.fromisoformat(ds[:10]))
+            except Exception:
+                pass
+    date_min = min(dates).strftime("%b %d") if dates else "?"
+    date_max = max(dates).strftime("%b %d, %Y") if dates else "?"
+
+    # Build sample events table (top 30)
+    import html as _html_mod
+    sample_rows = ""
+    for ev in kept[:30]:
+        title = _html_mod.escape(ev.get("title") or "Untitled")
+        ds = ev.get("date_start") or ""
+        date_str = ds[:10] if ds else "—"
+        time_str = ds[11:16] if len(ds) > 11 else "—"
+        venue = _html_mod.escape((ev.get("location_name") or "—")[:40])
+        score = ev.get("score") or 0
+        score_color = "#22c55e" if score >= 70 else ("#f59e0b" if score >= 50 else "#6b7280")
+        sample_rows += f"""<tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:6px 10px;font-size:13px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{title}</td>
+          <td style="padding:6px 8px;font-size:12px;color:#6b7280;white-space:nowrap;">{date_str}</td>
+          <td style="padding:6px 8px;font-size:12px;color:#6b7280;">{time_str}</td>
+          <td style="padding:6px 8px;font-size:12px;color:#6b7280;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{venue}</td>
+          <td style="padding:6px 8px;text-align:center;"><span style="color:{score_color};font-weight:700;font-size:12px;">{score}</span></td>
+        </tr>"""
+
+    # Fetch raw ics content via internal call
+    from starlette.testclient import TestClient as _TC
+    try:
+        _client = _TC(app)
+        ics_resp = _client.get("/feed.ics")
+        raw_ics = ics_resp.text
+    except Exception:
+        raw_ics = "(Could not fetch feed.ics)"
+
+    # Count VEVENT blocks
+    vevent_count = raw_ics.count("BEGIN:VEVENT")
+
+    # Feed URLs
+    base_url = getattr(settings, "base_url", "") or "http://localhost:8000"
+
+    body = f"""
+<div style="max-width:1100px;margin:0 auto;padding:24px 16px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+    <a href="/admin" style="color:#6b7280;font-size:13px;">&larr; Admin</a>
+    <h1 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">Calendar Feed Preview</h1>
+    <span style="margin-left:auto;font-size:13px;color:#6b7280;">{vevent_count} events in feed</span>
+  </div>
+
+  <!-- Stats -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#2563eb;">{vevent_count}</div>
+      <div style="font-size:12px;color:#6b7280;">Events in .ics Feed</div>
+    </div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#7c3aed;">{len(kept)}</div>
+      <div style="font-size:12px;color:#6b7280;">Kept Events (score &ge; 55)</div>
+    </div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:16px;font-weight:700;color:#1e293b;">{date_min} &mdash; {date_max}</div>
+      <div style="font-size:12px;color:#6b7280;">Date Range</div>
+    </div>
+  </div>
+
+  <!-- Feed URLs -->
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:24px;">
+    <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:10px;">Feed URLs</div>
+    <div style="font-size:13px;margin-bottom:6px;">
+      <b>Default (score &ge; 55):</b>
+      <a href="/feed.ics" style="color:#2563eb;word-break:break-all;">{base_url}/feed.ics</a>
+    </div>
+    <div style="font-size:13px;margin-bottom:6px;">
+      <b>All kept events:</b>
+      <a href="/feed.ics?min_score=25" style="color:#2563eb;word-break:break-all;">{base_url}/feed.ics?min_score=25</a>
+    </div>
+    <div style="font-size:13px;">
+      <b>Top picks only:</b>
+      <a href="/feed.ics?min_score=75" style="color:#2563eb;word-break:break-all;">{base_url}/feed.ics?min_score=75</a>
+    </div>
+  </div>
+
+  <!-- Sample events -->
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+    <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">
+      Sample Events (top 30 by score)
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#f8fafc;color:#6b7280;font-size:11px;text-transform:uppercase;">
+            <th style="padding:8px 10px;text-align:left;">Title</th>
+            <th style="padding:8px;text-align:left;">Date</th>
+            <th style="padding:8px;text-align:left;">Time</th>
+            <th style="padding:8px;text-align:left;">Venue</th>
+            <th style="padding:8px;text-align:center;">Score</th>
+          </tr>
+        </thead>
+        <tbody>{sample_rows or '<tr><td colspan="5" style="padding:16px;text-align:center;color:#9ca3af;">No events in feed</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Raw iCal -->
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+    <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">
+      Raw .ics Content
+    </div>
+    <pre style="padding:16px;font-size:11px;line-height:1.5;background:#f8fafc;margin:0;overflow-x:auto;max-height:400px;overflow-y:auto;color:#334155;">{_html_mod.escape(raw_ics[:8000])}{' ... (truncated)' if len(raw_ics) > 8000 else ''}</pre>
+  </div>
+</div>"""
+    return HTMLResponse(_layout("Cal Preview — Admin", body, current_user))
+
+
+# ─── Admin: ML Model Dashboard ──────────────────────────────────────────────
+
+@app.get("/admin/ml", response_class=HTMLResponse)
+async def admin_ml(request: Request):
+    """Admin: ML model status and training dashboard."""
+    current_user = _get_current_user(request)
+    if not current_user or current_user.get("id") != 1:
+        return RedirectResponse("/login")
+
+    db = get_db()
+
+    # Try to load ML model
+    from recom.ranking.ml_model import MLRanker, FEATURE_NAMES, _MODEL_PATH
+    ranker = MLRanker()
+    model_loaded = ranker.load()
+
+    # Get training data stats
+    attended_count = db.conn.execute("SELECT COUNT(*) FROM attended").fetchone()[0]
+    kept_count = db.conn.execute(
+        "SELECT COUNT(*) FROM rankings WHERE keep = 1"
+    ).fetchone()[0]
+
+    # Model file info
+    import os as _os
+    model_file_exists = _MODEL_PATH.exists()
+    model_date = "—"
+    model_size = "—"
+    if model_file_exists:
+        stat = _os.stat(_MODEL_PATH)
+        from datetime import datetime as _dt2
+        model_date = _dt2.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+        model_size = f"{stat.st_size / 1024:.1f} KB"
+
+    # Status badge
+    if model_loaded:
+        status_badge = '<span style="background:#dcfce7;color:#166534;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:600;">Trained</span>'
+    else:
+        status_badge = '<span style="background:#fef2f2;color:#991b1b;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:600;">Not Trained</span>'
+
+    # Feature importance table
+    feat_rows = ""
+    if model_loaded:
+        top_features = ranker.get_top_features()
+        max_abs = max(abs(v) for _, v in top_features) if top_features else 1
+        for fname, coef in top_features:
+            bar_w = min(abs(coef) / max_abs * 120, 120) if max_abs > 0 else 0
+            bar_color = "#22c55e" if coef > 0 else "#ef4444"
+            feat_rows += f"""<tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:6px 12px;font-size:13px;font-family:monospace;">{fname}</td>
+              <td style="padding:6px 8px;text-align:right;font-size:12px;color:#6b7280;">{coef:+.4f}</td>
+              <td style="padding:6px 8px;">
+                <div style="display:flex;align-items:center;gap:4px;">
+                  <div style="width:{bar_w:.0f}px;height:8px;background:{bar_color};border-radius:4px;"></div>
+                </div>
+              </td>
+            </tr>"""
+
+    feat_section = ""
+    if model_loaded:
+        feat_section = f"""
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+    <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">
+      Feature Importance (Logistic Regression Coefficients)
+    </div>
+    <table style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr style="background:#f8fafc;color:#6b7280;font-size:11px;text-transform:uppercase;">
+          <th style="padding:8px 12px;text-align:left;">Feature</th>
+          <th style="padding:8px;text-align:right;">Coefficient</th>
+          <th style="padding:8px;text-align:left;">Magnitude</th>
+        </tr>
+      </thead>
+      <tbody>{feat_rows}</tbody>
+    </table>
+  </div>"""
+
+    body = f"""
+<div style="max-width:960px;margin:0 auto;padding:24px 16px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+    <a href="/admin" style="color:#6b7280;font-size:13px;">&larr; Admin</a>
+    <h1 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">ML Model Dashboard</h1>
+    <span style="margin-left:auto;">{status_badge}</span>
+  </div>
+
+  <!-- Stats -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#2563eb;">{attended_count}</div>
+      <div style="font-size:12px;color:#6b7280;">Attended Events</div>
+    </div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#7c3aed;">{kept_count}</div>
+      <div style="font-size:12px;color:#6b7280;">Kept Rankings (training pool)</div>
+    </div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#1e293b;">{ranker.n_samples if model_loaded else '—'}</div>
+      <div style="font-size:12px;color:#6b7280;">Training Samples</div>
+    </div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#1e293b;">{len(FEATURE_NAMES)}</div>
+      <div style="font-size:12px;color:#6b7280;">Features</div>
+    </div>
+  </div>
+
+  <!-- Model info -->
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:24px;">
+    <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:10px;">Model Info</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:13px;">
+      <div><span style="color:#6b7280;">Type:</span> Logistic Regression (balanced)</div>
+      <div><span style="color:#6b7280;">Last trained:</span> {model_date}</div>
+      <div><span style="color:#6b7280;">Model file:</span> {model_size}</div>
+    </div>
+  </div>
+
+  {feat_section}
+
+  <!-- Train button -->
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin-bottom:24px;">
+    <div style="display:flex;align-items:center;gap:16px;">
+      <button id="train-btn" onclick="trainModel()" style="padding:10px 24px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
+        Train ML Model
+      </button>
+      <span style="font-size:13px;color:#6b7280;">Trains on {kept_count} kept rankings with {attended_count} attended labels</span>
+    </div>
+    <div id="train-result" style="margin-top:12px;font-size:13px;"></div>
+  </div>
+
+  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;font-size:13px;color:#1e3a5f;">
+    <b>How it works:</b> The ML model distills Claude&apos;s 7-dimension scores into an attendance probability
+    using logistic regression. Positive labels come from the <code>attended</code> table. Train after marking
+    more events as attended to improve predictions.
+  </div>
+</div>
+
+<script>
+async function trainModel() {{
+  const btn = document.getElementById('train-btn');
+  const res = document.getElementById('train-result');
+  btn.disabled = true;
+  btn.textContent = 'Training...';
+  res.textContent = '';
+  try {{
+    const r = await fetch('/api/admin/ml/train', {{method: 'POST'}});
+    const d = await r.json();
+    if (d.ok) {{
+      res.innerHTML = '<span style="color:#16a34a;font-weight:600;">Trained successfully!</span> ' +
+        d.n_samples + ' samples, ' + d.n_positive + ' positive. Reload to see updated feature importance.';
+    }} else {{
+      res.innerHTML = '<span style="color:#ef4444;">Error:</span> ' + (d.error || 'Unknown error');
+    }}
+  }} catch(e) {{
+    res.textContent = 'Request failed: ' + e;
+  }}
+  btn.textContent = 'Train ML Model';
+  btn.disabled = false;
+}}
+</script>"""
+    return HTMLResponse(_layout("ML Model — Admin", body, current_user))

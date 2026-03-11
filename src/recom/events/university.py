@@ -153,7 +153,7 @@ async def _fetch_harvard(settings: Settings) -> list[Event]:
 
     events: list[Event] = []
     now = datetime.now(timezone.utc)
-    cutoff = now + timedelta(days=10)
+    cutoff = now + timedelta(days=14)
 
     async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
         resp = await client.get(url, headers=headers)

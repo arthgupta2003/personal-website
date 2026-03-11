@@ -28,8 +28,16 @@ uv run python scripts/auth_spotify.py
 uv run python scripts/auth_youtube.py
 uv run python scripts/auth_gmail.py
 
-# Weekly cron (Saturday 9am)
+# Cron jobs (5 total — run once to install all)
 bash scripts/install_cron.sh
+# Installs:
+#   Weekly pipeline   — Saturday 9am (discover + rank + email)
+#   Daily digest      — 8am every day (today's picks from latest run)
+#   Taste matchup     — 9am Mon-Fri (Elo comparison email)
+#   Tonight picks     — 4pm Fri+Sat (last-minute event picks)
+#   Post-event ratings — 10pm daily (rate events you attended)
+# Logs: state/{cron,daily,taste,tonight,ratings}.log
+# Verify: crontab -l
 ```
 
 No Makefile or test suite — `uv` handles all build/run tasks.
@@ -40,10 +48,10 @@ No Makefile or test suite — `uv` handles all build/run tasks.
 
 ```bash
 # 1. HTTP smoke test — checks all routes return correct status codes
-bash scripts/smoke_test.sh test@example.com     # 23 checks, must be 23/0
+bash scripts/smoke_test.sh test@example.com     # ~35 checks, must be all-pass/0-fail
 
 # 2. Browser test — real Chromium, checks rendered output after JS executes
-/workspace/.venv/bin/python scripts/browser_test.py   # 45 checks, must be 45/0
+/workspace/.venv/bin/python scripts/browser_test.py   # ~55 checks, must be all-pass/0-fail
 ```
 
 Also validate JS syntax after any template change:
@@ -142,7 +150,16 @@ FastAPI app with cookie-based auth and magic link support (`?u=<token>`). Key ro
 | `/profile` | User settings, home location |
 | `/feed.ics` | Public iCal feed (`?min_score=`) |
 | `/u/<token>/feed.ics` | Per-user iCal with RSVP links |
+| `/u/<token>/rsvps.ics` | Per-user RSVP-only iCal feed |
+| `/variants` | UI variant experiments |
 | `/admin/sources` | Scraper health: success rate, sparklines, cache age |
+| `/admin/email-preview` | Preview email templates before sending |
+| `/admin/pipeline` | Trigger and monitor pipeline runs |
+| `/admin/backtest` | Quant-style signal attribution and backtest reports |
+| `/admin/cal-preview` | Preview calendar feed output |
+| `/admin/ml` | ML model training dashboard |
+| `/admin/retros` | Post-run retrospectives and analysis |
+| `/admin/ranking-analysis` | Ranking dimension analysis and weight tuning |
 | `/api/steer` | One-click steering from email links |
 | `/api/taste/vote` | Elo vote endpoint |
 

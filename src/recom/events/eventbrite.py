@@ -35,7 +35,7 @@ async def _fetch_via_api(settings: Settings) -> list[Event]:
     """Use Eventbrite REST API v3 with an OAuth token."""
     now = datetime.now(timezone.utc)
     start_date = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-    end_date = (now + timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_date = (now + timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     params: dict[str, str | float] = {
         "location.latitude": settings.latitude,
@@ -112,7 +112,7 @@ async def _fetch_via_scrape(settings: Settings) -> list[Event]:
         cards = soup.select("a[data-event-id], div[data-testid='event-card']")
 
     now = datetime.now(timezone.utc)
-    cutoff = now + timedelta(days=10)
+    cutoff = now + timedelta(days=14)
 
     for card in cards:
         link_tag = card.find("a", href=True)

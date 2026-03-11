@@ -141,11 +141,23 @@ uv run python -m recom.daily              # send daily email
 uv run python -m recom.daily --all-users  # daily email for all users
 ```
 
-### Cron (weekly, Saturday 9am)
+### Cron jobs (5 scheduled tasks)
 
 ```bash
-bash scripts/install_cron.sh
+bash scripts/install_cron.sh        # installs all 5 cron jobs
+bash scripts/install_cron.sh 10 9 6 # custom: pipeline at 10am, daily at 9am, Saturday
+crontab -l                           # verify installed
 ```
+
+| Job | Schedule | Command | Log |
+|-----|----------|---------|-----|
+| Weekly pipeline | Saturday 9am | `uv run recom --all-users` | `state/cron.log` |
+| Daily digest | 8am every day | `uv run recom-daily` | `state/daily.log` |
+| Taste matchup | 9am Mon-Fri | `scripts/send_daily_taste.py --all-users` | `state/taste.log` |
+| Tonight picks | 4pm Fri+Sat | `scripts/send_tonight.py --all-users` | `state/tonight.log` |
+| Post-event ratings | 10pm daily | `scripts/send_ratings.py --send` | `state/ratings.log` |
+
+To remove all cron jobs: `crontab -l | grep -v 'recom\|send_daily_taste\|send_tonight\|send_ratings' | crontab -`
 
 ## Services & startup
 
@@ -239,9 +251,12 @@ Create groups of friends who share a blended calendar:
 
 ### Calendar subscription
 
-```
-https://recom.arthgupta.dev/feed.ics
-```
+| Feed | URL |
+|------|-----|
+| Public (all users) | `https://recom.arthgupta.dev/feed.ics` |
+| Per-user personalized | `https://recom.arthgupta.dev/u/{token}/feed.ics` |
+| Per-user RSVPs only | `https://recom.arthgupta.dev/u/{token}/rsvps.ics` |
+| Group feed | `https://recom.arthgupta.dev/group/{slug}/feed.ics` |
 
 - Default: only strong matches (score >= 55)
 - Use `?min_score=25` for all recommended events
@@ -323,8 +338,16 @@ Cookie-based auth via magic links (`?u=<token>`). All pages use a shared nav bar
 | `/budget` | auth | Budget tracker: log spend per event, see totals |
 | `/travel` | auth | Travel planner: upcoming trips with auto-pulled nearby events |
 | `/profile` | auth | User settings: name, location, email, notification prefs |
+| `/variants` | public | UI variant experiments |
 | `/admin` | public | Admin: run pipeline, view all users, recent runs |
 | `/admin/sources` | public | Source health: last fetch time, event counts, errors |
+| `/admin/email-preview` | public | Preview email templates before sending |
+| `/admin/pipeline` | public | Trigger and monitor pipeline runs |
+| `/admin/backtest` | public | Quant-style signal attribution and backtest reports |
+| `/admin/cal-preview` | public | Preview calendar feed output |
+| `/admin/ml` | public | ML model training dashboard |
+| `/admin/retros` | public | Post-run retrospectives and analysis |
+| `/admin/ranking-analysis` | public | Ranking dimension analysis and weight tuning |
 
 ### Taste ranker
 
@@ -339,4 +362,9 @@ bash scripts/smoke_test.sh                         # unauthenticated checks only
 bash scripts/smoke_test.sh test@example.com        # + authenticated flow (creates test user)
 ```
 
-The authenticated flow creates a test user, grabs their token, and hits every route with a cookie. All 23 checks must pass before considering a dashboard change done.
+The authenticated flow creates a test user, grabs their token, and hits every route with a cookie. All ~35 checks must pass before considering a dashboard change done.
+
+For full browser testing (renders pages in real Chromium):
+```bash
+python scripts/browser_test.py    # ~55 checks, all must pass
+```

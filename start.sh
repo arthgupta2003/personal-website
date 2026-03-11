@@ -1,30 +1,38 @@
 #!/usr/bin/env bash
-# Recom tmux startup — manages dashboard, tunnel, and claude-code-web
+# Recom startup — bare metal with tmux
 set -euo pipefail
 
-SESSION="recom"
 DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$DIR"
+
+SESSION="recom"
 
 case "${1:-start}" in
   stop)
-    (cd "$DIR" && docker compose -f docker-compose.claude.yml down 2>/dev/null) || true
-    tmux kill-session -t "$SESSION" 2>/dev/null && echo "Stopped $SESSION" || echo "Not running"
+    tmux kill-session -t "$SESSION" 2>/dev/null && echo "Stopped" || echo "Not running"
     exit 0
     ;;
   status)
     if tmux has-session -t "$SESSION" 2>/dev/null; then
-      echo "Session '$SESSION' is running. Panes:"
-      tmux list-panes -t "$SESSION" -F '  #{pane_index}: #{pane_title} (#{pane_current_command})'
-      echo ""
-      echo "Attach: tmux attach -t $SESSION"
+      echo "recom tmux session running"
+      tmux list-panes -t "$SESSION" -F '  #{pane_title}: PID #{pane_pid}' 2>/dev/null
     else
-      echo "Not running. Start with: ./start.sh"
+      echo "Not running"
     fi
     exit 0
     ;;
+  logs)
+    tmux attach -t "$SESSION" 2>/dev/null || echo "Not running"
+    exit 0
+    ;;
+  restart)
+    $0 stop
+    sleep 1
+    exec $0 start
+    ;;
   start) ;;
   *)
-    echo "Usage: $0 [start|stop|status]"
+    echo "Usage: $0 [start|stop|status|logs|restart]"
     exit 1
     ;;
 esac
@@ -32,32 +40,48 @@ esac
 # Kill existing session if any
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
-# Source nvm for Node version management
+# Ensure node 22 (node 23 breaks node-pty for claude-code-web)
 export NVM_DIR="$HOME/.nvm"
-NVM_INIT="source $NVM_DIR/nvm.sh && nvm use 22 > /dev/null 2>&1"
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+nvm use 22 >/dev/null 2>&1 || true
 
-# Create session with dashboard pane
-tmux new-session -d -s "$SESSION" -n main -c "$DIR"
-tmux select-pane -t "$SESSION" -T "dashboard"
+# Fix node-pty spawn-helper permissions (npm strips +x on install)
+chmod +x ~/.nvm/versions/node/v22.22.1/lib/node_modules/claude-code-web/node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true
+
+# Sync Python deps
+cd "$DIR"
+uv sync --no-dev 2>&1 | tail -3
+
+# Create tmux session with dashboard pane
+tmux new-session -d -s "$SESSION" -n main
 tmux send-keys -t "$SESSION" "cd $DIR && uv run recom-dashboard" Enter
 
-# Split for tunnel
-tmux split-window -t "$SESSION" -v -c "$DIR"
-tmux select-pane -t "$SESSION" -T "tunnel"
-tmux send-keys -t "$SESSION" "sleep 2 && cloudflared tunnel run recom-dashboard" Enter
+# Cloudflare tunnel pane
+tmux split-window -t "$SESSION" -v
+tmux send-keys -t "$SESSION" "cloudflared tunnel run" Enter
 
-# Split for claude-code-web (containerized)
-tmux split-window -t "$SESSION" -v -c "$DIR"
-tmux select-pane -t "$SESSION" -T "code-web"
-tmux send-keys -t "$SESSION" "sleep 3 && export CLAUDE_CREDENTIALS=\"\$(security find-generic-password -s 'Claude Code-credentials' -w)\" && cd $DIR && docker compose -f docker-compose.claude.yml up --build" Enter
+# Claude Code Web pane (needs node 22)
+tmux split-window -t "$SESSION" -v
+tmux send-keys -t "$SESSION" "cd $DIR && ~/.nvm/versions/node/v22.22.1/bin/cc-web --port 32352" Enter
 
-# Even out the panes
+# Even layout
 tmux select-layout -t "$SESSION" even-vertical
 
-echo "Started tmux session '$SESSION' with 3 panes:"
-echo "  0: dashboard  (port 8000 → recom.arthgupta.dev)"
-echo "  1: tunnel     (cloudflare → arthgupta.dev)"
-echo "  2: code-web   (port 32352 → code.arthgupta.dev)"
 echo ""
-echo "Attach: tmux attach -t $SESSION"
-echo "Token for code.arthgupta.dev will be printed in pane 2"
+echo "=== Recom running (bare metal) ==="
+echo "  Dashboard:  http://localhost:8000  → recom.arthgupta.dev"
+echo "  Code Web:   http://localhost:32352 → code.arthgupta.dev"
+echo ""
+echo "Commands:"
+echo "  ./start.sh logs      — attach to tmux"
+echo "  ./start.sh status    — check services"
+echo "  ./start.sh restart   — restart everything"
+echo "  ./start.sh stop      — stop everything"
+echo ""
+echo "  tmux attach -t recom — view all panes"
+echo ""
+echo "Cron jobs (run separately):"
+echo "  bash scripts/install_cron.sh   — installs 5 cron jobs"
+echo "  crontab -l                     — verify installed"
+echo ""
+echo "Logs: state/{cron,daily,taste,tonight,ratings}.log"
