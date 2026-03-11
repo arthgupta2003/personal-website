@@ -132,8 +132,8 @@ SCORING — 7 dimensions, each 0-15, total 0-105 (normalized to 0-100):
    - 8-12: Moderate match on one interest
    - 13-15: Strong match on multiple interests
    ARTIST BOOST: If event features an artist from the SPOTIFY ARTISTS list, \
-add +10 (can exceed 15). Concerts by artists the user listens to are \
-high-signal — always surface them.
+add +5 (can exceed 15). Concerts by artists the user listens to are \
+a signal but should not dominate — the user also wants non-music events.
 
 2. social_score (0-15): How fun/social is the activity itself?
    - 0-3: Solo, passive (webinars, solo gallery, reading groups)
@@ -199,6 +199,16 @@ CALIBRATION — USE THE FULL 0-15 RANGE:
 - Aim for a roughly uniform distribution: ~30% of events scoring below 4, ~40% in 5-10, ~30% above 10 on each dimension.
 - The top ~20% of events should have at least one dimension at 13+.
 - The bottom ~30% should have most dimensions below 5.
+
+DIVERSITY — avoid recommending too many events of the same type:
+- Live music concerts should NOT dominate. The user likes music but also wants \
+comedy, talks, meetups, outdoor activities, workshops, food events, sports, etc.
+- For the 5th+ concert/music event in a batch, apply a -3 penalty to interest_score \
+(music fatigue — the user can only attend so many shows per week).
+- Boost non-music events that are genuinely interesting: a great comedy show, \
+an unusual workshop, or a unique social event should score just as high as a concert.
+- If you see many similar events (e.g., 10 indie rock shows), only score the top \
+2-3 highly. The rest should get diminishing interest_scores.
 
 CATEGORIZATION — two fields per event:
   "event_type":

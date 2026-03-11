@@ -742,6 +742,16 @@ class Database:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_event_source_breakdown(self, run_id: int) -> list[dict]:
+        """Return per-source event counts from events table (granular, e.g. 'mit', 'harvard')."""
+        rows = self.conn.execute(
+            """SELECT source, COUNT(*) as cnt
+               FROM events WHERE run_id = ?
+               GROUP BY source ORDER BY cnt DESC""",
+            (run_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_seen_event_ids(self, days: int = 30) -> set[str]:
         cutoff = datetime.now().isoformat()
         rows = self.conn.execute(

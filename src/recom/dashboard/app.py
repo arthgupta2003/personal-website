@@ -2180,21 +2180,29 @@ async def calendar_view(request: Request, run_id: int | None = None):
         else:
             undated.append(e)
 
-    # Mark primary (curated top 5/day with vibe diversity) vs overflow
+    # Mark primary (curated top 5/day with vibe + category diversity) vs overflow
     primary_ids: set[str] = set()
     kept = []
     for day_str in sorted(day_groups):
         day_evts = sorted(day_groups[day_str], key=lambda x: -(x.get("score") or 0))
         picked = []
         vibe_counts: dict[str, int] = defaultdict(int)
+        music_count = 0
         for e in day_evts:
             if len(picked) >= 5:
                 break
             vibe = e.get("vibe", "mixed")
             if vibe_counts[vibe] >= 2:
                 continue
+            # Category diversity: max 2 music events per day
+            cat = (e.get("category") or "").lower()
+            is_music = "music" in cat or "concert" in cat
+            if is_music and music_count >= 2:
+                continue
             picked.append(e)
             vibe_counts[vibe] += 1
+            if is_music:
+                music_count += 1
         for e in picked:
             primary_ids.add(e.get("event_id", ""))
         kept.extend(day_evts)  # ALL events for the day, not just picked
