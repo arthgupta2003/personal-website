@@ -483,6 +483,7 @@ def _prefilter_events(
                 max_tokens=4096,
                 system=_PREFILTER_SYSTEM,
                 messages=[{"role": "user", "content": user_msg}],
+                timeout=120.0,
             )
             text = resp.content[0].text.strip()
             if text.startswith("```"):
@@ -586,6 +587,7 @@ def rank_events(
                 max_tokens=16000,
                 system=_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_message}],
+                timeout=180.0,
             )
         except anthropic.APIError as exc:
             logger.error("Claude API error during ranking batch %d: %s", batch_idx + 1, exc)

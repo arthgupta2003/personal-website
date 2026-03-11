@@ -1,13 +1,14 @@
 """Batch geocoder for event venues using Nominatim (OpenStreetMap, no key needed).
 
-Caches results in-memory per pipeline run to avoid redundant requests.
+Caches results persistently in SQLite so venues aren't re-geocoded across runs.
 Rate-limited to 1 req/sec as required by Nominatim ToS.
 """
 from __future__ import annotations
 
 import logging
+import sqlite3
 import time
-from functools import lru_cache
+from pathlib import Path
 
 import httpx
 
@@ -22,17 +23,64 @@ HOME_LON = -71.1097
 _NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 _USER_AGENT = "recom-event-recommender/1.0"
 
-# In-memory cache: query string → (lat, lon) or None
-_geocache: dict[str, tuple[float, float] | None] = {}
 _last_request_time: float = 0.0
+
+# Persistent geocache in SQLite (next to recom.db)
+_geocache_db: sqlite3.Connection | None = None
+
+
+def _get_geocache_db() -> sqlite3.Connection:
+    """Get or create the geocache SQLite connection."""
+    global _geocache_db
+    if _geocache_db is None:
+        cache_path = Path("state/geocache.db")
+        cache_path.parent.mkdir(exist_ok=True)
+        _geocache_db = sqlite3.connect(str(cache_path))
+        _geocache_db.execute("""
+            CREATE TABLE IF NOT EXISTS geocache (
+                query TEXT PRIMARY KEY,
+                lat REAL,
+                lon REAL,
+                cached_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        _geocache_db.commit()
+    return _geocache_db
+
+
+def _geocache_lookup(query: str) -> tuple[float, float] | None:
+    """Check persistent cache for a geocoded query."""
+    db = _get_geocache_db()
+    row = db.execute("SELECT lat, lon FROM geocache WHERE query = ?", (query,)).fetchone()
+    if row and row[0] is not None:
+        return (row[0], row[1])
+    return None
+
+
+def _geocache_store(query: str, lat: float | None, lon: float | None):
+    """Store a geocode result in the persistent cache."""
+    db = _get_geocache_db()
+    db.execute(
+        "INSERT OR REPLACE INTO geocache (query, lat, lon) VALUES (?, ?, ?)",
+        (query, lat, lon),
+    )
+    db.commit()
 
 
 def _geocode_query(query: str) -> tuple[float, float] | None:
-    """Hit Nominatim with 1 req/sec rate limit."""
+    """Hit Nominatim with 1 req/sec rate limit, checking persistent cache first."""
     global _last_request_time
 
-    if query in _geocache:
-        return _geocache[query]
+    # Check persistent cache first
+    cached = _geocache_lookup(query)
+    if cached is not None:
+        return cached
+
+    # Check if we already know this query has no result
+    db = _get_geocache_db()
+    row = db.execute("SELECT lat FROM geocache WHERE query = ?", (query,)).fetchone()
+    if row is not None:  # exists in cache but lat is None
+        return None
 
     # Rate limit
     now = time.monotonic()
@@ -53,23 +101,13 @@ def _geocode_query(query: str) -> tuple[float, float] | None:
         if results:
             lat = float(results[0]["lat"])
             lon = float(results[0]["lon"])
-            _geocache[query] = (lat, lon)
+            _geocache_store(query, lat, lon)
             return lat, lon
     except Exception as exc:
         logger.debug("Geocode failed for %r: %s", query, exc)
 
-    _geocache[query] = None
+    _geocache_store(query, None, None)
     return None
-
-
-def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Return distance in km between two lat/lon points."""
-    import math
-    R = 6371
-    dLat = math.radians(lat2 - lat1)
-    dLon = math.radians(lon2 - lon1)
-    a = math.sin(dLat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dLon / 2) ** 2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 def geocode_events(events: list[Event], home_lat: float = HOME_LAT, home_lon: float = HOME_LON) -> list[Event]:
@@ -82,20 +120,24 @@ def geocode_events(events: list[Event], home_lat: float = HOME_LAT, home_lon: fl
     if not needs_geocode:
         return events
 
-    logger.info("Geocoding %d events (may take ~%ds at 1 req/s)...", len(needs_geocode), len(needs_geocode))
-
     # Deduplicate queries
     queries: dict[str, list[Event]] = {}
     for e in needs_geocode:
-        # Build best query: "Venue Name, City" or just address
         parts = [p for p in [e.location_name, e.location_address] if p and p.strip()]
         if not parts:
             continue
         query = ", ".join(parts)
-        # Append "Boston MA" as context if no city hint
         if not any(kw in query.lower() for kw in ["boston", "cambridge", "somerville", "brookline", "ma", "massachusetts"]):
             query += ", Boston MA"
         queries.setdefault(query, []).append(e)
+
+    # Check how many are already cached
+    cached_count = sum(1 for q in queries if _geocache_lookup(q) is not None)
+    uncached = len(queries) - cached_count
+    logger.info(
+        "Geocoding %d unique venues (%d cached, %d need API calls ~%ds)...",
+        len(queries), cached_count, uncached, uncached,
+    )
 
     for query, evts in queries.items():
         coords = _geocode_query(query)

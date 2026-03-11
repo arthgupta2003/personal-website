@@ -688,6 +688,40 @@ async def run_detail(request: Request, run_id: int):
     for c in costs:
         cost_html += f"<tr><td>{c['call_type']}</td><td>{c['model']}</td><td>{c['tokens_in']:,}</td><td>{c['tokens_out']:,}</td><td>${c['cost_usd']:.4f}</td></tr>"
 
+    # Pipeline step timings
+    timings_html = ""
+    run_notes = run.get("notes") or run.get("notes") if isinstance(run, dict) else getattr(run, "notes", None)
+    if not run_notes:
+        try:
+            row = db.conn.execute("SELECT notes FROM runs WHERE id = ?", (run_id,)).fetchone()
+            run_notes = row[0] if row else None
+        except Exception:
+            pass
+    if run_notes:
+        try:
+            timings = json.loads(run_notes)
+            if isinstance(timings, dict) and any(k != "total" for k in timings):
+                total_s = timings.get("total", sum(v for v in timings.values() if isinstance(v, (int, float))))
+                bars = ""
+                colors = {"ingest": "#3b82f6", "interests_and_discovery": "#8b5cf6", "ranking": "#f59e0b", "total": "#6b7280"}
+                labels = {"ingest": "Ingest", "interests_and_discovery": "Interests + Discovery", "ranking": "Ranking"}
+                for key in ["ingest", "interests_and_discovery", "ranking"]:
+                    val = timings.get(key)
+                    if val is None:
+                        continue
+                    pct = round(val / total_s * 100) if total_s > 0 else 0
+                    color = colors.get(key, "#94a3b8")
+                    label = labels.get(key, key)
+                    bars += f'<div style="display:flex;align-items:center;gap:8px;margin:4px 0;"><span style="width:160px;font-size:13px;text-align:right;">{label}</span><div style="flex:1;background:#f3f4f6;border-radius:4px;height:24px;"><div style="width:{pct}%;min-width:2px;height:100%;background:{color};border-radius:4px;display:flex;align-items:center;padding-left:6px;"><span style="font-size:11px;color:white;font-weight:600;white-space:nowrap;">{val:.1f}s ({pct}%)</span></div></div></div>'
+                timings_html = f"""
+                <div style="margin-bottom:20px;">
+                  <h2>Pipeline Timing</h2>
+                  <div style="font-size:13px;color:#6b7280;margin-bottom:8px;">Total: {total_s:.1f}s</div>
+                  {bars}
+                </div>"""
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     # Score distribution histogram
     scores = [int(e.get("score") or 0) for e in events if e.get("score") is not None]
     kept_count = sum(1 for e in events if e.get("keep"))
@@ -762,6 +796,8 @@ async def run_detail(request: Request, run_id: int):
         <div class="stat"><div class="stat-value">{run['tokens_in_total']:,}</div><div class="stat-label">Input Tokens</div></div>
         <div class="stat"><div class="stat-value">{run['tokens_out_total']:,}</div><div class="stat-label">Output Tokens</div></div>
     </div>
+
+    {timings_html}
 
     {score_dist_html}
 

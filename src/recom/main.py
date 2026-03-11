@@ -58,6 +58,8 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
     logger.info(f"Starting run #{run_id}")
 
     all_costs: list[CostRecord] = []
+    step_timings: dict[str, float] = {}
+    import time as _time
 
     # === Steps 1+3 in parallel: Ingest + Discover events concurrently ===
     # Event discovery is IO-bound and doesn't depend on interest extraction,
@@ -65,6 +67,8 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
 
     import concurrent.futures
 
+    _t0_total = _time.monotonic()
+    _t0 = _time.monotonic()
     logger.info("Step 1+3: Ingesting activity data + discovering events in parallel...")
 
     # Run ingest sources in parallel threads (all IO-bound)
@@ -80,7 +84,8 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
         sp_activity = sp_future.result()
         newsletters = nl_future.result()
 
-    logger.info(f"  Ingest: YouTube={len(yt_activity)}, Spotify={len(sp_activity)}, Newsletters={len(newsletters)}")
+    step_timings["ingest"] = _time.monotonic() - _t0
+    logger.info(f"  Ingest: YouTube={len(yt_activity)}, Spotify={len(sp_activity)}, Newsletters={len(newsletters)} ({step_timings['ingest']:.1f}s)")
 
     # Save ingest stats for dashboard audit
     yt_subs = sum(1 for i in yt_activity if i.category == "subscription")
@@ -110,6 +115,7 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
     spotify_artists = list(artist_names)
 
     # === Step 2+3: Extract interests + discover events in parallel ===
+    _t0 = _time.monotonic()
     logger.info("Step 2: Extracting interests...")
     manual_keywords = db.get_manual_interest_keywords(user_id) or load_manual_keywords(settings.interests_file)
     taste_top = db.get_taste_items(user_id)[:15] if hasattr(db, "get_taste_items") else None
@@ -156,13 +162,16 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
         all_costs.append(cost)
         db.save_cost(run_id, cost)
 
+    step_timings["interests_and_discovery"] = _time.monotonic() - _t0
+
     db.save_events(run_id, events)
-    logger.info(f"  Found {len(events)} events from {len(source_stats)} sources")
+    logger.info(f"  Found {len(events)} events from {len(source_stats)} sources ({step_timings['interests_and_discovery']:.1f}s)")
     for stat in source_stats:
         err = f" (ERROR: {stat.error_message})" if stat.error_message else ""
         logger.info(f"    {stat.source_name}: {stat.events_found}{err}")
 
     # === Step 4: Rank events ===
+    _t0 = _time.monotonic()
     logger.info("Step 4: Ranking events with Claude...")
     if events:
         # Get friend RSVPs for group members (to boost events friends are attending)
@@ -190,9 +199,11 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
             db.save_cost(run_id, cost)
         db.save_rankings(run_id, ranked)
         kept = sum(1 for r in ranked if r.keep)
-        logger.info(f"  Ranked {len(ranked)} events, {kept} recommended")
+        step_timings["ranking"] = _time.monotonic() - _t0
+        logger.info(f"  Ranked {len(ranked)} events, {kept} recommended ({step_timings['ranking']:.1f}s)")
     else:
         ranked = []
+        step_timings["ranking"] = _time.monotonic() - _t0
         logger.info("  No events to rank")
 
     # === Step 4.5: Bucket list suggestions ===
@@ -238,7 +249,19 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
     else:
         logger.info("Step 5: No events to recommend — skipping email")
 
-    logger.info(f"Run #{run_id} complete for {user_label}")
+    step_timings["total"] = _time.monotonic() - _t0_total
+    logger.info(f"Run #{run_id} complete for {user_label} (total: {step_timings['total']:.1f}s)")
+
+    # Save step timings as a JSON string in the run metadata
+    import json as _json
+    try:
+        db.conn.execute(
+            "UPDATE runs SET notes = ? WHERE id = ?",
+            (_json.dumps(step_timings), run_id),
+        )
+        db.conn.commit()
+    except Exception:
+        logger.debug("Could not save step timings to run %d", run_id)
     return run_id
 
 

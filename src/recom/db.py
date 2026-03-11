@@ -426,6 +426,13 @@ class Database:
             )""")
             self.conn.commit()
 
+        # notes column on runs (stores step timings JSON)
+        cur = self.conn.execute("PRAGMA table_info(runs)")
+        run_cols = {row["name"] for row in cur.fetchall()}
+        if "notes" not in run_cols:
+            self.conn.execute("ALTER TABLE runs ADD COLUMN notes TEXT")
+            self.conn.commit()
+
         # bucket list status column
         cur = self.conn.execute("PRAGMA table_info(user_bucket_list)")
         bl_cols = {row["name"] for row in cur.fetchall()}
