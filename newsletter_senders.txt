@@ -1,8 +1,63 @@
 # One sender email or domain per line
 # Used to filter Gmail for newsletter event extraction
 # Lines starting with # are ignored
+
+# Event aggregators
 fractalboston@substack.com
 newsletter@thebostoncalendar.com
 do617@do617.com
 hello@6amcity.com
 events@artsboston.org
+@timeout.com
+@secretboston.com
+@bostonmagazine.com
+@boston.com
+
+# Local media
+@digboston.com
+@universalhub.com
+@bostonglobe.com
+@cambridgeday.com
+@scoutcambridge.com
+@scoutsomerville.com
+
+# Music & nightlife
+@vanyaland.com
+@wbur.org
+@bso.org
+@berklee.edu
+@boweryboston.com
+@crossroadspresents.com
+
+# Arts & culture
+@mfa.org
+@icaboston.org
+@gardnermuseum.org
+@harvardartmuseums.org
+@americanrepertorytheater.org
+@huntingtontheatre.org
+@bostonballet.org
+@blo.org
+@mos.org
+
+# Libraries
+@bpl.org
+@cambridgema.gov
+
+# Outdoors
+@thecharles.org
+@outdoors.org
+
+# Food & drink
+@boston.eater.com
+@harpoonbrewery.com
+@nightshiftbrewing.com
+@trilliumbrewing.com
+@aeronautbrewing.com
+
+# Film
+@brattlefilm.org
+@coolidge.org
+
+# Tech
+@vencaf.org

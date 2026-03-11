@@ -22,7 +22,8 @@ from recom.events.dice import fetch_dice
 from recom.events.eventbrite import fetch_eventbrite
 from recom.events.luma import fetch_luma
 from recom.events.meetup import fetch_meetup
-from recom.events.museums import _fetch_ica, _fetch_mfa, _fetch_mit_list
+from recom.events.museums import _fetch_ica, _fetch_mfa, _fetch_mit_list, _fetch_gardner, _fetch_harvard_art, _fetch_mos, _fetch_athenaeum
+from recom.events.community import fetch_bpl_events, fetch_brattle_events, fetch_coolidge_events
 from recom.events.newsletters import extract_newsletter_events
 from recom.events.outdoor import fetch_outdoor_events
 from recom.events.songkick import fetch_songkick
@@ -270,6 +271,46 @@ async def discover_all_events(
             EventSource.MIT,
             "Massachusetts College of Art and Design", "Boston, MA 02215",
         )),
+        _run_source("BU Events", _fetch_localist(
+            "https://www.bu.edu/calendar", "Boston University",
+            EventSource.MIT,
+            "Boston University", "Boston, MA 02215",
+        )),
+        _run_source("Tufts Events", _fetch_localist(
+            "https://events.tufts.edu", "Tufts University",
+            EventSource.MIT,
+            "Tufts University", "Medford, MA 02155",
+        )),
+        _run_source("Emerson Events", _fetch_localist(
+            "https://calendar.emerson.edu", "Emerson College",
+            EventSource.MIT,
+            "Emerson College", "Boston, MA 02116",
+        )),
+        _run_source("Brandeis Events", _fetch_localist(
+            "https://calendar.brandeis.edu", "Brandeis University",
+            EventSource.MIT,
+            "Brandeis University", "Waltham, MA 02453",
+        )),
+        _run_source("Wellesley Events", _fetch_localist(
+            "https://calendar.wellesley.edu", "Wellesley College",
+            EventSource.MIT,
+            "Wellesley College", "Wellesley, MA 02481",
+        )),
+        _run_source("Berklee Events", _fetch_localist(
+            "https://www.berklee.edu/events", "Berklee College of Music",
+            EventSource.MIT,
+            "Berklee College of Music", "Boston, MA 02215",
+        )),
+        _run_source("Suffolk Events", _fetch_localist(
+            "https://calendar.suffolk.edu", "Suffolk University",
+            EventSource.MIT,
+            "Suffolk University", "Boston, MA 02108",
+        )),
+        _run_source("BC Events", _fetch_localist(
+            "https://events.bc.edu", "Boston College",
+            EventSource.MIT,
+            "Boston College", "Chestnut Hill, MA 02467",
+        )),
         # Boston event sites
         _run_source("Boston Calendar", fetch_boston_events(settings)),
         _run_source("TimeOut Boston", fetch_timeout_boston(settings)),
@@ -280,6 +321,14 @@ async def discover_all_events(
         _run_source("ICA Boston", _fetch_ica(settings)),
         _run_source("MFA", _fetch_mfa(settings)),
         _run_source("MIT List Visual Arts", _fetch_mit_list(settings)),
+        _run_source("Gardner Museum", _fetch_gardner(settings)),
+        _run_source("Harvard Art Museums", _fetch_harvard_art(settings)),
+        _run_source("Museum of Science", _fetch_mos(settings)),
+        _run_source("Boston Athenaeum", _fetch_athenaeum(settings)),
+        # Community / Libraries / Film
+        _run_source("Boston Public Library", fetch_bpl_events(settings)),
+        _run_source("Brattle Theatre", fetch_brattle_events(settings)),
+        _run_source("Coolidge Corner", fetch_coolidge_events(settings)),
         # Outdoor
         _run_source("Outdoor", fetch_outdoor_events(settings)),
     ]
