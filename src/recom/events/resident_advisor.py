@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 
 import httpx
 
 from recom.config import Settings
+from recom.events.common import make_event_id
 from recom.models import EASTERN, Event, EventSource
 
 logger = logging.getLogger(__name__)
@@ -39,11 +39,6 @@ query EventListings($filters: FilterInputDtoInput, $pageSize: Int) {
 }
 """
 
-
-def _make_id(title: str, date_str: str) -> str:
-    raw = f"{title.strip().lower()}|{date_str}"
-    h = hashlib.sha256(raw.encode()).hexdigest()[:12]
-    return f"ra_{h}"
 
 
 def _parse_ra_date(date_str: str, time_str: str | None = None) -> datetime | None:
@@ -152,7 +147,7 @@ async def fetch_resident_advisor(settings: Settings) -> list[Event]:
                             image_url = f"https://images.ra.co/images/{fname}"
 
                     events.append(Event(
-                        id=_make_id(title, date_raw),
+                        id=make_event_id("ra", title, date_raw),
                         source=EventSource.RESIDENT_ADVISOR,
                         title=title,
                         url=evt_url,

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import logging
 import math
+import re as _re
 from collections import defaultdict
 from datetime import datetime
 
 from jinja2 import Environment
 
-from recom.models import InterestProfile, RankedEvent
+from recom.models import InterestProfile, RankedEvent, haversine_km
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +41,6 @@ def _format_day(dt: datetime | None) -> str:
         return str(dt)[:10]
 
 
-import re as _re
-
-
 def _short_desc(text: str, max_len: int = 100) -> str:
     """Strip HTML and truncate to a short snippet."""
     if not text:
@@ -53,12 +51,7 @@ def _short_desc(text: str, max_len: int = 100) -> str:
     return clean
 
 
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6371
-    dLat = math.radians(lat2 - lat1)
-    dLon = math.radians(lon2 - lon1)
-    a = math.sin(dLat/2)**2 + math.cos(math.radians(lat1))*math.cos(math.radians(lat2))*math.sin(dLon/2)**2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+_haversine_km = haversine_km  # use shared implementation
 
 
 def _make_dist_filter(home_lat: float, home_lon: float):

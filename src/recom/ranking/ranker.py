@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import anthropic
 
 from recom.config import estimate_cost
-from recom.models import CostRecord, Event, InterestProfile, RankedEvent
+from recom.models import CostRecord, Event, InterestProfile, RankedEvent, haversine_km
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +21,7 @@ _HOME_LAT = 42.3736
 _HOME_LON = -71.1097
 
 
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6371
-    dLat = math.radians(lat2 - lat1)
-    dLon = math.radians(lon2 - lon1)
-    a = math.sin(dLat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dLon / 2) ** 2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+_haversine_km = haversine_km  # local alias for backward compat
 
 
 def _is_during_work_hours(event: Event) -> bool:

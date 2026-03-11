@@ -6,7 +6,6 @@ Sources: DCR state parks, AMC, Mass Audubon, Trustees of Reservations.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 from datetime import datetime
 
@@ -14,6 +13,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from recom.config import Settings
+from recom.events.common import make_event_id
 from recom.models import Event, EventSource
 
 logger = logging.getLogger(__name__)
@@ -25,8 +25,6 @@ USER_AGENT = (
 TIMEOUT = 25.0
 
 
-def _make_id(source: str, title: str) -> str:
-    return "outdoor_" + hashlib.sha256(f"{source}|{title.lower()}".encode()).hexdigest()[:12]
 
 
 # ── Curated seed spots (always show, no scraping needed) ─────────────────────
@@ -181,7 +179,7 @@ async def _fetch_amc_events(settings: Settings) -> list[Event]:
         description = desc_el.get_text(strip=True)[:300] if desc_el else "AMC organized outdoor activity in the Boston area."
 
         events.append(Event(
-            id=_make_id("amc", title),
+            id=make_event_id("amc", title),
             source=EventSource.NEWSLETTER,  # reuse as generic
             title=f"AMC: {title}",
             description=description,
@@ -204,7 +202,7 @@ async def fetch_outdoor_events(settings: Settings) -> list[Event]:
     # Add curated seed spots (always available, no start_time)
     for spot in _SEED_SPOTS:
         events.append(Event(
-            id=_make_id("seed", spot["title"]),
+            id=make_event_id("seed", spot["title"]),
             source=EventSource.NEWSLETTER,
             title=spot["title"],
             description=spot["description"],

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from datetime import datetime
@@ -10,6 +9,7 @@ from datetime import datetime
 import anthropic
 
 from recom.config import Settings, estimate_cost
+from recom.events.common import make_event_id
 from recom.models import CostRecord, Event, EventSource, parse_event_dt
 
 logger = logging.getLogger(__name__)
@@ -41,11 +41,6 @@ Newsletter body:
 {body}
 """
 
-
-def _make_id(title: str, date_str: str) -> str:
-    raw = f"{title.strip().lower()}|{date_str}"
-    h = hashlib.sha256(raw.encode()).hexdigest()[:12]
-    return f"newsletter_{h}"
 
 
 
@@ -127,7 +122,7 @@ def _extract_from_one_newsletter(
 
         events.append(
             Event(
-                id=_make_id(title, date_str),
+                id=make_event_id("newsletter", title, date_str),
                 source=EventSource.NEWSLETTER,
                 title=title,
                 description=ev.get("description", "")[:500],

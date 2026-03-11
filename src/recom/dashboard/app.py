@@ -162,21 +162,6 @@ LAYOUT_STYLE = """<!DOCTYPE html>
 <body>
 """
 
-# Keep LAYOUT_HEAD as alias for backwards compat with admin pages
-LAYOUT_HEAD = LAYOUT_STYLE + """<nav class="app-nav">
-  <div class="app-nav-inner">
-    <a href="/" class="app-logo">recom</a>
-    <a href="/" class="nav-link">📅 Events</a>
-    <a href="/groups" class="nav-link">👥 Groups</a>
-    <a href="/attended" class="nav-link">📜 History</a>
-    <a href="/login" class="nav-link">🔑 Login</a>
-    <div class="nav-divider"></div>
-    <a href="/admin" class="nav-link" style="font-size:12px;color:#9ca3af">⚙️ Admin</a>
-  </div>
-</nav>
-<div class="app-content">
-"""
-
 LAYOUT_FOOT = """
 <script>
 document.querySelectorAll('th[data-sort]').forEach(th => {
@@ -1339,47 +1324,48 @@ async def taste_page(request: Request, response: Response):
 
     resp = HTMLResponse(_layout("Taste Stack", f"""
 <style>
-.app-content {{ background: #0f0f1a; }}
-.page-wrap {{ max-width: 700px; margin: 0 auto; padding: 32px 16px 80px; }}
-.hero {{ text-align: center; padding: 48px 0 32px; }}
-.hero h1 {{ font-size: 2.4rem; font-weight: 900; background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }}
-.hero p {{ color: #94a3b8; font-size: 1rem; max-width: 400px; margin: 0 auto; }}
-.matchup-card {{ background: #1e1e3a; border-radius: 20px; padding: 32px; margin: 24px 0; border: 1px solid #2d2d5e; }}
-.matchup-label {{ text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #6366f1; margin-bottom: 24px; }}
+.page-wrap {{ max-width: 700px; margin: 0 auto; padding: 12px 0 60px; }}
+.hero {{ text-align: center; padding: 24px 0 20px; }}
+.hero h1 {{ font-size: 1.8rem; font-weight: 800; color: #1a1a1a; margin-bottom: 4px; }}
+.hero p {{ color: #6b7280; font-size: 0.95rem; max-width: 400px; margin: 0 auto; }}
+.matchup-card {{ background: white; border-radius: 14px; padding: 28px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; }}
+.matchup-label {{ text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #6366f1; margin-bottom: 20px; }}
 .matchup-vs {{ display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center; }}
-.matchup-option {{ background: #0f0f1a; border: 2px solid #2d2d5e; border-radius: 16px; padding: 24px 16px; text-align: center; cursor: pointer; transition: all .2s; }}
-.matchup-option:hover {{ border-color: #818cf8; background: #1a1a2e; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(129,140,248,.2); }}
-.matchup-option.selected {{ border-color: #22c55e; background: #052e16; }}
-.matchup-option .category {{ font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #6b7280; margin-bottom: 8px; }}
-.matchup-option .label {{ font-size: 1.05rem; font-weight: 700; color: #e2e8f0; line-height: 1.3; }}
-.vs-badge {{ font-size: 18px; font-weight: 900; color: #4b5563; }}
-.equal-btn {{ display: block; text-align: center; margin: 16px auto 0; background: transparent; border: 1px solid #374151; color: #6b7280; font-size: 13px; padding: 8px 24px; border-radius: 20px; cursor: pointer; font-family: inherit; transition: all .15s; }}
-.equal-btn:hover {{ border-color: #6b7280; color: #9ca3af; }}
-.stats-row {{ display: flex; gap: 16px; justify-content: center; margin-bottom: 32px; flex-wrap: wrap; }}
-.stat-pill {{ background: #1e1e3a; border: 1px solid #2d2d5e; border-radius: 20px; padding: 8px 20px; font-size: 13px; color: #94a3b8; }}
-.stat-pill strong {{ color: #e2e8f0; }}
-.stack-section {{ margin-top: 40px; }}
-.stack-header {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }}
-.stack-header h2 {{ font-size: 1.3rem; font-weight: 800; color: #e2e8f0; }}
+.matchup-option {{ background: #f8f9fa; border: 2px solid #e5e7eb; border-radius: 14px; padding: 24px 16px; text-align: center; cursor: pointer; transition: all .2s; }}
+.matchup-option:hover {{ border-color: #818cf8; background: #f0f0ff; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(129,140,248,.15); }}
+.matchup-option.selected {{ border-color: #22c55e; background: #f0fdf4; }}
+.matchup-option .category {{ font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #9ca3af; margin-bottom: 8px; }}
+.matchup-option .label {{ font-size: 1.05rem; font-weight: 700; color: #1a1a1a; line-height: 1.3; }}
+.vs-badge {{ font-size: 18px; font-weight: 900; color: #d1d5db; }}
+.equal-btn {{ display: block; text-align: center; margin: 16px auto 0; background: transparent; border: 1px solid #e5e7eb; color: #9ca3af; font-size: 13px; padding: 8px 24px; border-radius: 20px; cursor: pointer; font-family: inherit; transition: all .15s; }}
+.equal-btn:hover {{ border-color: #9ca3af; color: #6b7280; }}
+.stats-row {{ display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }}
+.stat-pill {{ background: white; border: 1px solid #e5e7eb; border-radius: 20px; padding: 6px 16px; font-size: 13px; color: #6b7280; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }}
+.stat-pill strong {{ color: #1a1a1a; }}
+.stack-section {{ margin-top: 32px; }}
+.stack-header {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }}
+.stack-header h2 {{ font-size: 1.1rem; font-weight: 700; color: #1a1a1a; }}
 .add-form {{ display: flex; gap: 8px; }}
-.add-form input, .add-form select {{ background: #1e1e3a; border: 1px solid #2d2d5e; color: #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-family: inherit; }}
+.add-form input, .add-form select {{ background: white; border: 1.5px solid #e5e7eb; color: #1a1a1a; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-family: inherit; }}
 .add-form input {{ flex: 1; }}
+.add-form input:focus, .add-form select:focus {{ outline: none; border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129,140,248,.1); }}
 .add-form button {{ background: #4f46e5; color: white; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }}
-.taste-item {{ display: flex; align-items: center; gap: 12px; background: #1e1e3a; border-radius: 12px; padding: 14px 16px; margin: 8px 0; border: 1px solid #2d2d5e; }}
-.rank-num {{ font-size: 13px; font-weight: 800; color: #4b5563; width: 24px; flex-shrink: 0; text-align: right; }}
+.add-form button:hover {{ background: #4338ca; }}
+.taste-item {{ display: flex; align-items: center; gap: 12px; background: white; border-radius: 10px; padding: 12px 16px; margin: 6px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #f3f4f6; }}
+.rank-num {{ font-size: 13px; font-weight: 800; color: #d1d5db; width: 24px; flex-shrink: 0; text-align: right; }}
 .item-info {{ flex: 1; min-width: 0; }}
-.item-label {{ font-size: 14px; font-weight: 600; color: #e2e8f0; }}
-.item-cat {{ font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }}
+.item-label {{ font-size: 14px; font-weight: 600; color: #1a1a1a; }}
+.item-cat {{ font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }}
 .elo-bar-wrap {{ width: 120px; flex-shrink: 0; }}
-.elo-bar {{ height: 6px; background: #2d2d5e; border-radius: 3px; overflow: hidden; }}
+.elo-bar {{ height: 6px; background: #f3f4f6; border-radius: 3px; overflow: hidden; }}
 .elo-bar-fill {{ height: 100%; background: linear-gradient(90deg, #818cf8, #c084fc); border-radius: 3px; transition: width .4s; }}
-.elo-num {{ font-size: 12px; font-weight: 700; color: #818cf8; text-align: right; margin-top: 3px; }}
+.elo-num {{ font-size: 12px; font-weight: 700; color: #6366f1; text-align: right; margin-top: 3px; }}
 .item-actions {{ display: flex; gap: 8px; }}
-.del-btn {{ background: transparent; border: none; color: #4b5563; cursor: pointer; font-size: 16px; padding: 4px; transition: color .15s; }}
+.del-btn {{ background: transparent; border: none; color: #d1d5db; cursor: pointer; font-size: 16px; padding: 4px; transition: color .15s; }}
 .del-btn:hover {{ color: #ef4444; }}
 .category-group {{ margin-bottom: 28px; }}
-.cat-label {{ font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #4b5563; margin-bottom: 10px; padding-left: 4px; }}
-.congrats {{ text-align: center; padding: 32px; color: #94a3b8; }}
+.cat-label {{ font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #9ca3af; margin-bottom: 10px; padding-left: 4px; }}
+.congrats {{ text-align: center; padding: 32px; color: #6b7280; }}
 </style>
 <div class="page-wrap">
   <div class="hero">
@@ -1431,9 +1417,9 @@ let PAIR = {pair_json};
 let currentItems = [...ITEMS];
 
 const CAT_COLORS = {{
-  music: '#f59e0b', social: '#3b82f6', arts: '#ec4899',
-  intellectual: '#8b5cf6', active: '#22c55e', food: '#f97316',
-  maker: '#06b6d4', general: '#6b7280'
+  music: '#d97706', social: '#2563eb', arts: '#db2777',
+  intellectual: '#7c3aed', active: '#16a34a', food: '#ea580c',
+  maker: '#0891b2', general: '#6b7280'
 }};
 
 function renderMatchup() {{
@@ -1450,7 +1436,7 @@ function renderMatchup() {{
     <div class="matchup-option" id="opt-a" onclick="vote(${{a.id}})">
       <div class="category" style="color:${{CAT_COLORS[a.category] || '#6b7280'}}">${{a.category}}</div>
       <div class="label">${{a.label}}</div>
-      <div style="font-size:11px;color:#4b5563;margin-top:8px">${{Math.round(a.elo_rating)}} elo</div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:8px">${{Math.round(a.elo_rating)}} elo</div>
     </div>
     <div class="vs-badge">vs</div>
     <div class="matchup-option" id="opt-b" onclick="vote(${{b.id}})">
@@ -1588,12 +1574,12 @@ fetch('/api/taste/radar').then(r => r.json()).then(d => {{
       const a = TWO_PI * i / n - Math.PI/2;
       return `${{(cx+Math.cos(a)*r*level).toFixed(1)}},${{(cy+Math.sin(a)*r*level).toFixed(1)}}`;
     }});
-    svg += `<polygon points="${{pts.join(' ')}}" fill="none" stroke="#2d2d5e" stroke-width="0.8"/>`;
+    svg += `<polygon points="${{pts.join(' ')}}" fill="none" stroke="#e5e7eb" stroke-width="0.8"/>`;
   }});
   // Axes
   d.axes.forEach((_,i) => {{
     const a = TWO_PI * i / n - Math.PI/2;
-    svg += `<line x1="${{cx.toFixed(1)}}" y1="${{cy.toFixed(1)}}" x2="${{(cx+Math.cos(a)*r).toFixed(1)}}" y2="${{(cy+Math.sin(a)*r).toFixed(1)}}" stroke="#2d2d5e" stroke-width="0.8"/>`;
+    svg += `<line x1="${{cx.toFixed(1)}}" y1="${{cy.toFixed(1)}}" x2="${{(cx+Math.cos(a)*r).toFixed(1)}}" y2="${{(cy+Math.sin(a)*r).toFixed(1)}}" stroke="#e5e7eb" stroke-width="0.8"/>`;
   }});
   // Data
   const dpts = d.values.map((v,i) => {{
@@ -1610,13 +1596,13 @@ fetch('/api/taste/radar').then(r => r.json()).then(d => {{
     const ly = (cy+Math.sin(a)*lr).toFixed(1);
     const anchor = cx-Math.cos(a)*r > 5 ? 'end' : cx+Math.cos(a)*r > 5 ? 'start' : 'middle';
     svg += `<circle cx="${{px}}" cy="${{py}}" r="3" fill="#818cf8"/>`;
-    svg += `<text x="${{lx}}" y="${{ly}}" text-anchor="${{anchor}}" dominant-baseline="middle" font-size="9" fill="#94a3b8" font-family="system-ui">${{d.axes[i]}}</text>`;
+    svg += `<text x="${{lx}}" y="${{ly}}" text-anchor="${{anchor}}" dominant-baseline="middle" font-size="9" fill="#6b7280" font-family="system-ui">${{d.axes[i]}}</text>`;
   }});
   svg += '</svg>';
-  sec.innerHTML = `<div style="background:#1e1e3a;border:1px solid #2d2d5e;border-radius:16px;padding:20px 32px;text-align:center;">
+  sec.innerHTML = `<div style="background:white;border:1px solid #e5e7eb;border-radius:14px;padding:20px 32px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
     <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#6366f1;margin-bottom:12px;">Taste Profile</div>
     ${{svg}}
-    <div style="font-size:11px;color:#4b5563;margin-top:8px;">Based on ${{d.axes.length}} categories · updates with each matchup</div>
+    <div style="font-size:11px;color:#9ca3af;margin-top:8px;">Based on ${{d.axes.length}} categories · updates with each matchup</div>
   </div>`;
 }});
 </script>

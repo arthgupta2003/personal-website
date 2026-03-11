@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 
 import httpx
 
 from recom.config import Settings
+from recom.events.common import make_event_id
 from recom.models import Event, EventSource, parse_event_dt
 
 logger = logging.getLogger(__name__)
@@ -16,11 +16,6 @@ logger = logging.getLogger(__name__)
 TIMEOUT = 30.0
 BASE_URL = "https://app.ticketmaster.com/discovery/v2/events.json"
 
-
-def _make_id(title: str, date_str: str) -> str:
-    raw = f"{title.strip().lower()}|{date_str}"
-    h = hashlib.sha256(raw.encode()).hexdigest()[:12]
-    return f"ticketmaster_{h}"
 
 
 
@@ -115,7 +110,7 @@ def _parse_event(ev: dict) -> Event | None:
     image_url = images[0].get("url") if images else None
 
     return Event(
-        id=_make_id(title, date_str),
+        id=make_event_id("ticketmaster", title, date_str),
         source=EventSource.SONGKICK,  # reuse SONGKICK slot for concerts
         title=title,
         description=f"Performers: {organizer}" if organizer else "",

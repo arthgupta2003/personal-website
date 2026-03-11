@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 from enum import Enum
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
+
+
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in km between two lat/lon points."""
+    R = 6371
+    dLat = math.radians(lat2 - lat1)
+    dLon = math.radians(lon2 - lon1)
+    a = math.sin(dLat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dLon / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 EASTERN = ZoneInfo("America/New_York")
 

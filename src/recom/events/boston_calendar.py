@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -11,6 +10,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from recom.config import Settings
+from recom.events.common import make_event_id
 from recom.models import Event, EventSource, parse_event_dt
 
 logger = logging.getLogger(__name__)
@@ -21,11 +21,6 @@ USER_AGENT = (
 )
 TIMEOUT = 30.0
 
-
-def _make_id(source: str, title: str, date_str: str) -> str:
-    raw = f"{title.strip().lower()}|{date_str}"
-    h = hashlib.sha256(raw.encode()).hexdigest()[:12]
-    return f"{source}_{h}"
 
 
 
@@ -133,7 +128,7 @@ async def _fetch_boston_calendar(client: httpx.AsyncClient) -> list[Event]:
 
         events.append(
             Event(
-                id=_make_id("boston_calendar", title, date_str),
+                id=make_event_id("boston_calendar", title, date_str),
                 source=EventSource.BOSTON_CALENDAR,
                 title=title,
                 description="",
@@ -210,7 +205,7 @@ async def _fetch_do617(client: httpx.AsyncClient) -> list[Event]:
 
         events.append(
             Event(
-                id=_make_id("do617", title, date_str),
+                id=make_event_id("do617", title, date_str),
                 source=EventSource.DO617,
                 title=title,
                 url=event_url,
@@ -289,7 +284,7 @@ async def _fetch_artsboston(client: httpx.AsyncClient) -> list[Event]:
 
         events.append(
             Event(
-                id=_make_id("artsboston", title, date_str),
+                id=make_event_id("artsboston", title, date_str),
                 source=EventSource.ARTSBOSTON,
                 title=title,
                 description=description,

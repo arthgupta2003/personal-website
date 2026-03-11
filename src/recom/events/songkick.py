@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 
 import httpx
 
 from recom.config import Settings
+from recom.events.common import make_event_id
 from recom.models import Event, EventSource, parse_event_dt
 
 logger = logging.getLogger(__name__)
@@ -16,11 +16,6 @@ logger = logging.getLogger(__name__)
 TIMEOUT = 30.0
 BOSTON_METRO_ID = 18842
 
-
-def _make_id(title: str, date_str: str) -> str:
-    raw = f"{title.strip().lower()}|{date_str}"
-    h = hashlib.sha256(raw.encode()).hexdigest()[:12]
-    return f"songkick_{h}"
 
 
 
@@ -71,7 +66,7 @@ async def fetch_songkick(settings: Settings) -> list[Event]:
 
         events.append(
             Event(
-                id=_make_id(title, date_str),
+                id=make_event_id("songkick", title, date_str),
                 source=EventSource.SONGKICK,
                 title=title,
                 url=ev.get("uri", ""),

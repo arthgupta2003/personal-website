@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
@@ -12,6 +11,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from recom.config import Settings
+from recom.events.common import make_event_id
 from recom.models import Event, EventSource, EASTERN
 
 logger = logging.getLogger(__name__)
@@ -23,11 +23,6 @@ USER_AGENT = (
 TIMEOUT = 30.0
 BANDSINTOWN_CITY_SLUG = "boston-ma"
 
-
-def _make_id(title: str, date_str: str) -> str:
-    raw = f"{title.strip().lower()}|{date_str}"
-    h = hashlib.sha256(raw.encode()).hexdigest()[:12]
-    return f"bandsintown_{h}"
 
 
 def _parse_bit_date(date_str: str) -> datetime | None:
@@ -106,7 +101,7 @@ async def _fetch_via_api(settings: Settings) -> list[Event]:
             organizer = ", ".join(names)
 
         events.append(Event(
-            id=_make_id(title, date_str),
+            id=make_event_id("bandsintown", title, date_str),
             source=EventSource.BANDSINTOWN,
             title=title,
             url=item.get("url") or item.get("ticket_url") or "",
@@ -173,7 +168,7 @@ async def _fetch_via_scrape(settings: Settings) -> list[Event]:
                 organizer = ", ".join(p.get("name", "") for p in performers[:5] if isinstance(p, dict)) or None
 
                 events.append(Event(
-                    id=_make_id(title, start_raw),
+                    id=make_event_id("bandsintown", title, start_raw),
                     source=EventSource.BANDSINTOWN,
                     title=title,
                     url=item.get("url", "") or item.get("@id", ""),
@@ -208,7 +203,7 @@ async def _fetch_via_scrape(settings: Settings) -> list[Event]:
                 evt_url = "https://www.bandsintown.com" + evt_url
 
             events.append(Event(
-                id=_make_id(title, date_str),
+                id=make_event_id("bandsintown", title, date_str),
                 source=EventSource.BANDSINTOWN,
                 title=title,
                 url=evt_url,

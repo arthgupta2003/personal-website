@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -12,6 +11,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from recom.config import Settings
+from recom.events.common import make_event_id
 from recom.models import Event, EventSource, parse_event_dt
 
 logger = logging.getLogger(__name__)
@@ -23,9 +23,6 @@ USER_AGENT = (
 TIMEOUT = 30.0
 
 
-def _make_id(source: str, title: str, date_str: str) -> str:
-    raw = f"{source}|{title.strip().lower()}|{date_str}"
-    return "museum_" + hashlib.sha256(raw.encode()).hexdigest()[:12]
 
 
 # ── ICA Boston ────────────────────────────────────────────────────────────────
@@ -73,7 +70,7 @@ async def _fetch_ica(settings: Settings) -> list[Event]:
 
         date_str = str(start_time.date()) if start_time else ""
         events.append(Event(
-            id=_make_id("ica", title, date_str),
+            id=make_event_id("ica", title, date_str),
             source=EventSource.ARTSBOSTON,
             title=title,
             description=description,
@@ -134,7 +131,7 @@ async def _fetch_mfa(settings: Settings) -> list[Event]:
 
         date_str = str(start_time.date()) if start_time else ""
         events.append(Event(
-            id=_make_id("mfa", title, date_str),
+            id=make_event_id("mfa", title, date_str),
             source=EventSource.ARTSBOSTON,
             title=title,
             description=description,
@@ -192,7 +189,7 @@ async def _fetch_mit_list(settings: Settings) -> list[Event]:
 
         date_str = str(start_time.date()) if start_time else ""
         events.append(Event(
-            id=_make_id("list", title, date_str),
+            id=make_event_id("list", title, date_str),
             source=EventSource.MIT,
             title=title,
             description=description,

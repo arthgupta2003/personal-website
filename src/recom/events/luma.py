@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -10,6 +9,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from recom.config import Settings
+from recom.events.common import make_event_id
 from recom.models import Event, EventSource, parse_event_dt
 
 logger = logging.getLogger(__name__)
@@ -20,11 +20,6 @@ USER_AGENT = (
 )
 TIMEOUT = 30.0
 
-
-def _make_id(title: str, date_str: str) -> str:
-    raw = f"{title.strip().lower()}|{date_str}"
-    h = hashlib.sha256(raw.encode()).hexdigest()[:12]
-    return f"luma_{h}"
 
 
 
@@ -70,7 +65,7 @@ async def _fetch_via_api(settings: Settings) -> list[Event]:
 
         events.append(
             Event(
-                id=_make_id(title, start_raw),
+                id=make_event_id("luma", title, start_raw),
                 source=EventSource.LUMA,
                 title=title,
                 description=(ev.get("description") or "")[:500],
@@ -134,7 +129,7 @@ async def _fetch_via_scrape(settings: Settings) -> list[Event]:
 
         events.append(
             Event(
-                id=_make_id(title, date_str),
+                id=make_event_id("luma", title, date_str),
                 source=EventSource.LUMA,
                 title=title,
                 url=event_url,

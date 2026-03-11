@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -12,6 +11,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from recom.config import Settings
+from recom.events.common import make_event_id
 from recom.models import Event, EventSource, parse_event_dt
 
 logger = logging.getLogger(__name__)
@@ -22,11 +22,6 @@ USER_AGENT = (
 )
 TIMEOUT = 30.0
 
-
-def _make_id(source: str, title: str, date_str: str) -> str:
-    raw = f"{title.strip().lower()}|{date_str}"
-    h = hashlib.sha256(raw.encode()).hexdigest()[:12]
-    return f"{source}_{h}"
 
 
 
@@ -127,7 +122,7 @@ async def _fetch_mit(settings: Settings) -> list[Event]:
 
                 events.append(
                     Event(
-                        id=_make_id("mit", title, date_str),
+                        id=make_event_id("mit", title, date_str),
                         source=EventSource.MIT,
                         title=title,
                         description=description,
@@ -217,7 +212,7 @@ async def _fetch_harvard(settings: Settings) -> list[Event]:
         date_str = start_raw or ""
         events.append(
             Event(
-                id=_make_id("harvard", title, date_str),
+                id=make_event_id("harvard", title, date_str),
                 source=EventSource.HARVARD,
                 title=title,
                 description=description,
@@ -304,7 +299,7 @@ async def _fetch_localist(
 
                 date_str = str(evt.get("first_date") or "")
                 events.append(Event(
-                    id=_make_id(school_name.lower().replace(" ", "_"), title, date_str),
+                    id=make_event_id(school_name.lower().replace(" ", "_"), title, date_str),
                     source=source,
                     title=title,
                     description=description,
@@ -363,7 +358,7 @@ async def _fetch_trumba_school(
         date_str = start_raw or ""
 
         events.append(Event(
-            id=_make_id(school_name.lower().replace(" ", "_"), title, date_str),
+            id=make_event_id(school_name.lower().replace(" ", "_"), title, date_str),
             source=source,
             title=title,
             description=description,

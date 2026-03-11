@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 
 import httpx
 
 from recom.config import Settings
+from recom.events.common import make_event_id
 from recom.models import Event, EventSource, EASTERN
 
 logger = logging.getLogger(__name__)
@@ -19,11 +19,6 @@ USER_AGENT = (
 )
 TIMEOUT = 30.0
 
-
-def _make_id(title: str, date_str: str) -> str:
-    raw = f"{title.strip().lower()}|{date_str}"
-    h = hashlib.sha256(raw.encode()).hexdigest()[:12]
-    return f"dice_{h}"
 
 
 def _parse_dice_date(date_str: str) -> datetime | None:
@@ -157,7 +152,7 @@ async def fetch_dice(settings: Settings) -> list[Event]:
                 evt_url = f"https://dice.fm/event/{evt_url}"
 
             events.append(Event(
-                id=_make_id(title, date_str),
+                id=make_event_id("dice", title, date_str),
                 source=EventSource.DICE,
                 title=title,
                 description=item.get("description", "")[:500],
