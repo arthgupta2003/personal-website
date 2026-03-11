@@ -191,6 +191,15 @@ events at MIT/Harvard = strong quality. Major ticketed shows = vetted.
 DO NOT compute a total score — just return the 7 raw dimension scores. \
 We compute the weighted total server-side using different weights per vibe.
 
+CALIBRATION — USE THE FULL 0-15 RANGE:
+- DO NOT cluster all scores in the 4-8 range. This defeats the purpose.
+- A boring generic webinar with no interest match should get 0-2 on most dimensions.
+- A must-attend concert by a favorite artist should get 13-15 on interest, social, urgency.
+- Be DECISIVE: if something is mediocre, score it low (0-4). If it's great, score it high (12-15).
+- Aim for a roughly uniform distribution: ~30% of events scoring below 4, ~40% in 5-10, ~30% above 10 on each dimension.
+- The top ~20% of events should have at least one dimension at 13+.
+- The bottom ~30% should have most dimensions below 5.
+
 CATEGORIZATION — two fields per event:
   "event_type":
     - "event": one-off events, concerts, talks, shows, workshops

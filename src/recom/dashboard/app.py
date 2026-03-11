@@ -62,15 +62,16 @@ def render_nav(user: dict | None = None) -> str:
         return f"""<nav class="app-nav"><div class="app-nav-inner">
           <a href="/" class="app-logo">recom</a>
           <a href="/" class="nav-link">📅 Events</a>
+          <a href="/taste" class="nav-link">🎯 Taste</a>
           <a href="/groups" class="nav-link">👥 Groups</a>
-          <a href="/search" class="nav-link">🔍 Search</a>
           <a href="/profile" class="nav-link">👤 Profile</a>
           <div class="nav-overflow">
             <button class="nav-overflow-btn" onclick="this.nextElementSibling.classList.toggle('open')" aria-label="More">···</button>
             <div class="nav-overflow-menu">
+              <a href="/search" class="nav-overflow-item">🔍 Search</a>
               <a href="/attended" class="nav-overflow-item">📜 History</a>
-              <a href="/taste" class="nav-overflow-item">🎯 Taste</a>
               <a href="/venues" class="nav-overflow-item">📍 Venues</a>
+              <a href="/bucket-list" class="nav-overflow-item">🪣 Bucket List</a>
               {admin_overflow}
             </div>
           </div>
@@ -523,8 +524,9 @@ async def email_preview_send_test(request: Request):
 
 
 @app.get("/admin", response_class=HTMLResponse)
-async def run_history():
+async def run_history(request: Request):
     db = get_db()
+    current_user = _get_current_user(request)
     runs = db.get_runs()
     rows_html = ""
     for r in runs:
@@ -556,19 +558,19 @@ async def run_history():
         f'<option value="{h}"{" selected" if str(h) == sched_daily_hour else ""}>{h}:00</option>'
         for h in range(6, 13)
     )
-    return HTMLResponse(LAYOUT_HEAD.replace("__TITLE__","Run History") + f"""
-    <h1>Run History</h1>
-    <div style="margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;">
-        <a href="/admin/sources" style="font-size:13px;color:#4f46e5;font-weight:600;">📡 Source Health</a>
-        <a href="/admin/interests" style="font-size:13px;color:#4f46e5;font-weight:600;">🧠 Interest Profile</a>
-        <a href="/admin/email-preview" style="font-size:13px;color:#4f46e5;font-weight:600;">✉ Email Preview</a>
-        <a href="/admin/metrics" style="font-size:13px;color:#4f46e5;font-weight:600;">📊 Metrics</a>
-        <a href="/admin/ranking-analysis" style="font-size:13px;color:#4f46e5;font-weight:600;">🔍 Ranking Analysis</a>
-        <a href="/admin/pipeline" style="font-size:13px;color:#4f46e5;font-weight:600;">⚙️ Pipeline</a>
-        <a href="/admin/backtest" style="font-size:13px;color:#4f46e5;font-weight:600;">🧪 Backtest</a>
-        <a href="/admin/retros" style="font-size:13px;color:#4f46e5;font-weight:600;">🔭 Retros</a>
-        <a href="/admin/cal-preview" style="font-size:13px;color:#4f46e5;font-weight:600;">📅 Cal Preview</a>
-        <a href="/admin/ml" style="font-size:13px;color:#4f46e5;font-weight:600;">🤖 ML Model</a>
+    body = f"""
+    <h1>⚙️ Admin</h1>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        <a href="/admin/sources" style="font-size:12px;padding:6px 12px;background:#f3f4f6;border-radius:8px;color:#374151;text-decoration:none;font-weight:600;">📡 Sources</a>
+        <a href="/admin/interests" style="font-size:12px;padding:6px 12px;background:#f3f4f6;border-radius:8px;color:#374151;text-decoration:none;font-weight:600;">🧠 Interests</a>
+        <a href="/admin/email-preview" style="font-size:12px;padding:6px 12px;background:#f3f4f6;border-radius:8px;color:#374151;text-decoration:none;font-weight:600;">✉️ Email</a>
+        <a href="/admin/metrics" style="font-size:12px;padding:6px 12px;background:#f3f4f6;border-radius:8px;color:#374151;text-decoration:none;font-weight:600;">📊 Metrics</a>
+        <a href="/admin/ranking-analysis" style="font-size:12px;padding:6px 12px;background:#f3f4f6;border-radius:8px;color:#374151;text-decoration:none;font-weight:600;">🔍 Rankings</a>
+        <a href="/admin/pipeline" style="font-size:12px;padding:6px 12px;background:#f3f4f6;border-radius:8px;color:#374151;text-decoration:none;font-weight:600;">⚙️ Pipeline</a>
+        <a href="/admin/backtest" style="font-size:12px;padding:6px 12px;background:#f3f4f6;border-radius:8px;color:#374151;text-decoration:none;font-weight:600;">🧪 Backtest</a>
+        <a href="/admin/retros" style="font-size:12px;padding:6px 12px;background:#f3f4f6;border-radius:8px;color:#374151;text-decoration:none;font-weight:600;">🔭 Retros</a>
+        <a href="/admin/cal-preview" style="font-size:12px;padding:6px 12px;background:#f3f4f6;border-radius:8px;color:#374151;text-decoration:none;font-weight:600;">📅 Calendar</a>
+        <a href="/admin/ml" style="font-size:12px;padding:6px 12px;background:#f3f4f6;border-radius:8px;color:#374151;text-decoration:none;font-weight:600;">🤖 ML</a>
     </div>
     <table>
         <thead><tr>
@@ -582,8 +584,9 @@ async def run_history():
         <tbody>{rows_html}</tbody>
     </table>
 
-    <h2 style="margin-top:32px;">Schedule Settings</h2>
-    <div class="card" style="max-width:480px;">
+    <details style="margin-top:24px;">
+      <summary style="cursor:pointer;font-size:14px;font-weight:600;color:#374151;">Schedule Settings</summary>
+      <div class="card" style="max-width:480px;margin-top:8px;">
         <form id="sched-form" style="display:flex;flex-direction:column;gap:14px;">
             <div>
                 <label style="font-size:13px;color:#6b7280;display:block;margin-bottom:4px;">Weekly pipeline day</label>
@@ -603,7 +606,8 @@ async def run_history():
                 <span id="sched-status" style="font-size:13px;color:#6b7280;"></span>
             </div>
         </form>
-    </div>
+      </div>
+    </details>
     <script>
     async function saveSchedule() {{
         const form = document.getElementById('sched-form');
@@ -626,7 +630,8 @@ async def run_history():
         }} catch(e) {{ st.textContent = '✗ ' + e; st.style.color = '#dc2626'; }}
     }}
     </script>
-    """ + LAYOUT_FOOT)
+    """
+    return HTMLResponse(_layout("Admin", body, current_user))
 
 
 @app.post("/api/admin/schedule")
@@ -665,8 +670,9 @@ async def api_admin_schedule(request: Request):
 
 
 @app.get("/run/{run_id}", response_class=HTMLResponse)
-async def run_detail(run_id: int):
+async def run_detail(request: Request, run_id: int):
     db = get_db()
+    current_user = _get_current_user(request)
     run = db.get_run(run_id)
     if not run:
         return HTMLResponse("<h1>Run not found</h1>", status_code=404)
@@ -697,6 +703,35 @@ async def run_detail(run_id: int):
     for c in costs:
         cost_html += f"<tr><td>{c['call_type']}</td><td>{c['model']}</td><td>{c['tokens_in']:,}</td><td>{c['tokens_out']:,}</td><td>${c['cost_usd']:.4f}</td></tr>"
 
+    # Score distribution histogram
+    scores = [int(e.get("score") or 0) for e in events if e.get("score") is not None]
+    kept_count = sum(1 for e in events if e.get("keep"))
+    if scores:
+        # Build 10-bucket histogram (0-10, 10-20, ..., 90-100)
+        buckets = [0] * 10
+        for s in scores:
+            idx = min(s // 10, 9)
+            buckets[idx] += 1
+        max_bucket = max(buckets) or 1
+        hist_bars = ""
+        for i, cnt in enumerate(buckets):
+            h = max(2, round(cnt / max_bucket * 80))
+            label = f"{i*10}-{(i+1)*10}"
+            color = "#16a34a" if i >= 7 else "#3b82f6" if i >= 5 else "#f59e0b" if i >= 3 else "#e5e7eb"
+            hist_bars += f'<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;"><div style="width:100%;height:{h}px;background:{color};border-radius:3px;" title="{label}: {cnt}"></div><span style="font-size:10px;color:#9ca3af;">{i*10}</span></div>'
+        avg_score = round(sum(scores) / len(scores), 1)
+        median = sorted(scores)[len(scores) // 2]
+        score_dist_html = f"""
+        <div style="margin-bottom:20px;">
+          <h2>Score Distribution</h2>
+          <div style="display:flex;gap:12px;font-size:13px;color:#6b7280;margin-bottom:8px;">
+            <span>n={len(scores)}</span> <span>avg={avg_score}</span> <span>median={median}</span> <span>kept={kept_count} ({round(kept_count/len(scores)*100)}%)</span>
+          </div>
+          <div style="display:flex;gap:2px;align-items:flex-end;height:90px;padding:4px;background:#f9fafb;border-radius:8px;">{hist_bars}</div>
+        </div>"""
+    else:
+        score_dist_html = ""
+
     # Events table
     events_html = ""
     for e in events:
@@ -709,18 +744,11 @@ async def run_detail(run_id: int):
         clean_desc = _re.sub(r'<[^>]+>', '', raw_desc).replace("&nbsp;", " ").replace("&#8217;", "'").replace("&#8220;", '"').replace("&#8221;", '"').strip()
         short_desc = clean_desc[:100] + ("..." if len(clean_desc) > 100 else "") if clean_desc else ""
         events_html += f"""<tr>
-            <td><a href="{e.get('url', '#')}" target="_blank">{e['title'][:60]}</a>
-                {f'<div style="font-size:11px;color:#6b7280;margin-top:2px">{short_desc}</div>' if short_desc else ''}
-            </td>
-            <td>{e.get('source', '')}</td>
-            <td>{(e.get('start_time') or '')[:16]}</td>
-            <td>{e.get('location_name', '')[:30]}</td>
-            <td>{e.get('price') or 'Free'}</td>
-            <td data-val="{e.get('interest_score', 0)}">{score_badge(e.get('interest_score'))}</td>
-            <td data-val="{e.get('social_score', 0)}">{score_badge(e.get('social_score'))}</td>
+            <td><a href="{e.get('url', '#')}" target="_blank">{e['title'][:60]}</a></td>
+            <td style="white-space:nowrap;">{(e.get('start_time') or '')[:16].replace('T',' ')}</td>
             <td data-val="{e.get('score', 0)}">{score_badge(e.get('score'))}</td>
-            <td>{keep_str}</td>
-            <td title="{reason}">{reason[:80]}</td>
+            <td>{"✅" if keep else "—"}</td>
+            <td style="font-size:12px;color:#6b7280;" title="{reason}">{reason[:60]}</td>
         </tr>"""
 
     # Detect in-progress run: has events but few/no rankings, or no source stats yet
@@ -739,7 +767,7 @@ async def run_detail(run_id: int):
             </p>
         </div>"""
 
-    return HTMLResponse(LAYOUT_HEAD.replace("__TITLE__",f"Run #{run_id}") + f"""
+    body = f"""
     <h1>Run #{run_id} — {run['timestamp'][:16]}</h1>
     {wip_banner}
 
@@ -750,11 +778,7 @@ async def run_detail(run_id: int):
         <div class="stat"><div class="stat-value">{run['tokens_out_total']:,}</div><div class="stat-label">Output Tokens</div></div>
     </div>
 
-    <h2>Data Sources (Ingest)</h2>
-    <div class="card">{''.join(f'<div style="margin:4px 0"><strong>{s["source"]}</strong>: {s["item_count"]} items — {s["detail"]}</div>' for s in ingest_stats) if ingest_stats else '<p style="color:#9ca3af">No ingest stats recorded (older run)</p>'}</div>
-
-    <h2>Interest Profile</h2>
-    <div class="card">{profile_html}</div>
+    {score_dist_html}
 
     <h2>Source Stats</h2>
     <table>
@@ -762,13 +786,19 @@ async def run_detail(run_id: int):
         <tbody>{stats_html}</tbody>
     </table>
 
-    <h2>Cost Breakdown</h2>
-    <div class="cost-box">
+    <details style="margin-top:16px;"><summary style="cursor:pointer;font-weight:600;">Cost Breakdown</summary>
+    <div class="cost-box" style="margin-top:8px;">
         <table>
             <thead><tr><th>Call</th><th>Model</th><th>In Tokens</th><th>Out Tokens</th><th>Cost</th></tr></thead>
             <tbody>{cost_html}</tbody>
         </table>
-    </div>
+    </div></details>
+
+    <details style="margin-top:16px;"><summary style="cursor:pointer;font-weight:600;">Data Sources (Ingest)</summary>
+    <div class="card" style="margin-top:8px;">{''.join(f'<div style="margin:4px 0"><strong>{s["source"]}</strong>: {s["item_count"]} items — {s["detail"]}</div>' for s in ingest_stats) if ingest_stats else '<p style="color:#9ca3af">No ingest stats recorded (older run)</p>'}</div></details>
+
+    <details style="margin-top:16px;"><summary style="cursor:pointer;font-weight:600;">Interest Profile</summary>
+    <div class="card" style="margin-top:8px;">{profile_html}</div></details>
 
     <h2>All Events (Ranked)</h2>
     <div class="card">
@@ -776,20 +806,17 @@ async def run_detail(run_id: int):
         <table>
             <thead><tr>
                 <th data-sort="title">Title</th>
-                <th data-sort="source">Source</th>
                 <th data-sort="date">Date</th>
-                <th>Location</th>
-                <th>Price</th>
-                <th data-sort="interest">Interest</th>
-                <th data-sort="social">Social</th>
-                <th data-sort="total">Total</th>
+                <th data-sort="total">Score</th>
                 <th data-sort="keep">Keep</th>
                 <th>Reason</th>
             </tr></thead>
             <tbody>{events_html}</tbody>
         </table>
     </div>
-    """ + LAYOUT_FOOT)
+    <p style="margin-top:16px;font-size:13px;color:#9ca3af;"><a href="/admin">← Admin</a></p>
+    """
+    return HTMLResponse(_layout(f"Run #{run_id}", body, current_user))
 
 
 @app.post("/api/interests/add", response_class=JSONResponse)
@@ -831,9 +858,10 @@ async def api_delete_bucket(request: Request):
 
 
 @app.get("/admin/sources", response_class=HTMLResponse)
-async def source_health():
+async def source_health(request: Request):
     """Scraper health dashboard — per-source and per-run views."""
     db = get_db()
+    current_user = _get_current_user(request)
     sources = db.get_source_health(last_n_runs=10)
     by_run = db.get_source_stats_by_run(last_n_runs=10)
     cache_status = {r["source_name"]: r for r in db.get_source_cache_status()}
@@ -921,7 +949,7 @@ async def source_health():
           <table style="margin:0;border-radius:0;"><thead><tr><th>Source</th><th>Events</th><th>Time</th><th>Error</th></tr></thead><tbody>{src_rows}</tbody></table>
         </details>"""
 
-    return HTMLResponse(LAYOUT_HEAD.replace("__TITLE__","Source Health") + f"""
+    body = f"""
     <h1>📡 Source Health</h1>
     <p style="color:#6b7280;margin-bottom:16px;font-size:14px;">
         Success = returned &gt;0 events with no error. Sources returning 0 events count as failures.
@@ -944,9 +972,10 @@ async def source_health():
     <p style="color:#6b7280;margin-bottom:12px;font-size:13px;">Expand each run to see individual source results.</p>
     {run_sections}
     <p style="margin-top:16px;font-size:13px;color:#9ca3af;">
-        <a href="/admin">← Run History</a>
+        <a href="/admin">← Admin</a>
     </p>
-    """ + LAYOUT_FOOT)
+    """
+    return HTMLResponse(_layout("Source Health", body, current_user))
 
 
 @app.get("/admin/interests", response_class=HTMLResponse)
@@ -956,10 +985,10 @@ async def interests_page(request: Request):
     user_id = current_user["id"] if current_user else 1
     profile = db.get_cached_interest_profile(max_age_days=30)
     if not profile:
-        return HTMLResponse(LAYOUT_HEAD.replace("__TITLE__","Interests") + """
+        return HTMLResponse(_layout("Interests", """
         <h1>Interests</h1>
         <div class="card"><p>No interest profile yet. Run the pipeline first.</p></div>
-        """ + LAYOUT_FOOT)
+        """, current_user))
 
     # Taste stack preview (top 5 by Elo)
     db.seed_taste_items(user_id)
@@ -1151,33 +1180,25 @@ async def interests_page(request: Request):
         for i in top_interests
     )
 
-    return HTMLResponse(LAYOUT_STYLE.replace("__TITLE__","Taste Profile") + render_nav(None) + f"""
-    <div class="app-content">
+    body = f"""
     <!-- Hero banner -->
-    <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px;padding:32px;margin-bottom:24px;color:white;">
-      <p style="font-size:11px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#818cf8;margin:0 0 10px;">◉ YOUR TASTE PROFILE</p>
-      <h1 style="font-size:28px;font-weight:800;letter-spacing:-.5px;margin:0 0 14px;color:white;">What Claude thinks<br>you're into</h1>
-      <p style="font-size:15px;line-height:1.6;color:rgba(255,255,255,.75);margin:0 0 20px;max-width:560px;">{profile.summary}</p>
+    <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px;padding:24px;margin-bottom:20px;color:white;">
+      <h1 style="font-size:22px;font-weight:800;margin:0 0 10px;color:white;">🧠 Interest Profile</h1>
+      <p style="font-size:14px;line-height:1.6;color:rgba(255,255,255,.75);margin:0 0 14px;max-width:560px;">{profile.summary}</p>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">{top_tags}</div>
-      <p style="font-size:12px;color:rgba(255,255,255,.4);margin:16px 0 0;">Generated {generated} &middot; {len(profile.interests)} interests extracted</p>
-    </div>
-
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px;">
-        {sources_html or '<div class="card"><p style="color:#9ca3af;">No ingest stats yet.</p></div>'}
+      <p style="font-size:11px;color:rgba(255,255,255,.4);margin:12px 0 0;">Generated {generated} &middot; {len(profile.interests)} interests extracted</p>
     </div>
 
     {manual_html}
 
-    {taste_preview_html}
-
-    <h2 style="margin:24px 0 14px;">All Interests</h2>
+    <h2 style="margin:20px 0 10px;">All Interests</h2>
     {yt_section}
     {sp_section}
     {manual_section}
 
-    {bucket_html}
-    </div>
-    """ + LAYOUT_FOOT)
+    <p style="margin-top:16px;font-size:13px;color:#9ca3af;"><a href="/admin">← Admin</a></p>
+    """
+    return HTMLResponse(_layout("Interest Profile", body, current_user))
 
 
 @app.get("/interests", response_class=HTMLResponse)
@@ -2501,37 +2522,24 @@ async def calendar_view(request: Request, run_id: int | None = None):
         <button id="btn-cal" onclick="switchView('calendar')">Grid</button>
       </div>
     </div>
-    {taste_nudge_html}
-    {groups_html}
     {friend_activity_html}
 
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-      <input class="search-input" id="search-input" type="text" placeholder="Search events..." oninput="applyFilters()" onkeydown="if(event.key===&apos;Enter&apos;&&this.value.trim())askAI()" style="flex:1;padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+      <button id="show-all-btn" onclick="showAllEvents=!showAllEvents;this.textContent=showAllEvents?'Top picks':'All events';applyFilters();" style="font-size:12px;padding:5px 12px;border:1.5px solid #e5e7eb;border-radius:8px;background:white;cursor:pointer;color:#6b7280;">All events</button>
       <div class="vibe-filters" style="display:flex;gap:4px;">
         <button class="vibe-filter active" data-vibe="all" onclick="filterVibe('all',this)">All</button>
         <button class="vibe-filter" data-vibe="social" onclick="filterVibe('social',this)">🎉</button>
         <button class="vibe-filter" data-vibe="intellectual" onclick="filterVibe('intellectual',this)">🧠</button>
         <button class="vibe-filter" data-vibe="mixed" onclick="filterVibe('mixed',this)">🔀</button>
       </div>
-      <details style="position:relative;">
-        <summary style="cursor:pointer;font-size:12px;color:#6b7280;padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:8px;user-select:none;">Filters</summary>
-        <div style="position:absolute;right:0;top:calc(100% + 4px);background:white;border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:100;min-width:240px;">
-          <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">
-            Min score: <strong id="score-label">0</strong>
-            <input type="range" min="0" max="100" step="5" value="0" id="score-slider" oninput="document.getElementById('score-label').textContent=this.value;applyFilters()" style="width:100%;accent-color:#1e40af;">
-          </div>
-          <div style="font-size:12px;color:#6b7280;">
-            Max distance: <strong id="dist-label">Any</strong>
-            <input type="range" min="1" max="50" step="1" value="50" id="dist-slider" oninput="updateDistLabel();applyFilters()" style="width:100%;accent-color:#1e40af;">
-          </div>
-          <button id="nearby-btn" onclick="toggleNearby(this)" style="margin-top:8px;width:100%;padding:6px;border:1.5px solid #e5e7eb;border-radius:8px;background:white;cursor:pointer;font-size:12px;color:#6b7280;">🚶 Nearby only</button>
-        </div>
-      </details>
     </div>
-    <div id="ai-result-banner" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 14px;margin-bottom:8px;font-size:13px;color:#166534;align-items:center;gap:8px;">
-      <span id="ai-result-text"></span>
-      <button onclick="clearAISearch()" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#6b7280;font-size:16px;padding:0 4px;">✕</button>
-    </div>
+
+    <!-- Hidden filter state (used by JS, no visible UI) -->
+    <input type="hidden" id="search-input" value="">
+    <input type="hidden" id="score-slider" value="0">
+    <input type="hidden" id="dist-slider" value="50">
+    <span id="score-label" style="display:none">0</span>
+    <span id="dist-label" style="display:none">Any</span>
 
     <div id="cal-view" style="display:none"><div id="fc-container"></div></div>
     <div id="list-view"></div>
@@ -2622,6 +2630,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
     // AI search state
     let aiFilterIds = null; // null = no AI filter active, Set = filter to these IDs
     let aiSearchLabel = '';
+    let showAllEvents = false; // false = primary only (like email), true = show everything
 
     function updateDistLabel() {{
       const v = parseInt(document.getElementById('dist-slider')?.value || '50', 10);
@@ -2633,6 +2642,8 @@ async def calendar_view(request: Request, run_id: int | None = None):
       const minScore = parseInt(document.getElementById('score-slider')?.value || '0', 10);
       const maxDist = parseInt(document.getElementById('dist-slider')?.value || '50', 10);
       return EVENTS.filter(e => {{
+        // Default: only show primary (top) picks unless "Show all" toggled
+        if (!showAllEvents && !e.primary) return false;
         if (activeVibe !== 'all' && e.vibe !== activeVibe) return false;
         if (e.score < minScore) return false;
         if (maxDist < 50 && !e.is_online) {{
