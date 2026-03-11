@@ -2147,14 +2147,16 @@ async def calendar_view(request: Request, run_id: int | None = None):
                     run_id = latest["id"]
         if run_id is None:
             runs = db.get_runs()
-            # Find first run with events
+            if not runs:
+                return HTMLResponse(_layout("Calendar", "<h1>Calendar</h1><div class='card'><p>No runs yet. Run the pipeline first.</p></div>", current_user))
+            # Find first run that actually has events (skip in-progress)
             for r in runs:
-                if (r.get("event_count") or 0) > 0:
+                check_evts = db.get_run_events(r["id"])
+                if check_evts:
                     run_id = r["id"]
                     break
-            if not runs or run_id is None:
-                return HTMLResponse(_layout("Calendar", "<h1>Calendar</h1><div class='card'><p>No runs yet. Run the pipeline first.</p></div>", current_user))
-            run_id = runs[0]["id"]
+            if run_id is None:
+                return HTMLResponse(_layout("Calendar", "<h1>Calendar</h1><div class='card'><p>Pipeline is running... check back in a few minutes.</p></div>", current_user))
 
     events = db.get_run_events(run_id)
     all_kept = [e for e in events if e.get("keep")]

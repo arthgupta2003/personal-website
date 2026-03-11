@@ -22,11 +22,11 @@ from recom.events.dice import fetch_dice
 from recom.events.eventbrite import fetch_eventbrite
 from recom.events.luma import fetch_luma
 from recom.events.meetup import fetch_meetup
-from recom.events.museums import _fetch_ica, _fetch_mfa, _fetch_mit_list, _fetch_gardner, _fetch_harvard_art, _fetch_mos, _fetch_athenaeum
+from recom.events.museums import _fetch_ica, _fetch_mfa, _fetch_mit_list, _fetch_gardner, _fetch_harvard_art, _fetch_mos
 from recom.events.community import (
-    fetch_bpl_events, fetch_brattle_events, fetch_coolidge_events,
-    fetch_bowery_events, fetch_crossroads_events, fetch_artsemerson_events,
-    fetch_bso_events, fetch_boston_gov_events, fetch_improv_asylum_events,
+    fetch_bpl_events, fetch_coolidge_events,
+    fetch_bowery_events, fetch_bso_events,
+    fetch_boston_gov_events, fetch_improv_asylum_events,
 )
 from recom.events.newsletters import extract_newsletter_events
 from recom.events.outdoor import fetch_outdoor_events
@@ -280,31 +280,8 @@ async def discover_all_events(
             EventSource.MIT,
             "Boston University", "Boston, MA 02215",
         )),
-        _run_source("Tufts Events", _fetch_localist(
-            "https://events.tufts.edu", "Tufts University",
-            EventSource.MIT,
-            "Tufts University", "Medford, MA 02155",
-        )),
-        _run_source("Emerson Events", _fetch_localist(
-            "https://today.emerson.edu", "Emerson College",
-            EventSource.MIT,
-            "Emerson College", "Boston, MA 02116",
-        )),
-        _run_source("Brandeis Events", _fetch_localist(
-            "https://calendar.brandeis.edu", "Brandeis University",
-            EventSource.MIT,
-            "Brandeis University", "Waltham, MA 02453",
-        )),
-        _run_source("Wellesley Events", _fetch_localist(
-            "https://www.wellesley.edu/events", "Wellesley College",
-            EventSource.MIT,
-            "Wellesley College", "Wellesley, MA 02481",
-        )),
-        _run_source("Berklee Events", _fetch_localist(
-            "https://college.berklee.edu/events", "Berklee College of Music",
-            EventSource.MIT,
-            "Berklee College of Music", "Boston, MA 02215",
-        )),
+        # NOTE: Tufts (Trumba), Brandeis (DNS), Emerson (403), Wellesley (not Localist),
+        # Berklee (not Localist) — all fail with Localist API. Removed until proper scrapers added.
         _run_source("Suffolk Events", _fetch_localist(
             "https://events.suffolk.edu", "Suffolk University",
             EventSource.MIT,
@@ -328,16 +305,13 @@ async def discover_all_events(
         _run_source("Gardner Museum", _fetch_gardner(settings)),
         _run_source("Harvard Art Museums", _fetch_harvard_art(settings)),
         _run_source("Museum of Science", _fetch_mos(settings)),
-        _run_source("Boston Athenaeum", _fetch_athenaeum(settings)),
+        # NOTE: Athenaeum (403), ArtsEmerson (403), Brattle (404), Crossroads (JS-only) removed
         # Community / Libraries / Film
         _run_source("Boston Public Library", fetch_bpl_events(settings)),
-        _run_source("Brattle Theatre", fetch_brattle_events(settings)),
         _run_source("Coolidge Corner", fetch_coolidge_events(settings)),
-        # Music promoters (cover 6+ venues each)
+        # Music promoters
         _run_source("Bowery Presents", fetch_bowery_events(settings)),
-        _run_source("Crossroads Presents", fetch_crossroads_events(settings)),
         # Performing arts
-        _run_source("ArtsEmerson", fetch_artsemerson_events(settings)),
         _run_source("BSO", fetch_bso_events(settings)),
         # Comedy
         _run_source("Improv Asylum", fetch_improv_asylum_events(settings)),

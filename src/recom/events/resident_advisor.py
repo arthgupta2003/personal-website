@@ -72,7 +72,8 @@ async def fetch_resident_advisor(settings: Settings) -> list[Event]:
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         ),
         "Content-Type": "application/json",
-        "Referer": "https://ra.co/",
+        "Accept": "application/json",
+        "Referer": "https://ra.co/events",
         "Origin": "https://ra.co",
     }
 
