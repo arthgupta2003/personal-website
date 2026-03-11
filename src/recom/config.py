@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     longitude: float = -71.1097
     max_commute_minutes: int = 30
 
+    # Gemini (for grounded web search in source gap retro)
+    gemini_api_key: str = ""
+
     # Event APIs (optional)
     eventbrite_token: str = ""
     songkick_api_key: str = ""

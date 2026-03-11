@@ -766,7 +766,8 @@
 #   - Log ranking inputs/outputs to enable offline replay and tuning
 #   - Add "Why this score?" drill-down per event on dashboard (already have
 #     match_reason but could show full dimension breakdown)
-# Status: TODO
+# Status: DONE
+# Completed: 2026-03-10
 
 # ============================================================
 # [2026-03-10] TASK: Pipeline tuning dashboard / playground
@@ -825,7 +826,8 @@
 #
 # This is the "knobs and dials" panel for the recommendation engine.
 # Makes iteration fast without code deploys.
-# Status: TODO
+# Status: DONE
+# Completed: 2026-03-10
 
 # ============================================================
 # [2026-03-10] TASK: Recommendation backtester (quant-style signal analysis)
@@ -950,7 +952,8 @@
 #   - Charts: inline SVG or lightweight JS charting (Chart.js via CDN)
 #   - This is admin-only, doesn't need to be pretty, needs to be informative
 #   - Start simple: signal attribution + IC table first, add optimization later
-# Status: TODO
+# Status: DONE
+# Completed: 2026-03-10
 
 # ============================================================
 # [2026-03-10] TASK: ML-based ranking models (beyond Claude-as-scorer)
@@ -1095,7 +1098,8 @@
 #   3. Event swipe game (needs UI, but high-quality labels)
 #   4. Implicit signals (needs email tracking infra)
 #   Fine-tune on real attendance as it accumulates over time.
-# Status: TODO
+# Status: DONE
+# Completed: 2026-03-10
 
 # ============================================================
 # [2026-03-10] TASK: Define north star metric + switch to categorical scoring
@@ -1164,7 +1168,8 @@
 #   1. Use the product — attend stuff, rate it, generate training data
 #   2. Build the backtest — measure which approach wins on the metric
 #   3. Then decide: Claude vs ML vs hybrid
-# Status: TODO
+# Status: DONE
+# Completed: 2026-03-10
 
 # ============================================================
 # [2026-03-10] TASK: UI declutter — main page + nav bar (HIGH PRIORITY)
@@ -1653,9 +1658,13 @@
 # Flow — runs on EVERY search, not just failures:
 #   1. User searches "St. Patrick's Day events Boston"
 #   2. DB search returns N results
-#   3. ALWAYS run web search in parallel (not a fallback — a benchmark)
-#   4. Compare: what did web find that DB didn't? What did DB have that
-#      web didn't? Score the overlap.
+#   3. ALWAYS run Gemini search in parallel (not a fallback — a benchmark)
+#      Use Gemini API with "Grounding with Google Search" — returns
+#      structured search results + AI summary + source URLs in one call.
+#      Way better than Claude + web search for local events because
+#      Google's search index is unmatched for this.
+#   4. Compare: what did Gemini find that DB didn't? What did DB have
+#      that Gemini didn't? Score the overlap.
 #   5. Return merged results to user (best of both)
 #   6. Trigger RETRO PASS on the gap:
 #
@@ -1719,9 +1728,85 @@
 # The system literally tells you what data it's missing and writes
 # its own improvement tasks. This is the meta-learning loop.
 #
-# Cost: ~$0.15 per search (web search + retro). Runs on EVERY search,
-# not just failures. This is a continuous benchmark of system quality.
-# Track a "coverage score" over time: what % of web results were already
+# === Use Gemini API with Grounding for web search ===
+# pip install google-generativeai
+# Gemini "Grounding with Google Search" features:
+#   - First 1,500 searches/day FREE, then $35/1K queries
+#   - Returns groundingMetadata: search queries, web sources, URIs, titles
+#   - Combines with structured JSON output — ask for events in our format
+#   - Basically Google Search + AI summary in one API call
+#   - Much better than Claude + generic web search for local events
+#
+# API call:
+#   from google import genai
+#   client = genai.Client(api_key=GEMINI_API_KEY)
+#   response = client.models.generate_content(
+#     model="gemini-2.0-flash",
+#     contents="Find St. Patrick's Day events in Boston March 2026. Return JSON...",
+#     config={"tools": [{"google_search": {}}]}
+#   )
+#   # response.candidates[0].grounding_metadata has source URLs
+#
+# Config: add gemini_api_key to Settings (.env RECOM_GEMINI_API_KEY)
+#
+# Cost: ~$0.05 per search (Gemini Flash is cheap). Runs on EVERY search.
+# This is a continuous benchmark of system quality.
+# Track a "coverage score" over time: what % of Gemini results were already
 # in the DB? Target: 90%+. If coverage drops, scrapers are degrading.
 # If it's consistently low for a category, that's a source gap.
-# Status: TODO
+# Status: DONE
+# Completed: 2026-03-10
+
+# ============================================================
+# [2026-03-10] TASK: Containerize all services
+# ============================================================
+# DONE: Everything now runs in one Docker container:
+#   - Dashboard (uvicorn on :8000)
+#   - Cloudflared tunnel (recom.arthgupta.dev + code.arthgupta.dev)
+#   - Claude Code Web (node on :32352)
+#
+# Dockerfile.claude installs: uv, cloudflared, node, Python deps (uv sync)
+# docker-compose.claude.yml: 2GB RAM, 2 CPUs, restart unless-stopped
+# start.sh: extracts keychain creds, passes tunnel creds, docker compose up
+#
+# Host only needs: Docker Desktop + start.sh. No tmux, no cloudflared,
+# no uv, no node on the host.
+# Status: DONE
+
+# ============================================================
+# [2026-03-10] TASK: Boost limited-time / seasonal / festival events in scoring
+# ============================================================
+# Limited-time festivities (St. Patrick's Day, holiday markets, cherry
+# blossom festival, harbor islands opening weekend, etc.) should score
+# highly by default. These are inherently high-urgency, high-social,
+# high-FOMO events that most people want to know about regardless of
+# specific interest match.
+#
+# Current problem: urgency_score handles this somewhat (8-11 for
+# "specific date / limited") but it's not aggressive enough for
+# truly seasonal/cultural events that everyone in the city cares about.
+#
+# Changes:
+#   1. Add a "cultural_event" or "festival" tag to events during scraping
+#      or ranking. Keywords: parade, festival, marathon, holiday, St. Patrick,
+#      Fourth of July, Halloween, NYE, Pride, marathon, First Night, etc.
+#   2. Auto-boost: any event tagged festival/cultural gets +15 urgency
+#      (these are literally once-a-year). This should nearly auto-keep them.
+#   3. Seasonal awareness already exists in the ranking prompt — make it
+#      more explicit: "It is currently {days_until} days before {holiday}.
+#      Prioritize holiday-related events."
+#   4. In the weekly email: give seasonal events their own section at top
+#      "This Week: St. Patrick's Day" with a themed header
+#   5. In the calendar feed: prefix seasonal events with emoji/tag
+#      "[☘️ St. Paddy's] Parade on Broadway"
+#
+# Also: the proactive gap detector (from web search task) should
+# specifically check for upcoming holidays/seasons:
+#   - Maintain a list of Boston-area annual events/holidays with dates
+#   - 2-4 weeks before each: run a search to ensure we have coverage
+#   - "It's Feb 28 — do we have St. Patrick's Day events? Marathon events?"
+#
+# This is low-hanging fruit — these events are universally appealing
+# and time-critical. Missing them is a product failure.
+# Status: DONE
+# Completed: 2026-03-10

@@ -2150,14 +2150,23 @@ async def calendar_view(request: Request, run_id: int | None = None):
     home_lat = float(current_user["home_lat"]) if current_user and current_user.get("home_lat") else settings.latitude
     home_lon = float(current_user["home_lon"]) if current_user and current_user.get("home_lon") else settings.longitude
 
-    # Default to current user's latest run (or global latest if no user)
+    # Default to current user's latest COMPLETED run (skip in-progress runs with 0 events)
     if run_id is None:
         if current_user:
             latest = db.get_user_latest_run(current_user["id"])
-            run_id = latest["id"] if latest else None
+            if latest:
+                # Check if this run actually has scored events
+                evts = db.get_run_events(latest["id"])
+                if evts:
+                    run_id = latest["id"]
         if run_id is None:
             runs = db.get_runs()
-            if not runs:
+            # Find first run with events
+            for r in runs:
+                if (r.get("event_count") or 0) > 0:
+                    run_id = r["id"]
+                    break
+            if not runs or run_id is None:
                 return HTMLResponse(_layout("Calendar", "<h1>Calendar</h1><div class='card'><p>No runs yet. Run the pipeline first.</p></div>", current_user))
             run_id = runs[0]["id"]
 
