@@ -711,6 +711,34 @@ def rank_events(
             )
         )
 
+    # ── Diversity reranking ──────────────────────────────────────────────────
+    # When scores are tightly clustered, apply category fatigue penalties
+    # so the top picks aren't all the same type (especially music).
+    kept_ranked = [r for r in all_ranked if r.keep]
+    if len(kept_ranked) > 10:
+        import statistics as _stats
+        scores = [r.score for r in kept_ranked]
+        stdev = _stats.stdev(scores) if len(scores) > 1 else 0
+        if stdev < 15:
+            logger.info(
+                "Score spread is tight (stdev=%.1f) — applying diversity reranking",
+                stdev,
+            )
+            # Group by broad category, penalize oversaturated categories
+            from collections import Counter as _Counter
+            cat_counts = _Counter()
+            for r in sorted(all_ranked, key=lambda x: -x.score):
+                if not r.keep:
+                    continue
+                cat = _categorize_broad(r.event.category, r.event.title)
+                cat_counts[cat] += 1
+                # After the 3rd event in the same category, apply diminishing penalty
+                n = cat_counts[cat]
+                if n > 3:
+                    penalty = min(10.0, (n - 3) * 2.0)  # -2, -4, -6, -8, -10
+                    r.score = max(0.0, r.score - penalty)
+                    r.keep = r.score >= 25
+
     # Sort descending by score
     all_ranked.sort(key=lambda r: r.score, reverse=True)
 
@@ -722,3 +750,26 @@ def rank_events(
     )
 
     return all_ranked, cost_records
+
+
+def _categorize_broad(category: str | None, title: str) -> str:
+    """Map event category/title into broad bucket for diversity tracking."""
+    cat = (category or "").lower()
+    title_l = title.lower()
+    if any(k in cat for k in ("music", "concert", "dj")) or any(k in title_l for k in ("concert", "live music", "dj ", " tour")):
+        return "music"
+    if any(k in cat for k in ("comedy", "stand-up", "improv")):
+        return "comedy"
+    if any(k in cat for k in ("theatre", "theater", "dance", "performance")):
+        return "performing_arts"
+    if any(k in cat for k in ("lecture", "seminar", "talk", "workshop", "class")):
+        return "learning"
+    if any(k in cat for k in ("sport", "fitness", "outdoor", "run", "hike")):
+        return "active"
+    if any(k in cat for k in ("food", "drink", "tasting", "beer", "wine")):
+        return "food_drink"
+    if any(k in cat for k in ("art", "gallery", "museum", "exhibit")):
+        return "arts"
+    if any(k in cat for k in ("social", "networking", "meetup")):
+        return "social"
+    return "other"
