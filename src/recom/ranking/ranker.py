@@ -210,6 +210,14 @@ an unusual workshop, or a unique social event should score just as high as a con
 - If you see many similar events (e.g., 10 indie rock shows), only score the top \
 2-3 highly. The rest should get diminishing interest_scores.
 
+OUTDOOR & ALWAYS-AVAILABLE activities:
+- Some events have no fixed date — they are always-available spots (hiking trails, \
+parks, kayaking, outdoor recreation). These are VALUABLE especially in \
+spring/summer/fall. Score them generously on discovery_score (they get you outside) \
+and social_score (great for bringing friends on a weekend).
+- A beautiful hike or kayak trip is worth recommending alongside concerts and talks.
+- These should score 50-70+ overall — they are real recommendations, not filler.
+
 CATEGORIZATION — two fields per event:
   "event_type":
     - "event": one-off events, concerts, talks, shows, workshops
@@ -541,12 +549,17 @@ def rank_events(
         )
 
     # Pre-filter 2: fast haiku relevance pass (only if large enough to justify cost)
+    # Exempt always-available events (no start_time, e.g. outdoor spots) — they'd
+    # get filtered out by Haiku since they look like "places" not "events"
     prefilter_discarded: list[Event] = []
     prefilter_costs: list[CostRecord] = []
     if use_prefilter and len(events) > 150:
-        events, prefilter_discarded, prefilter_costs = _prefilter_events(
-            profile, events, client, prefilter_model
+        always_available = [ev for ev in events if ev.start_time is None]
+        filterable = [ev for ev in events if ev.start_time is not None]
+        filterable, prefilter_discarded, prefilter_costs = _prefilter_events(
+            profile, filterable, client, prefilter_model
         )
+        events = filterable + always_available  # always-available skip prefilter
 
     # Build lookup (include skipped so they can be returned as score=0)
     events_by_id: dict[str, Event] = {ev.id: ev for ev in events}
