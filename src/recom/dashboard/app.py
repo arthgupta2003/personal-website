@@ -58,19 +58,19 @@ def render_nav(user: dict | None = None) -> str:
     if user:
         name = user.get("name") or user.get("email", "")
         is_admin = user.get("id") == 1
-        admin_overflow = '<a href="/admin" class="nav-overflow-item">Admin</a>' if is_admin else ""
+        admin_overflow = '<a href="/admin" class="nav-overflow-item">⚙️ Admin</a>' if is_admin else ""
         return f"""<nav class="app-nav"><div class="app-nav-inner">
           <a href="/" class="app-logo">recom</a>
-          <a href="/" class="nav-link">Events</a>
-          <a href="/groups" class="nav-link">Groups</a>
-          <a href="/search" class="nav-link">Search</a>
-          <a href="/profile" class="nav-link">Profile</a>
+          <a href="/" class="nav-link">📅 Events</a>
+          <a href="/groups" class="nav-link">👥 Groups</a>
+          <a href="/search" class="nav-link">🔍 Search</a>
+          <a href="/profile" class="nav-link">👤 Profile</a>
           <div class="nav-overflow">
             <button class="nav-overflow-btn" onclick="this.nextElementSibling.classList.toggle('open')" aria-label="More">···</button>
             <div class="nav-overflow-menu">
-              <a href="/attended" class="nav-overflow-item">History</a>
-              <a href="/taste" class="nav-overflow-item">Taste</a>
-              <a href="/venues" class="nav-overflow-item">Venues</a>
+              <a href="/attended" class="nav-overflow-item">📜 History</a>
+              <a href="/taste" class="nav-overflow-item">🎯 Taste</a>
+              <a href="/venues" class="nav-overflow-item">📍 Venues</a>
               {admin_overflow}
             </div>
           </div>
@@ -79,10 +79,10 @@ def render_nav(user: dict | None = None) -> str:
         </div></nav>"""
     return """<nav class="app-nav"><div class="app-nav-inner">
       <a href="/" class="app-logo">recom</a>
-      <a href="/" class="nav-link">Events</a>
-      <a href="/groups" class="nav-link">Groups</a>
-      <a href="/landing" class="nav-link">About</a>
-      <a href="/login" class="nav-link">Login</a>
+      <a href="/" class="nav-link">📅 Events</a>
+      <a href="/groups" class="nav-link">👥 Groups</a>
+      <a href="/landing" class="nav-link">ℹ️ About</a>
+      <a href="/login" class="nav-link">🔑 Login</a>
     </div></nav>"""
 
 
@@ -165,12 +165,12 @@ LAYOUT_STYLE = """<!DOCTYPE html>
 LAYOUT_HEAD = LAYOUT_STYLE + """<nav class="app-nav">
   <div class="app-nav-inner">
     <a href="/" class="app-logo">recom</a>
-    <a href="/" class="nav-link">Events</a>
-    <a href="/groups" class="nav-link">Groups</a>
-    <a href="/attended" class="nav-link">History</a>
-    <a href="/login" class="nav-link">Login</a>
+    <a href="/" class="nav-link">📅 Events</a>
+    <a href="/groups" class="nav-link">👥 Groups</a>
+    <a href="/attended" class="nav-link">📜 History</a>
+    <a href="/login" class="nav-link">🔑 Login</a>
     <div class="nav-divider"></div>
-    <a href="/admin" class="nav-link" style="font-size:12px;color:#9ca3af">Admin</a>
+    <a href="/admin" class="nav-link" style="font-size:12px;color:#9ca3af">⚙️ Admin</a>
   </div>
 </nav>
 <div class="app-content">
@@ -832,29 +832,31 @@ async def api_delete_bucket(request: Request):
 
 @app.get("/admin/sources", response_class=HTMLResponse)
 async def source_health():
-    """Scraper health dashboard."""
+    """Scraper health dashboard — per-source and per-run views."""
     db = get_db()
     sources = db.get_source_health(last_n_runs=10)
-    # Build cache freshness map
+    by_run = db.get_source_stats_by_run(last_n_runs=10)
     cache_status = {r["source_name"]: r for r in db.get_source_cache_status()}
+
+    # --- Aggregate summary table ---
     rows_html = ""
     for s in sources:
+        if s["source_name"] == "_dedup":
+            continue
         success_rate = round(s["successes"] / s["run_count"] * 100) if s["run_count"] else 0
         rate_color = "#16a34a" if success_rate >= 90 else "#d97706" if success_rate >= 60 else "#dc2626"
-        status_icon = "✓" if success_rate >= 90 else "⚠" if success_rate >= 60 else "✗"
-        # Sparkline from event_history (comma-separated, newest first)
+        status_icon = "✅" if success_rate >= 90 else "⚠️" if success_rate >= 60 else "❌"
         history = [int(x) for x in (s["event_history"] or "0").split(",") if x.strip().isdigit()]
         max_h = max(history) if history else 1
         if max_h == 0:
             max_h = 1
         bars = "".join(
-            f'<span style="display:inline-block;width:6px;height:{max(2, round(v/max_h*24))}px;background:#3b82f6;border-radius:1px;margin-right:1px;vertical-align:bottom;" title="{v}"></span>'
+            f'<span style="display:inline-block;width:6px;height:{max(2, round(v/max_h*24))}px;background:{"#3b82f6" if v > 0 else "#fca5a5"};border-radius:1px;margin-right:1px;vertical-align:bottom;" title="{v}"></span>'
             for v in reversed(history[:10])
         )
-        err_html = f'<span title="{s["last_error"][:200] if s["last_error"] else ""}" style="color:#dc2626;font-size:11px;cursor:help;">⚠ {(s["last_error"] or "")[:40]}...</span>' if s["last_error"] else ''
+        err_html = f'<span title="{(s["last_error"] or "")[:200]}" style="color:#dc2626;font-size:11px;cursor:help;">⚠ {(s["last_error"] or "")[:40]}...</span>' if s["last_error"] else ''
         avg_dur = s.get("avg_duration_s")
         dur_str = f"{avg_dur:.1f}s" if avg_dur else "—"
-        # Cache freshness
         cache = cache_status.get(s["source_name"])
         if cache:
             age_h = round(cache.get("age_hours") or 0, 1)
@@ -862,7 +864,7 @@ async def source_health():
             fresh = age_h < interval_h
             cache_str = f'<span style="color:{"#16a34a" if fresh else "#d97706"}">{age_h}h ago</span>'
         else:
-            cache_str = '<span style="color:#9ca3af">never</span>'
+            cache_str = '<span style="color:#9ca3af">—</span>'
         rows_html += f"""<tr>
             <td><strong>{s['source_name']}</strong></td>
             <td style="color:{rate_color};font-weight:700;">{status_icon} {success_rate}%</td>
@@ -873,15 +875,64 @@ async def source_health():
             <td><div style="display:flex;align-items:flex-end;height:28px;gap:1px;">{bars}</div></td>
             <td>{err_html}</td>
         </tr>"""
+
+    # --- Per-run breakdown ---
+    from collections import OrderedDict
+    runs_map: OrderedDict[int, dict] = OrderedDict()
+    for row in by_run:
+        if row["source_name"] == "_dedup":
+            continue
+        rid = row["run_id"]
+        if rid not in runs_map:
+            runs_map[rid] = {"timestamp": row["timestamp"], "sources": []}
+        runs_map[rid]["sources"].append(row)
+
+    run_sections = ""
+    for rid, rdata in runs_map.items():
+        ts = rdata["timestamp"][:16].replace("T", " ")
+        total_events = sum(s["events_found"] for s in rdata["sources"])
+        ok_count = sum(1 for s in rdata["sources"] if not s["error_message"] and s["events_found"] > 0)
+        fail_count = len(rdata["sources"]) - ok_count
+        src_rows = ""
+        for s in rdata["sources"]:
+            ev = s["events_found"]
+            err = s["error_message"]
+            dur = s["duration_seconds"]
+            dur_str = f"{dur:.1f}s" if dur else "—"
+            if err:
+                icon = "❌"
+                color = "#dc2626"
+            elif ev == 0:
+                icon = "⚠️"
+                color = "#d97706"
+            else:
+                icon = "✅"
+                color = "#16a34a"
+            err_tip = f' title="{(err or "")[:200]}"' if err else ""
+            src_rows += f'<tr><td>{icon} {s["source_name"]}</td><td style="color:{color};font-weight:600;">{ev}</td><td style="color:#9ca3af;font-size:12px;">{dur_str}</td><td style="font-size:11px;color:#dc2626;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"{err_tip}>{(err or "")[:60]}</td></tr>'
+        run_sections += f"""
+        <details style="margin-bottom:8px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+          <summary style="padding:10px 14px;background:#f9fafb;cursor:pointer;font-size:13px;font-weight:600;display:flex;gap:12px;align-items:center;">
+            <span>Run #{rid}</span>
+            <span style="color:#9ca3af;font-weight:400;">{ts}</span>
+            <span style="color:#16a34a;font-weight:700;">{total_events} events</span>
+            <span style="font-size:11px;color:#6b7280;">{ok_count}✅ {fail_count}❌</span>
+          </summary>
+          <table style="margin:0;border-radius:0;"><thead><tr><th>Source</th><th>Events</th><th>Time</th><th>Error</th></tr></thead><tbody>{src_rows}</tbody></table>
+        </details>"""
+
     return HTMLResponse(LAYOUT_HEAD.replace("__TITLE__","Source Health") + f"""
-    <h1>Source Health</h1>
-    <p style="color:#6b7280;margin-bottom:16px;font-size:14px;">Last 10 runs. Click a source to see recent error details.</p>
+    <h1>📡 Source Health</h1>
+    <p style="color:#6b7280;margin-bottom:16px;font-size:14px;">
+        Success = returned &gt;0 events with no error. Sources returning 0 events count as failures.
+    </p>
+    <h2 style="font-size:16px;margin-bottom:8px;">Aggregate (last 10 runs)</h2>
     <table>
         <thead><tr>
-            <th>Source</th>
-            <th>Success Rate</th>
-            <th>Avg Events</th>
-            <th>Max Events</th>
+            <th data-sort="source">Source</th>
+            <th data-sort="rate">Success Rate</th>
+            <th data-sort="avg">Avg Events</th>
+            <th data-sort="max">Max Events</th>
             <th>Avg Time</th>
             <th>Cache Age</th>
             <th>Trend (newest →)</th>
@@ -889,6 +940,9 @@ async def source_health():
         </tr></thead>
         <tbody>{rows_html}</tbody>
     </table>
+    <h2 style="font-size:16px;margin:24px 0 8px;">Per-Run Breakdown</h2>
+    <p style="color:#6b7280;margin-bottom:12px;font-size:13px;">Expand each run to see individual source results.</p>
+    {run_sections}
     <p style="margin-top:16px;font-size:13px;color:#9ca3af;">
         <a href="/admin">← Run History</a>
     </p>
@@ -2435,46 +2489,46 @@ async def calendar_view(request: Request, run_id: int | None = None):
       }}
     </style>
 
-    <div class="page-header">
-      <h1>Your Week</h1>
-      <div class="subtitle">{top_picks} picks for Cambridge &amp; Boston</div>
-    </div>
-    {user_banner}
-    {hot_days_html}
-    {taste_nudge_html}
-    {groups_html}
-    {friend_activity_html}
-
-    <div class="toolbar">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div>
+        <h1 style="font-size:22px;margin:0;">Your Week</h1>
+        <div style="font-size:13px;color:#9ca3af;">{top_picks} picks for Cambridge &amp; Boston</div>
+      </div>
       <div class="view-toggle">
         <button id="btn-list" onclick="switchView('list')">List</button>
         <button id="btn-timeline" onclick="switchView('timeline')">Week</button>
         <button id="btn-heat" onclick="switchView('heat')">Overview</button>
         <button id="btn-cal" onclick="switchView('calendar')">Grid</button>
       </div>
-      <div class="vibe-filters">
-        <button class="vibe-filter active" data-vibe="all" onclick="filterVibe('all',this)">All</button>
-        <button class="vibe-filter" data-vibe="social" onclick="filterVibe('social',this)">Social</button>
-        <button class="vibe-filter" data-vibe="intellectual" onclick="filterVibe('intellectual',this)">Brainy</button>
-        <button class="vibe-filter" data-vibe="mixed" onclick="filterVibe('mixed',this)">Mixed</button>
-        <button class="vibe-filter" id="nearby-btn" onclick="toggleNearby(this)" title="Events within ~2km walking distance" style="font-size:11px;">🚶 Nearby</button>
-      </div>
     </div>
+    {taste_nudge_html}
+    {groups_html}
+    {friend_activity_html}
 
-    <div class="search-bar">
-      <div style="display:flex;gap:8px;align-items:center;flex:1;">
-        <input class="search-input" id="search-input" type="text" placeholder="Search events... or ask AI ✦" oninput="applyFilters()" onkeydown="if(event.key==='Enter'&&this.value.trim())askAI()">
-        <button id="ai-search-btn" onclick="askAI()" title="AI search" style="flex-shrink:0;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap;">✦ Ask AI</button>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+      <input class="search-input" id="search-input" type="text" placeholder="Search events..." oninput="applyFilters()" onkeydown="if(event.key===&apos;Enter&apos;&&this.value.trim())askAI()" style="flex:1;padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;">
+      <div class="vibe-filters" style="display:flex;gap:4px;">
+        <button class="vibe-filter active" data-vibe="all" onclick="filterVibe('all',this)">All</button>
+        <button class="vibe-filter" data-vibe="social" onclick="filterVibe('social',this)">🎉</button>
+        <button class="vibe-filter" data-vibe="intellectual" onclick="filterVibe('intellectual',this)">🧠</button>
+        <button class="vibe-filter" data-vibe="mixed" onclick="filterVibe('mixed',this)">🔀</button>
       </div>
-      <div class="score-filter-wrap">
-        Min score: <input type="range" min="0" max="100" step="5" value="0" id="score-slider" oninput="document.getElementById('score-label').textContent=this.value;applyFilters()">
-        <span id="score-label">0</span>
-        &nbsp;&nbsp;
-        Max distance: <input type="range" min="1" max="50" step="1" value="50" id="dist-slider" oninput="updateDistLabel();applyFilters()">
-        <span id="dist-label">Any</span>
-      </div>
+      <details style="position:relative;">
+        <summary style="cursor:pointer;font-size:12px;color:#6b7280;padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:8px;user-select:none;">Filters</summary>
+        <div style="position:absolute;right:0;top:calc(100% + 4px);background:white;border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:100;min-width:240px;">
+          <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">
+            Min score: <strong id="score-label">0</strong>
+            <input type="range" min="0" max="100" step="5" value="0" id="score-slider" oninput="document.getElementById('score-label').textContent=this.value;applyFilters()" style="width:100%;accent-color:#1e40af;">
+          </div>
+          <div style="font-size:12px;color:#6b7280;">
+            Max distance: <strong id="dist-label">Any</strong>
+            <input type="range" min="1" max="50" step="1" value="50" id="dist-slider" oninput="updateDistLabel();applyFilters()" style="width:100%;accent-color:#1e40af;">
+          </div>
+          <button id="nearby-btn" onclick="toggleNearby(this)" style="margin-top:8px;width:100%;padding:6px;border:1.5px solid #e5e7eb;border-radius:8px;background:white;cursor:pointer;font-size:12px;color:#6b7280;">🚶 Nearby only</button>
+        </div>
+      </details>
     </div>
-    <div id="ai-result-banner" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 14px;margin-bottom:8px;font-size:13px;color:#166534;display:flex;align-items:center;gap:8px;">
+    <div id="ai-result-banner" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 14px;margin-bottom:8px;font-size:13px;color:#166534;align-items:center;gap:8px;">
       <span id="ai-result-text"></span>
       <button onclick="clearAISearch()" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#6b7280;font-size:16px;padding:0 4px;">✕</button>
     </div>
@@ -3703,62 +3757,86 @@ async def search_page(request: Request, response: Response):
         <div style="display:flex;gap:8px;">
             <input id="q" type="text" placeholder="What are you looking for?"
                    style="flex:1;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;"
-                   onkeydown="if(event.key==='Enter')doSearch(false)">
-            <button onclick="doSearch(false)"
-                    style="padding:10px 20px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;">Search</button>
-            <button onclick="doSearch(true)" title="Search the web for events not in our database"
-                    style="padding:10px 16px;background:#059669;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">🌐 Web</button>
+                   onkeydown="if(event.key==='Enter')doSearch()">
+            <button id="search-btn" onclick="doSearch()"
+                    style="padding:10px 20px;background:linear-gradient(135deg,#2563eb,#059669);color:white;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;">Search</button>
         </div>
         <div id="tier-hint" style="margin-top:6px;font-size:11px;color:#9ca3af;"></div>
         <div id="results" style="margin-top:16px;"></div>
     </div>
     <script>
-    async function doSearch(webOnly) {
+    function renderResults(results, tier) {
+        return results.map(e => `
+            <div style="padding:14px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px;${e.source_tier==='web'?'border-color:#a7f3d0;background:#f0fdf4;':''}">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                    <a href="${e.url || '#'}" target="_blank"
+                       style="font-size:15px;font-weight:700;color:#1e293b;text-decoration:none;">${e.title}</a>
+                    <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px;">
+                        ${e.source_tier==='web' ? '<span style="background:#dcfce7;color:#166534;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;">WEB</span>' : '<span style="background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;">DB</span>'}
+                        ${e.score ? '<span style="background:#f1f5f9;color:#374151;font-size:11px;font-weight:800;padding:2px 8px;border-radius:8px;">'+e.score+'</span>' : ''}
+                    </div>
+                </div>
+                <p style="margin:4px 0 6px;font-size:12px;color:#6b7280;">${e.start_time ? new Date(e.start_time).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'Anytime'} · ${e.location_name || ''}</p>
+                <p style="margin:0;font-size:13px;color:#6d28d9;">${e.reason || ''}</p>
+            </div>
+        `).join('');
+    }
+    async function doSearch() {
         const q = document.getElementById('q').value.trim();
         if (!q) return;
         const res = document.getElementById('results');
         const hint = document.getElementById('tier-hint');
-        res.innerHTML = '<p style="color:#6b7280;">' + (webOnly ? 'Searching the web...' : 'Searching...') + '</p>';
+        const btn = document.getElementById('search-btn');
+        btn.textContent = 'Searching...';
+        btn.disabled = true;
+        res.innerHTML = '<p style="color:#6b7280;">Searching your events + the web...</p>';
         hint.textContent = '';
-        try {
-            const r = await fetch('/api/search', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({query: q, web_only: !!webOnly})
-            });
-            const data = await r.json();
-            if (data.error) { res.innerHTML = `<p style="color:#dc2626;">${data.error}</p>`; return; }
-            if (!data.results || !data.results.length) {
-                res.innerHTML = '<p style="color:#6b7280;">No matches found. Try the 🌐 Web button to search beyond our database.</p>';
-                return;
-            }
-            if (data.tier === 'web') {
-                hint.textContent = '🌐 Results from web search — not yet in your recommendations database';
-                hint.style.color = '#059669';
-            } else {
-                hint.textContent = `Found ${data.results.length} matches in your event database`;
-            }
-            res.innerHTML = data.results.map(e => `
-                <div style="padding:14px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px;${e.source_tier==='web'?'border-color:#a7f3d0;background:#f0fdf4;':''}">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                        <a href="${e.url || '#'}" target="_blank"
-                           style="font-size:15px;font-weight:700;color:#1e293b;text-decoration:none;">${e.title}</a>
-                        <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px;">
-                            ${e.source_tier==='web' ? '<span style="background:#dcfce7;color:#166534;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;">WEB</span>' : ''}
-                            ${e.score ? '<span style="background:#f1f5f9;color:#374151;font-size:11px;font-weight:800;padding:2px 8px;border-radius:8px;">'+e.score+'</span>' : ''}
-                        </div>
-                    </div>
-                    <p style="margin:4px 0 6px;font-size:12px;color:#6b7280;">${e.start_time ? new Date(e.start_time).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'Anytime'} · ${e.location_name || ''}</p>
-                    <p style="margin:0;font-size:13px;color:#6d28d9;">${e.reason || ''}</p>
-                </div>
-            `).join('');
-        } catch(err) {
-            res.innerHTML = `<p style="color:#dc2626;">Search failed: ${err}</p>`;
+        // Fire both DB and web searches in parallel
+        const dbP = fetch('/api/search', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({query: q, web_only: false})
+        }).then(r => r.json()).catch(() => ({results: []}));
+        const webP = fetch('/api/search', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({query: q, web_only: true})
+        }).then(r => r.json()).catch(() => ({results: []}));
+        // Show DB results as soon as they arrive
+        const dbData = await dbP;
+        let dbResults = (dbData.results || []).map(e => ({...e, source_tier: e.source_tier || 'db'}));
+        if (dbResults.length) {
+            hint.textContent = `Found ${dbResults.length} in your database — checking the web too...`;
+            hint.style.color = '#2563eb';
+            res.innerHTML = renderResults(dbResults, 'db');
+        } else {
+            res.innerHTML = '<p style="color:#6b7280;">Nothing in DB — waiting for web results...</p>';
         }
+        // Merge web results when they arrive
+        const webData = await webP;
+        btn.textContent = 'Search';
+        btn.disabled = false;
+        let webResults = (webData.results || []).map(e => ({...e, source_tier: 'web'}));
+        // Dedupe: remove web results whose titles match DB results
+        const dbTitles = new Set(dbResults.map(e => (e.title||'').toLowerCase().trim()));
+        webResults = webResults.filter(e => !dbTitles.has((e.title||'').toLowerCase().trim()));
+        const all = [...dbResults, ...webResults];
+        if (!all.length) {
+            res.innerHTML = '<p style="color:#6b7280;">No matches found anywhere.</p>';
+            hint.textContent = '';
+            return;
+        }
+        const nDb = dbResults.length, nWeb = webResults.length;
+        const parts = [];
+        if (nDb) parts.push(`${nDb} from your database`);
+        if (nWeb) parts.push(`${nWeb} from the web`);
+        hint.textContent = parts.join(' + ');
+        hint.style.color = '#374151';
+        res.innerHTML = renderResults(all, 'mixed');
     }
     // Auto-focus and allow pre-filled query from URL
     const urlQ = new URLSearchParams(location.search).get('q');
-    if (urlQ) { document.getElementById('q').value = urlQ; doSearch(false); }
+    if (urlQ) { document.getElementById('q').value = urlQ; doSearch(); }
     else document.getElementById('q').focus();
     </script>
     """, current_user))
@@ -5581,89 +5659,142 @@ async def v_calendar_timeline(request: Request):
     current_user = _get_current_user(request)
     events = _get_variant_events()
 
-    # Group events by day-of-week, extract hour for positioning
     from collections import defaultdict
-    days_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    day_events = defaultdict(list)
-    min_hour, max_hour = 24, 0
+    from datetime import timedelta as _td
+
+    # Build 14-day date range starting today
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    dates = [today + _td(days=i) for i in range(14)]
+
+    # Group events by date, track hour for positioning (strip tz for consistent comparison)
+    date_events: dict[str, list] = defaultdict(list)
     for e in events:
         try:
             dt = datetime.fromisoformat(e.get("start_time", ""))
-            day_key = dt.strftime("%a")
-            hour = dt.hour + dt.minute / 60
-            min_hour = min(min_hour, int(dt.hour))
-            max_hour = max(max_hour, int(dt.hour) + 1)
-            day_events[day_key].append((e, dt, hour))
+            dt = dt.replace(tzinfo=None)  # normalize to naive for sorting
+            date_key = dt.strftime("%Y-%m-%d")
+            date_events[date_key].append((e, dt))
         except Exception:
             pass
 
-    if min_hour > max_hour:
-        min_hour, max_hour = 17, 23
-    min_hour = max(0, min_hour - 1)
-    max_hour = min(24, max_hour + 1)
-    total_hours = max_hour - min_hour
+    # Determine hour range (clamp to evening-focused 10am-11pm)
+    all_hours = []
+    for evts in date_events.values():
+        for _, dt in evts:
+            all_hours.append(dt.hour)
+    min_hour = min(all_hours, default=17) - 1
+    max_hour = max(all_hours, default=23) + 1
+    min_hour = max(0, min(min_hour, 10))
+    max_hour = min(24, max(max_hour, 23))
+    total_hours = max_hour - min_hour or 1
+    row_h = 56  # pixels per hour slot
 
     # Build time axis labels
     time_labels = ""
     for h in range(min_hour, max_hour + 1):
-        top_pct = ((h - min_hour) / total_hours) * 100
+        top_px = (h - min_hour) * row_h
         label = f"{h % 12 or 12}{'am' if h < 12 else 'pm'}"
-        time_labels += f'<div class="tl-time" style="top:{top_pct}%;">{label}</div>\n'
+        time_labels += f'<div class="tl-time" style="top:{top_px}px;">{label}</div>\n'
 
-    # Build day columns
-    day_cols = ""
     vibe_gradients = {
         "social": "linear-gradient(135deg, #fbbf24, #f97316)",
         "intellectual": "linear-gradient(135deg, #818cf8, #06b6d4)",
         "mixed": "linear-gradient(135deg, #34d399, #06b6d4)",
     }
-    for day in days_order:
+
+    # Build day columns — collision avoidance: stack overlapping events side-by-side
+    day_cols = ""
+    for d in dates:
+        date_key = d.strftime("%Y-%m-%d")
+        day_label = d.strftime("%a") if d != today else "Today"
+        date_label = d.strftime("%-m/%-d")
+        is_weekend = d.weekday() >= 5
+        is_today = d.date() == today.date()
+        evts = sorted(date_events.get(date_key, []), key=lambda x: x[1])
+
+        # Assign columns to overlapping events
+        # Each event occupies 2 hour-slots; if another event starts within that, shift right
+        slots: list[tuple[float, int]] = []  # (end_hour, col_index)
+        event_cols: list[int] = []
+        max_col = 0
+        for _, dt in evts:
+            hour = dt.hour + dt.minute / 60.0
+            end_h = hour + 2
+            col = 0
+            for s_end, s_col in slots:
+                if hour < s_end and s_col == col:
+                    col += 1
+            event_cols.append(col)
+            max_col = max(max_col, col)
+            slots.append((end_h, col))
+
+        total_cols = max_col + 1
         blocks = ""
-        for e, dt, hour in day_events.get(day, []):
-            top_pct = ((hour - min_hour) / total_hours) * 100
+        for i, (e, dt) in enumerate(evts):
+            hour = dt.hour + dt.minute / 60.0
+            top_px = int((hour - min_hour) * row_h)
+            col = event_cols[i]
+            col_width = 100.0 / total_cols
+            left_pct = col * col_width
             score = int(e.get("score") or 0)
             vibe = e.get("vibe", "mixed")
             grad = vibe_gradients.get(vibe, vibe_gradients["mixed"])
-            title = e.get("title", "")[:35]
-            time_str = dt.strftime("%-I:%M %p")
-            loc = e.get("location_name", "")[:25]
-            blocks += f"""<a href="{e.get('url','#')}" target="_blank" class="tl-block" style="top:{top_pct}%;background:{grad};" title="{e.get('title','')}">
+            title = (e.get("title") or "")[:30]
+            time_str = dt.strftime("%-I:%M%p").lower()
+            blocks += f"""<a href="{e.get('url','#')}" target="_blank" class="tl-block"
+              style="top:{top_px}px;left:{left_pct}%;width:{col_width}%;background:{grad};"
+              title="{(e.get('title') or '')}">
               <div class="tl-block-score">{score}</div>
               <div class="tl-block-title">{title}</div>
-              <div class="tl-block-meta">{time_str}</div>
-              <div class="tl-block-meta">{loc}</div>
+              <div class="tl-block-time">{time_str}</div>
             </a>\n"""
-        has_events = " tl-day-active" if day_events.get(day) else ""
-        day_cols += f'<div class="tl-day{has_events}"><div class="tl-day-label">{day}</div><div class="tl-day-col">{blocks}</div></div>\n'
+
+        header_cls = "tl-day-today" if is_today else ("tl-day-weekend" if is_weekend else "")
+        active = " tl-day-active" if evts else ""
+        day_cols += f"""<div class="tl-day{active}">
+          <div class="tl-day-label {header_cls}">
+            <span class="tl-day-name">{day_label}</span>
+            <span class="tl-day-date">{date_label}</span>
+            {f'<span class="tl-day-count">{len(evts)}</span>' if evts else ''}
+          </div>
+          <div class="tl-day-col" style="height:{total_hours * row_h}px;">{blocks}</div>
+        </div>\n"""
 
     body = f"""
 <style>
 body {{ background: #0c0c1d; color: #e2e8f0; }}
-.tl-wrap {{ max-width: 1000px; margin: 0 auto; padding: 16px 20px 60px; }}
+.tl-wrap {{ max-width: 100%; margin: 0 auto; padding: 12px 12px 60px; overflow-x: auto; }}
 .tl-back {{ font-size: 12px; color: #6b7280; text-decoration: none; }}
-.tl-back:hover {{ color: #a5b4fc; }}
-.tl-title {{ font-size: 24px; font-weight: 800; color: #e2e8f0; margin: 12px 0 4px; letter-spacing: -0.5px; }}
-.tl-sub {{ font-size: 13px; color: #6b7280; margin-bottom: 24px; }}
-.tl-grid {{ display: grid; grid-template-columns: 56px repeat(7, 1fr); gap: 0; min-height: {total_hours * 64}px; position: relative; }}
+.tl-header {{ display: flex; align-items: baseline; gap: 12px; margin: 8px 0 16px; }}
+.tl-title {{ font-size: 22px; font-weight: 800; color: #e2e8f0; letter-spacing: -0.5px; }}
+.tl-sub {{ font-size: 13px; color: #6b7280; }}
+.tl-grid {{ display: grid; grid-template-columns: 48px repeat(14, minmax(90px, 1fr)); gap: 0; }}
 .tl-axis {{ position: relative; border-right: 1px solid #1e1e3a; }}
-.tl-time {{ position: absolute; right: 8px; transform: translateY(-50%); font-size: 11px; font-weight: 600; color: #4b5563; font-family: 'SF Mono', 'Fira Code', monospace; }}
-.tl-day {{ display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,.04); }}
-.tl-day-label {{ text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #4b5563; padding: 8px 0 12px; background: rgba(255,255,255,.02); border-bottom: 1px solid rgba(255,255,255,.06); }}
-.tl-day-active .tl-day-label {{ color: #a5b4fc; background: rgba(129,140,248,.06); }}
-.tl-day-col {{ position: relative; flex: 1; min-height: {total_hours * 64}px; }}
-.tl-block {{ position: absolute; left: 4px; right: 4px; min-height: 56px; border-radius: 10px; padding: 8px 10px; text-decoration: none; color: white; display: block; box-shadow: 0 4px 12px rgba(0,0,0,.3); transition: transform .15s, box-shadow .15s; cursor: pointer; overflow: hidden; }}
-.tl-block::after {{ content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,.1) 0%, transparent 40%); border-radius: 10px; pointer-events: none; }}
-.tl-block:hover {{ transform: translateY(-2px) scale(1.02); box-shadow: 0 8px 24px rgba(0,0,0,.5); }}
-.tl-block-score {{ font-size: 18px; font-weight: 900; opacity: .9; float: right; margin: -2px 0 0 8px; }}
-.tl-block-title {{ font-size: 12px; font-weight: 700; line-height: 1.3; margin-bottom: 3px; }}
-.tl-block-meta {{ font-size: 10px; opacity: .75; }}
-/* Hour grid lines */
-.tl-day-col::before {{ content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(180deg, transparent 0px, transparent {64 - 1}px, rgba(255,255,255,.03) {64 - 1}px, rgba(255,255,255,.03) 64px); pointer-events: none; }}
+.tl-time {{ position: absolute; right: 6px; transform: translateY(-50%); font-size: 10px; font-weight: 600; color: #4b5563; font-family: 'SF Mono', 'Fira Code', monospace; white-space: nowrap; }}
+.tl-day {{ display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,.04); min-width: 0; }}
+.tl-day-label {{ text-align: center; padding: 6px 2px 8px; background: rgba(255,255,255,.02); border-bottom: 1px solid rgba(255,255,255,.06); }}
+.tl-day-name {{ display: block; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4b5563; }}
+.tl-day-date {{ display: block; font-size: 11px; color: #6b7280; margin-top: 1px; }}
+.tl-day-count {{ display: inline-block; background: rgba(129,140,248,.2); color: #a5b4fc; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 8px; margin-top: 3px; }}
+.tl-day-active .tl-day-name {{ color: #a5b4fc; }}
+.tl-day-label.tl-day-today {{ background: rgba(129,140,248,.1); }}
+.tl-day-label.tl-day-today .tl-day-name {{ color: #818cf8; }}
+.tl-day-label.tl-day-weekend {{ background: rgba(249,115,22,.04); }}
+.tl-day-label.tl-day-weekend .tl-day-name {{ color: #f97316; }}
+.tl-day-col {{ position: relative; flex: 1; background: repeating-linear-gradient(180deg, transparent 0px, transparent {row_h - 1}px, rgba(255,255,255,.025) {row_h - 1}px, rgba(255,255,255,.025) {row_h}px); }}
+.tl-block {{ position: absolute; height: {row_h * 2 - 4}px; border-radius: 8px; padding: 5px 6px; text-decoration: none; color: white; display: block; box-sizing: border-box;
+            box-shadow: 0 2px 8px rgba(0,0,0,.3); transition: transform .12s, box-shadow .12s, z-index 0s; cursor: pointer; overflow: hidden; z-index: 1; }}
+.tl-block:hover {{ transform: scale(1.05); box-shadow: 0 6px 20px rgba(0,0,0,.5); z-index: 10; }}
+.tl-block-score {{ font-size: 13px; font-weight: 900; opacity: .85; float: right; }}
+.tl-block-title {{ font-size: 10px; font-weight: 700; line-height: 1.25; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.tl-block-time {{ font-size: 9px; opacity: .7; }}
 </style>
 <div class="tl-wrap">
   <a href="/variants" class="tl-back">&larr; All variants</a>
-  <h1 class="tl-title">Week Timeline</h1>
-  <p class="tl-sub">{len(events)} events &middot; Day planner view</p>
+  <div class="tl-header">
+    <h1 class="tl-title">2-Week Timeline</h1>
+    <span class="tl-sub">{len(events)} events</span>
+  </div>
   <div class="tl-grid">
     <div class="tl-axis">{time_labels}</div>
     {day_cols}
@@ -6386,6 +6517,267 @@ body {{ background: #FFF7F5 !important; }}
   {sections_html if sections_html else '<div class="sc-empty">No events yet &mdash; run the pipeline first.</div>'}
 </div>"""
     resp = HTMLResponse(_layout("Calendar — Social", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/calendar/gcal", response_class=HTMLResponse)
+async def v_calendar_gcal(request: Request):
+    """Google Calendar week-view style — 7-day grid with time slots and event blocks."""
+    db = get_db()
+    current_user = _get_current_user(request)
+    events = _get_variant_events()
+    from collections import defaultdict
+    from datetime import timedelta as _td
+
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    # Start week on Monday
+    start = today - _td(days=today.weekday())
+    week_dates = [start + _td(days=i) for i in range(7)]
+
+    date_events: dict[str, list] = defaultdict(list)
+    for e in events:
+        try:
+            dt = datetime.fromisoformat(e.get("start_time", ""))
+            date_events[dt.strftime("%Y-%m-%d")].append((e, dt))
+        except Exception:
+            pass
+
+    # Fixed time grid: 9am to 11pm
+    start_h, end_h = 9, 23
+    slot_h = 48  # px per hour
+
+    # Day column headers
+    day_headers = ""
+    for d in week_dates:
+        is_today = d.date() == today.date()
+        cls = "gcal-today" if is_today else ""
+        day_headers += f"""<div class="gcal-day-hdr {cls}">
+            <div class="gcal-dow">{d.strftime('%a')}</div>
+            <div class="gcal-dom{'gcal-dom-today' if is_today else ''}">{d.day}</div>
+        </div>"""
+
+    # Time axis
+    time_axis = ""
+    for h in range(start_h, end_h + 1):
+        lbl = f"{h % 12 or 12} {'AM' if h < 12 else 'PM'}"
+        time_axis += f'<div class="gcal-time" style="height:{slot_h}px;">{lbl}</div>'
+
+    # All-day / no-time events bar
+    allday_html = ""
+    allday_count = 0
+
+    # Event blocks per day
+    vibe_colors = {"social": "#f59e0b", "intellectual": "#818cf8", "mixed": "#34d399"}
+    day_columns = ""
+    for d in week_dates:
+        dk = d.strftime("%Y-%m-%d")
+        evts = sorted(date_events.get(dk, []), key=lambda x: x[1])
+        # Collision avoidance
+        slots_used: list[tuple[float, float, int]] = []
+        block_assignments: list[tuple[int, int]] = []  # (col, total_cols)
+        for e, dt in evts:
+            h = dt.hour + dt.minute / 60.0
+            eh = h + 1.5
+            col = 0
+            for s, se, sc in slots_used:
+                if h < se and sc == col:
+                    col += 1
+            max_col = max((c for _, _, c in slots_used if any(h < se and sc2 <= col for _, se2, sc2 in slots_used)), default=0)
+            slots_used.append((h, eh, col))
+            block_assignments.append((col, 0))  # total_cols computed below
+        # Compute max columns per overlapping group
+        if evts:
+            max_cols = max(c for c, _ in block_assignments) + 1
+            block_assignments = [(c, max_cols) for c, _ in block_assignments]
+
+        blocks = ""
+        for i, (e, dt) in enumerate(evts):
+            h = dt.hour + dt.minute / 60.0
+            if h < start_h or h > end_h:
+                continue
+            top = int((h - start_h) * slot_h)
+            score = int(e.get("score") or 0)
+            vibe = e.get("vibe", "mixed")
+            color = vibe_colors.get(vibe, "#34d399")
+            title = (e.get("title") or "")[:28]
+            time_str = dt.strftime("%-I:%M%p").lower()
+            loc = (e.get("location_name") or "")[:20]
+            col, total_cols = block_assignments[i] if i < len(block_assignments) else (0, 1)
+            total_cols = max(total_cols, 1)
+            w_pct = 100.0 / total_cols - 2
+            l_pct = col * (100.0 / total_cols) + 1
+            blocks += f"""<a href="{e.get('url','#')}" target="_blank" class="gcal-evt"
+                style="top:{top}px;left:{l_pct}%;width:{w_pct}%;border-left:3px solid {color};background:{color}18;">
+                <div class="gcal-evt-time">{time_str}</div>
+                <div class="gcal-evt-title">{title}</div>
+                <div class="gcal-evt-loc">{loc}</div>
+            </a>"""
+
+        col_grid_lines = ""
+        for h in range(start_h, end_h + 1):
+            y = (h - start_h) * slot_h
+            col_grid_lines += f'<div class="gcal-gridline" style="top:{y}px;"></div>'
+
+        day_columns += f'<div class="gcal-day-col" style="height:{(end_h - start_h) * slot_h}px;">{col_grid_lines}{blocks}</div>'
+
+    body = f"""
+<style>
+body {{ background: white; color: #1a1a1a; font-family: 'Google Sans', -apple-system, sans-serif; }}
+.gcal-wrap {{ max-width: 100%; margin: 0 auto; padding: 8px 12px 40px; }}
+.gcal-toolbar {{ display: flex; align-items: center; justify-content: space-between; padding: 8px 0 12px; }}
+.gcal-toolbar h1 {{ font-size: 20px; font-weight: 400; color: #3c4043; }}
+.gcal-toolbar-sub {{ font-size: 13px; color: #70757a; }}
+.gcal-grid {{ display: grid; grid-template-columns: 56px repeat(7, 1fr); border: 1px solid #dadce0; border-radius: 8px; overflow: hidden; }}
+.gcal-corner {{ background: #fff; border-bottom: 1px solid #dadce0; border-right: 1px solid #dadce0; }}
+.gcal-day-hdr {{ text-align: center; padding: 8px 0; border-bottom: 1px solid #dadce0; border-right: 1px solid #e8eaed; background: #fff; }}
+.gcal-day-hdr:last-child {{ border-right: none; }}
+.gcal-dow {{ font-size: 11px; font-weight: 500; color: #70757a; text-transform: uppercase; letter-spacing: .5px; }}
+.gcal-dom {{ font-size: 22px; font-weight: 400; color: #3c4043; line-height: 1.4; }}
+.gcal-dom-today {{ display: inline-block; width: 36px; height: 36px; line-height: 36px; background: #1a73e8; color: white; border-radius: 50%; font-weight: 500; }}
+.gcal-today .gcal-dow {{ color: #1a73e8; }}
+.gcal-time-col {{ border-right: 1px solid #dadce0; }}
+.gcal-time {{ font-size: 10px; color: #70757a; text-align: right; padding-right: 8px; box-sizing: border-box; position: relative; }}
+.gcal-time::after {{ content: ''; position: absolute; right: 0; top: 0; width: 8px; border-top: 1px solid #dadce0; }}
+.gcal-day-col {{ position: relative; border-right: 1px solid #e8eaed; background: #fff; }}
+.gcal-day-col:last-child {{ border-right: none; }}
+.gcal-gridline {{ position: absolute; left: 0; right: 0; border-top: 1px solid #e8eaed; pointer-events: none; }}
+.gcal-evt {{ position: absolute; right: 4px; height: {int(slot_h * 1.4)}px; border-radius: 4px; padding: 3px 6px; text-decoration: none; display: block; overflow: hidden; box-sizing: border-box;
+             transition: box-shadow .12s; cursor: pointer; z-index: 1; }}
+.gcal-evt:hover {{ box-shadow: 0 2px 8px rgba(0,0,0,.18); z-index: 10; }}
+.gcal-evt-time {{ font-size: 10px; font-weight: 500; color: #3c4043; }}
+.gcal-evt-title {{ font-size: 11px; font-weight: 600; color: #1a1a1a; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.gcal-evt-loc {{ font-size: 9px; color: #70757a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.gcal-back {{ font-size: 12px; color: #70757a; text-decoration: none; margin-bottom: 4px; display: inline-block; }}
+</style>
+<div class="gcal-wrap">
+  <a href="/variants" class="gcal-back">&larr; All variants</a>
+  <div class="gcal-toolbar">
+    <h1>{start.strftime('%B %Y')}</h1>
+    <span class="gcal-toolbar-sub">{len(events)} events this week</span>
+  </div>
+  <div class="gcal-grid">
+    <div class="gcal-corner"></div>
+    {day_headers}
+    <div class="gcal-time-col">{time_axis}</div>
+    {day_columns}
+  </div>
+</div>"""
+    resp = HTMLResponse(_layout("Calendar — Google Cal Style", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/v/calendar/agenda", response_class=HTMLResponse)
+async def v_calendar_agenda(request: Request):
+    """Apple Calendar agenda style — clean day-by-day list with time gutter."""
+    db = get_db()
+    current_user = _get_current_user(request)
+    events = _get_variant_events()
+    from collections import defaultdict
+    from datetime import timedelta as _td
+
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Group by date
+    date_events: dict[str, list] = defaultdict(list)
+    for e in events:
+        try:
+            dt = datetime.fromisoformat(e.get("start_time", ""))
+            date_events[dt.strftime("%Y-%m-%d")].append((e, dt))
+        except Exception:
+            pass
+
+    # Sort dates and events within each date
+    vibe_dots = {"social": "#f59e0b", "intellectual": "#818cf8", "mixed": "#10b981"}
+    days_html = ""
+    all_dates = sorted(date_events.keys())
+
+    for dk in all_dates:
+        d = datetime.strptime(dk, "%Y-%m-%d")
+        is_today = d.date() == today.date()
+        is_tomorrow = d.date() == (today + _td(days=1)).date()
+        day_label = "Today" if is_today else ("Tomorrow" if is_tomorrow else d.strftime("%A"))
+        date_label = d.strftime("%b %-d")
+        evts = sorted(date_events[dk], key=lambda x: x[1])
+
+        events_html = ""
+        for e, dt in evts:
+            score = int(e.get("score") or 0)
+            vibe = e.get("vibe", "mixed")
+            dot_color = vibe_dots.get(vibe, "#10b981")
+            title = (e.get("title") or "")[:60]
+            loc = (e.get("location_name") or "")[:40]
+            time_str = dt.strftime("%-I:%M %p")
+            price = e.get("price") or "Free"
+            url = e.get("url") or "#"
+            reason = (e.get("match_reason") or "")[:80]
+
+            # Score badge color
+            sc_bg = "#dcfce7" if score >= 65 else "#fef9c3" if score >= 40 else "#f3f4f6"
+            sc_fg = "#166534" if score >= 65 else "#854d0e" if score >= 40 else "#6b7280"
+
+            events_html += f"""<a href="{url}" target="_blank" class="ag-event">
+              <div class="ag-time-gutter">
+                <div class="ag-dot" style="background:{dot_color};"></div>
+                <div class="ag-time">{time_str}</div>
+              </div>
+              <div class="ag-content">
+                <div class="ag-title">{title}</div>
+                <div class="ag-meta">{loc}{f' &middot; {price}' if price != 'Free' else ''}</div>
+                {f'<div class="ag-reason">{reason}</div>' if reason else ''}
+              </div>
+              <div class="ag-score" style="background:{sc_bg};color:{sc_fg};">{score}</div>
+            </a>"""
+
+        today_cls = " ag-day-today" if is_today else ""
+        weekend_cls = " ag-day-weekend" if d.weekday() >= 5 else ""
+        days_html += f"""<div class="ag-day{today_cls}{weekend_cls}">
+          <div class="ag-day-header">
+            <div class="ag-day-label">{day_label}</div>
+            <div class="ag-day-date">{date_label}</div>
+            <div class="ag-day-count">{len(evts)} event{"s" if len(evts) != 1 else ""}</div>
+          </div>
+          {events_html}
+        </div>"""
+
+    body = f"""
+<style>
+body {{ background: #f2f2f7; color: #1c1c1e; font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif; }}
+.ag-wrap {{ max-width: 720px; margin: 0 auto; padding: 12px 16px 60px; }}
+.ag-back {{ font-size: 13px; color: #007aff; text-decoration: none; }}
+.ag-header {{ margin: 8px 0 20px; }}
+.ag-header h1 {{ font-size: 34px; font-weight: 700; color: #1c1c1e; letter-spacing: -.5px; }}
+.ag-header-sub {{ font-size: 15px; color: #8e8e93; margin-top: 2px; }}
+.ag-day {{ margin-bottom: 2px; }}
+.ag-day-header {{ display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 6px; }}
+.ag-day-label {{ font-size: 20px; font-weight: 700; color: #1c1c1e; }}
+.ag-day-today .ag-day-label {{ color: #007aff; }}
+.ag-day-weekend .ag-day-label {{ color: #ff9500; }}
+.ag-day-date {{ font-size: 15px; color: #8e8e93; }}
+.ag-day-count {{ font-size: 13px; color: #aeaeb2; margin-left: auto; }}
+.ag-event {{ display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; background: white; text-decoration: none; color: inherit;
+             border-bottom: 1px solid rgba(60,60,67,.06); transition: background .12s; }}
+.ag-event:first-of-type {{ border-radius: 12px 12px 0 0; }}
+.ag-event:last-of-type {{ border-radius: 0 0 12px 12px; border-bottom: none; }}
+.ag-event:only-of-type {{ border-radius: 12px; }}
+.ag-event:hover {{ background: #f8f8fa; }}
+.ag-time-gutter {{ flex-shrink: 0; width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 2px; }}
+.ag-dot {{ width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }}
+.ag-time {{ font-size: 11px; font-weight: 600; color: #8e8e93; white-space: nowrap; }}
+.ag-content {{ flex: 1; min-width: 0; }}
+.ag-title {{ font-size: 15px; font-weight: 600; color: #1c1c1e; line-height: 1.3; }}
+.ag-meta {{ font-size: 13px; color: #8e8e93; margin-top: 2px; }}
+.ag-reason {{ font-size: 12px; color: #007aff; margin-top: 3px; line-height: 1.3; }}
+.ag-score {{ flex-shrink: 0; font-size: 13px; font-weight: 700; padding: 3px 8px; border-radius: 8px; }}
+</style>
+<div class="ag-wrap">
+  <a href="/variants" class="ag-back">&larr; All variants</a>
+  <div class="ag-header">
+    <h1>Upcoming</h1>
+    <div class="ag-header-sub">{len(events)} events &middot; {len(all_dates)} days</div>
+  </div>
+  {days_html if days_html else '<div style="text-align:center;padding:40px;color:#8e8e93;">No events — run the pipeline first.</div>'}
+</div>"""
+    resp = HTMLResponse(_layout("Calendar — Agenda", body, current_user))
     return _maybe_set_cookie(request, resp, current_user)
 
 

@@ -22,14 +22,14 @@ from recom.events.dice import fetch_dice
 from recom.events.eventbrite import fetch_eventbrite
 from recom.events.luma import fetch_luma
 from recom.events.meetup import fetch_meetup
-from recom.events.museums import fetch_museum_events
+from recom.events.museums import _fetch_ica, _fetch_mfa, _fetch_mit_list
 from recom.events.newsletters import extract_newsletter_events
 from recom.events.outdoor import fetch_outdoor_events
 from recom.events.songkick import fetch_songkick
 from recom.events.ticketmaster import fetch_ticketmaster
 from recom.events.timeout_boston import fetch_timeout_boston
-from recom.events.university import fetch_university_events
-from recom.models import CostRecord, Event, SourceStat
+from recom.events.university import _fetch_mit, _fetch_harvard, _fetch_localist
+from recom.models import CostRecord, Event, EventSource, SourceStat
 
 logger = logging.getLogger(__name__)
 
@@ -250,20 +250,37 @@ async def discover_all_events(
     """
     all_costs: list[CostRecord] = []
 
-    # Build async source tasks
+    # Build async source tasks — individual sources (no aggregation)
     tasks = [
         _run_source("Eventbrite", fetch_eventbrite(settings)),
         _run_source("Meetup", fetch_meetup(settings)),
         _run_source("Luma", fetch_luma(settings)),
         _run_source("Songkick", fetch_songkick(settings)),
         _run_source("Ticketmaster", fetch_ticketmaster(settings, spotify_artists)),
-        _run_source("University", fetch_university_events(settings)),
+        # University — individual schools
+        _run_source("MIT Events", _fetch_mit(settings)),
+        _run_source("Harvard Events", _fetch_harvard(settings)),
+        _run_source("Northeastern", _fetch_localist(
+            "https://calendar.northeastern.edu", "Northeastern University",
+            EventSource.MIT,
+            "Northeastern University", "Boston, MA 02115",
+        )),
+        _run_source("MassArt", _fetch_localist(
+            "https://calendar.massart.edu", "MassArt",
+            EventSource.MIT,
+            "Massachusetts College of Art and Design", "Boston, MA 02215",
+        )),
+        # Boston event sites
         _run_source("Boston Calendar", fetch_boston_events(settings)),
         _run_source("TimeOut Boston", fetch_timeout_boston(settings)),
         _run_source("Bandsintown", fetch_bandsintown(settings)),
         _run_source("Dice.fm", fetch_dice(settings)),
         _run_source("Resident Advisor", fetch_resident_advisor(settings)),
-        _run_source("Museums", fetch_museum_events(settings)),
+        # Museums — individual venues
+        _run_source("ICA Boston", _fetch_ica(settings)),
+        _run_source("MFA", _fetch_mfa(settings)),
+        _run_source("MIT List Visual Arts", _fetch_mit_list(settings)),
+        # Outdoor
         _run_source("Outdoor", fetch_outdoor_events(settings)),
     ]
 

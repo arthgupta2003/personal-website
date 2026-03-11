@@ -703,12 +703,13 @@ class Database:
         return [dict(r) for r in rows]
 
     def get_source_health(self, last_n_runs: int = 10) -> list[dict]:
-        """Return per-source health stats across recent runs."""
+        """Return per-source health stats across recent runs.
+        Success = no error AND events_found > 0. Zero events with no error = failure."""
         rows = self.conn.execute(
             """SELECT ss.source_name,
                       COUNT(*) as run_count,
-                      SUM(CASE WHEN ss.error_message IS NULL THEN 1 ELSE 0 END) as successes,
-                      SUM(CASE WHEN ss.error_message IS NOT NULL THEN 1 ELSE 0 END) as failures,
+                      SUM(CASE WHEN ss.error_message IS NULL AND ss.events_found > 0 THEN 1 ELSE 0 END) as successes,
+                      SUM(CASE WHEN ss.error_message IS NOT NULL OR ss.events_found = 0 THEN 1 ELSE 0 END) as failures,
                       AVG(ss.events_found) as avg_events,
                       MAX(ss.events_found) as max_events,
                       MIN(ss.events_found) as min_events,
@@ -722,6 +723,21 @@ class Database:
                )
                GROUP BY ss.source_name
                ORDER BY avg_events DESC""",
+            (last_n_runs,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_source_stats_by_run(self, last_n_runs: int = 10) -> list[dict]:
+        """Return source stats grouped by run for per-run drill-down."""
+        rows = self.conn.execute(
+            """SELECT r.id as run_id, r.timestamp, ss.source_name,
+                      ss.events_found, ss.error_message, ss.duration_seconds
+               FROM source_stats ss
+               JOIN runs r ON r.id = ss.run_id
+               WHERE ss.run_id IN (
+                   SELECT id FROM runs ORDER BY timestamp DESC LIMIT ?
+               )
+               ORDER BY r.timestamp DESC, ss.events_found DESC""",
             (last_n_runs,),
         ).fetchall()
         return [dict(r) for r in rows]
