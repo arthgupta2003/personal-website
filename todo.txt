@@ -2,6 +2,48 @@
 # Format: [timestamp] TASK: description
 # Status: DONE / IN_PROGRESS / DONE
 
+# ============================================================
+# PRIORITY 0 — QUICK FIX, DO FIRST
+# [2026-03-12] TASK: /cal route works for cookie-authenticated users
+# ============================================================
+#
+# BUG: The calendar setup page lives at /u/{token}/cal, which requires
+# the token in the URL. A logged-in user with a cookie can't get there
+# without knowing their token. Normal users have no way to find their
+# token — it's set invisibly via magic link emails.
+#
+# This means the CalDAV setup page, calendar subscription links, and
+# everything on the /cal page is effectively unreachable for logged-in
+# users navigating the dashboard.
+#
+# === Fix ===
+#
+# 1. Add GET /cal route that works with cookie auth:
+#    - Read cookie → look up user → get their token
+#    - Render the same calendar setup page as /u/{token}/cal
+#    - If not logged in, redirect to /login
+#    - Delete the old /u/{token}/cal route entirely — no need to keep it
+#
+# 2. Profile page "My Calendars" section should link to /cal (not
+#    /u/{token}/cal). The token should never be visible in the nav
+#    or profile links — it's an implementation detail.
+#
+# 3. Nav or Profile should have a clear path to /cal. If calendars
+#    are folded into Profile (per P7), make sure the Calendars tab
+#    links to /cal or renders it inline.
+#
+# === Acceptance criteria ===
+# 1. GET /cal while logged in (cookie) shows calendar setup page
+# 2. GET /cal while logged out redirects to /login
+# 3. Profile page links to /cal (no token in URL)
+# 4. CalDAV instructions on /cal show the correct token for the user
+# 5. smoke_test.sh passes
+#
+# === Files to modify ===
+# src/recom/dashboard/app.py — new /cal route, update Profile links
+#
+# Status: DONE
+
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # PRIORITY 1 — DO THIS FIRST. DO NOT SKIP. DO NOT MARK PARTIAL.
 # This task is NOT done until the acceptance criteria ALL pass.

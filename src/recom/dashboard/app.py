@@ -1498,6 +1498,9 @@ async def profile_page(request: Request, response: Response):
         <li><strong>Apple Calendar:</strong> File &rarr; New Calendar Subscription &rarr; paste URL</li>
         <li><strong>Outlook:</strong> Add calendar &rarr; From internet &rarr; paste URL</li>
       </ul>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb;">
+        <a href="/cal" style="font-size:13px;font-weight:600;color:#4f46e5;text-decoration:none;">Full calendar setup page (CalDAV + more) &rarr;</a>
+      </div>
     </div>
   </div>
 </div>
@@ -5879,13 +5882,28 @@ async def user_rsvps_ical(token: str):
     )
 
 
+@app.get("/cal", response_class=HTMLResponse)
+async def cal_page(request: Request):
+    """Calendar setup page for cookie-authenticated users."""
+    current_user = _get_current_user(request)
+    if not current_user:
+        return RedirectResponse("/login")
+    token = current_user.get("user_token", "")
+    return await _render_cal_page(current_user, token, request)
+
+
 @app.get("/u/{token}/cal", response_class=HTMLResponse)
 async def user_cal_page(token: str, request: Request):
-    """Page showing all available calendar feed URLs for the user."""
+    """Page showing all available calendar feed URLs for the user (token-based)."""
     db = get_db()
     user = db.get_user_by_token(token)
     if not user:
         return HTMLResponse("<h1>User not found</h1>", status_code=404)
+    return await _render_cal_page(user, token, request)
+
+
+async def _render_cal_page(user: dict, token: str, request: Request):
+    """Shared renderer for /cal and /u/{token}/cal."""
     settings = Settings()
     dashboard_url = settings.dashboard_url
     feed_url = f"{dashboard_url}/u/{token}/feed.ics"
