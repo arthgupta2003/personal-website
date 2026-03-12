@@ -139,7 +139,8 @@ _DIGEST_TEMPLATE = _env.from_string(
         {% if hero.match_reason %}<p style="margin:0 0 12px;font-size:14px;color:#4c1d95;line-height:1.5;background:rgba(139,92,246,.1);padding:10px 14px;border-radius:8px;border-left:3px solid #8b5cf6;">{{ hero.match_reason }}</p>{% endif %}
         {% if hero.event.price %}<p style="margin:0;font-size:13px;color:#6b7280;">{{ hero.event.price }}</p>{% endif %}
         <div style="margin-top:14px;">
-          {% if hero.event.url %}<a href="{{ hero.event.url }}" style="display:inline-block;background:#4f46e5;color:white;text-decoration:none;font-weight:700;font-size:13px;padding:9px 22px;border-radius:50px;">Get tickets &rarr;</a>{% endif %}
+          {% if user_token %}<a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ hero.event.id }}.ics" style="display:inline-block;background:#16a34a;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:10px 24px;border-radius:50px;">&#128197; Add to my week</a>{% endif %}
+          {% if hero.event.url %}<a href="{{ hero.event.url }}" style="display:inline-block;margin-left:8px;color:#4f46e5;text-decoration:none;font-weight:600;font-size:13px;">Get tickets &rarr;</a>{% endif %}
           <span style="display:inline-block;margin-left:8px;background:#dcfce7;color:#166534;font-weight:800;font-size:13px;padding:9px 14px;border-radius:50px;">{{ hero.score | int }}</span>
         </div>
       </td></tr>
@@ -448,10 +449,10 @@ _DAILY_TEMPLATE = _env.from_string(
           {% endif %}
           <p style="margin:0;">
             {% if user_token %}
-            <a href="{{ dashboard_url }}/api/rsvp-link?event_id={{ r.event.id }}&status=going&u={{ user_token }}&title={{ r.event.title | urlencode }}" style="display:inline-block;font-size:12px;font-weight:600;color:#166534;text-decoration:none;border:1.5px solid #86efac;padding:4px 14px;border-radius:10px;margin-right:6px;">Going</a>
+            <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#16a34a;text-decoration:none;padding:5px 16px;border-radius:10px;margin-right:6px;">&#128197; Add to my week</a>
             <a href="{{ dashboard_url }}/api/rsvp-link?event_id={{ r.event.id }}&status=maybe&u={{ user_token }}&title={{ r.event.title | urlencode }}" style="display:inline-block;font-size:12px;font-weight:600;color:#92400e;text-decoration:none;border:1.5px solid #fde68a;padding:4px 14px;border-radius:10px;margin-right:6px;">Maybe</a>
             {% endif %}
-            <a href="{{ dashboard_url }}/api/attend-link?event_id={{ r.event.id }}&title={{ r.event.title | urlencode }}" style="display:inline-block;font-size:12px;font-weight:600;color:#6b7280;text-decoration:none;border:1.5px solid #e5e7eb;padding:4px 14px;border-radius:10px;">I went</a>
+            {% if r.event.url %}<a href="{{ r.event.url }}" style="display:inline-block;font-size:12px;font-weight:600;color:#4f46e5;text-decoration:none;padding:4px 0;">Get tickets &rarr;</a>{% endif %}
           </p>
         </td>
       </tr>

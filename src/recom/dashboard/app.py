@@ -5074,6 +5074,188 @@ async def group_join(slug: str, request: Request):
     return RedirectResponse(f"/group/{slug}", status_code=303)
 
 
+# ---------------------------------------------------------------------------
+# Single-event .ics download
+# ---------------------------------------------------------------------------
+
+def _build_single_event_ics(event: dict, match_reason: str = "", score: int = 0) -> str:
+    """Build a VCALENDAR string for a single event."""
+    import html as _html
+    import urllib.parse as _urlparse
+    from datetime import timezone as _tz
+
+    def _esc(text: str) -> str:
+        text = _html.unescape(text)
+        return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+    def _fold(line: str) -> str:
+        encoded = line.encode("utf-8")
+        if len(encoded) <= 75:
+            return line
+        chunks = []
+        while len(encoded) > 75:
+            cut = 75
+            while cut > 0 and (encoded[cut] & 0xC0) == 0x80:
+                cut -= 1
+            if cut == 0:
+                cut = 75
+            chunks.append(encoded[:cut].decode("utf-8"))
+            encoded = encoded[cut:]
+        if encoded:
+            chunks.append(encoded.decode("utf-8"))
+        return "\r\n ".join(chunks)
+
+    utcnow = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
+    start = event.get("start_time")
+    if start:
+        try:
+            dt = datetime.fromisoformat(start)
+            dtstart = dt.strftime("%Y%m%dT%H%M%S")
+        except (ValueError, TypeError):
+            dtstart = None
+    else:
+        dtstart = None
+
+    title = _esc(event.get("title") or "Event")
+    location = _esc(event.get("location_name") or "")
+    url = event.get("url") or ""
+    price = _esc(event.get("price") or "Free")
+    eid = event.get("event_id", "unknown")
+
+    desc_parts = []
+    if match_reason:
+        desc_parts.append(match_reason)
+    if price and price != "Free":
+        desc_parts.append(f"Price: {price}")
+    if url:
+        desc_parts.append(f"Get tickets: {url}")
+    desc = _esc("\\n".join(desc_parts)) if desc_parts else ""
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//recom//Event Recommender//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "BEGIN:VEVENT",
+        f"UID:{eid}@recom",
+        f"DTSTAMP:{utcnow}",
+    ]
+    if dtstart:
+        lines.append(f"DTSTART:{dtstart}")
+    lines.extend([
+        _fold(f"SUMMARY:{title}"),
+        _fold(f"LOCATION:{location}"),
+        _fold(f"URL:{url}"),
+        _fold(f"DESCRIPTION:{desc}"),
+        "DURATION:PT2H",
+        "TRANSP:TRANSPARENT",
+    ])
+    lat, lon = event.get("lat"), event.get("lon")
+    if lat and lon:
+        lines.append(f"GEO:{lat};{lon}")
+    lines.extend([
+        "BEGIN:VALARM",
+        "TRIGGER:-PT2H",
+        "ACTION:DISPLAY",
+        f"DESCRIPTION:Reminder: {title}",
+        "END:VALARM",
+        "END:VEVENT",
+        "END:VCALENDAR",
+    ])
+    return "\r\n".join(lines)
+
+
+def _find_event(db, event_id: str) -> dict | None:
+    """Find an event by event_id, preferring the latest run."""
+    row = db.conn.execute(
+        """SELECT e.*, rk.score, rk.match_reason, rk.vibe
+           FROM events e
+           LEFT JOIN rankings rk ON rk.run_id = e.run_id AND rk.event_id = e.event_id
+           WHERE e.event_id = ?
+           ORDER BY e.run_id DESC LIMIT 1""",
+        (event_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+@app.get("/event/{event_id}.ics")
+async def single_event_ics(event_id: str):
+    """Public single-event .ics download — no auth required."""
+    db = get_db()
+    event = _find_event(db, event_id)
+    if not event:
+        return Response(content="Event not found", status_code=404)
+    import re as _re
+    slug = _re.sub(r'[^a-z0-9]+', '-', (event.get("title") or "event").lower()).strip('-')[:50]
+    ics = _build_single_event_ics(event, match_reason=event.get("match_reason") or "", score=int(event.get("score") or 0))
+    return Response(
+        content=ics,
+        media_type="text/calendar",
+        headers={"Content-Disposition": f'attachment; filename="{slug}.ics"'},
+    )
+
+
+@app.get("/u/{token}/event/{event_id}.ics")
+async def user_single_event_ics(token: str, event_id: str):
+    """Per-user single-event .ics download — also sets RSVP to going."""
+    import re as _re
+    db = get_db()
+    user = db.get_user_by_token(token)
+    if not user:
+        return Response(content="Invalid link", status_code=401)
+    event = _find_event(db, event_id)
+    if not event:
+        return Response(content="Event not found", status_code=404)
+    # Set RSVP to going
+    run = db.get_user_latest_run(user["id"])
+    run_id = run["id"] if run else event.get("run_id", 0)
+    db.set_rsvp(user["id"], event_id, run_id, "going")
+    slug = _re.sub(r'[^a-z0-9]+', '-', (event.get("title") or "event").lower()).strip('-')[:50]
+    ics = _build_single_event_ics(event, match_reason=event.get("match_reason") or "", score=int(event.get("score") or 0))
+    return Response(
+        content=ics,
+        media_type="text/calendar",
+        headers={"Content-Disposition": f'attachment; filename="{slug}.ics"'},
+    )
+
+
+@app.get("/u/{token}/event/{event_id}/added", response_class=HTMLResponse)
+async def event_added_confirmation(token: str, event_id: str):
+    """Confirmation page shown after adding event to calendar."""
+    db = get_db()
+    user = db.get_user_by_token(token)
+    if not user:
+        return HTMLResponse("<h1>Invalid link</h1>", status_code=401)
+    event = _find_event(db, event_id)
+    if not event:
+        return HTMLResponse("<h1>Event not found</h1>", status_code=404)
+    title = event.get("title") or "Event"
+    start = event.get("start_time") or ""
+    start_display = start[:16].replace("T", " ") if start else "Date TBD"
+    url = event.get("url") or ""
+    settings = Settings()
+    cal_url = f"{settings.dashboard_url}/u/{token}/cal"
+    body = f"""
+    <div style="display:flex;justify-content:center;align-items:center;min-height:80vh;">
+      <div style="background:white;border-radius:16px;padding:40px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:420px;">
+        <div style="font-size:48px;margin-bottom:12px;">&#10003;</div>
+        <h2 style="color:#166534;margin:0 0 8px;">Added to your calendar</h2>
+        <p style="font-size:16px;font-weight:600;color:#1e293b;margin:0 0 4px;">{title[:80]}</p>
+        <p style="font-size:14px;color:#6b7280;margin:0 0 20px;">{start_display}</p>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          {'<a href="' + url + '" target="_blank" style="display:inline-block;background:#4f46e5;color:white;text-decoration:none;font-weight:700;font-size:13px;padding:10px 22px;border-radius:50px;">Get tickets &rarr;</a>' if url else ''}
+          <a href="/?u={token}" style="display:inline-block;background:#f1f5f9;color:#374151;text-decoration:none;font-weight:600;font-size:13px;padding:10px 22px;border-radius:50px;">Back to calendar</a>
+        </div>
+        <div style="margin-top:24px;padding-top:20px;border-top:1px solid #e5e7eb;">
+          <p style="font-size:13px;color:#9ca3af;margin:0 0 8px;">Get all your picks automatically:</p>
+          <a href="{cal_url}" style="color:#4f46e5;font-weight:600;font-size:13px;text-decoration:none;">Subscribe to calendar feed &rarr;</a>
+        </div>
+      </div>
+    </div>"""
+    return HTMLResponse(_layout("Event Added", body, user))
+
+
 @app.get("/u/{token}/feed.ics")
 async def user_ical_feed(token: str, min_score: int = 55):
     """Per-user shareable iCal feed. The token in the URL IS the auth."""

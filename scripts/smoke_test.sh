@@ -63,6 +63,23 @@ check "/v/taste/dense" "200"
 check "/v/groups/dense" "200"
 check "/v/profile/dense" "200"
 
+# Single-event .ics download
+# Use a known event_id from DB (or test 404 for unknown)
+code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/event/nonexistent_event.ics")
+[ "$code" = "404" ] && { echo "  PASS /event/{id}.ics 404 for unknown"; ((PASS++)); } \
+  || { echo "  FAIL /event/{id}.ics — expected 404, got $code"; ((FAIL++)); }
+# Check that a real event returns 200 with text/calendar
+SAMPLE_EID=$(cd "$RECOM_DIR" && uv run python -c "
+from recom.db import Database; db = Database('recom.db')
+r = db.conn.execute('SELECT event_id FROM events ORDER BY run_id DESC LIMIT 1').fetchone()
+print(r[0] if r else '')
+" 2>/dev/null)
+if [ -n "$SAMPLE_EID" ]; then
+  code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/event/$SAMPLE_EID.ics")
+  [ "$code" = "200" ] && { echo "  PASS /event/{id}.ics (200)"; ((PASS++)); } \
+    || { echo "  FAIL /event/{id}.ics — expected 200, got $code"; ((FAIL++)); }
+fi
+
 # Auth-required pages (redirect without cookie)
 check "/venues" "307" "/venues (unauth→307)"
 check "/search" "307" "/search (unauth→307)"
@@ -109,6 +126,17 @@ print(user['user_token'])
 
     # Calendar should show user's data
     check "/" "200" "/ (authed)" "$TOKEN"
+
+    # Per-user .ics download
+    if [ -n "$SAMPLE_EID" ]; then
+      code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/u/$TOKEN/event/$SAMPLE_EID.ics")
+      [ "$code" = "200" ] && { echo "  PASS /u/{token}/event/{id}.ics (200)"; ((PASS++)); } \
+        || { echo "  FAIL /u/{token}/event/{id}.ics — expected 200, got $code"; ((FAIL++)); }
+      # Confirmation page
+      code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/u/$TOKEN/event/$SAMPLE_EID/added")
+      [ "$code" = "200" ] && { echo "  PASS /u/{token}/event/{id}/added (200)"; ((PASS++)); } \
+        || { echo "  FAIL /u/{token}/event/{id}/added — expected 200, got $code"; ((FAIL++)); }
+    fi
 
     # API search should work (no events yet = empty results, not 401)
     code=$(curl -s -o /dev/null -w "%{http_code}" \
