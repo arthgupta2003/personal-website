@@ -424,7 +424,7 @@
 # Modify: scripts/send_tonight.py — updated subject/tone
 # Modify: scripts/install_cron.sh — add Thursday 6pm entry
 #
-# Status: NOT STARTED
+# Status: DONE
 
 # ============================================================
 # PRIORITY 6

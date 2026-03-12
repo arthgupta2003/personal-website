@@ -21,17 +21,21 @@ DAILY_CMD="0 ${DAILY_HOUR} * * * cd ${RECOM_DIR} && ${UV_PATH} run recom-daily >
 # Daily taste matchup email (9am Mon-Fri)
 TASTE_CMD="0 9 * * 1-5 cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_daily_taste.py --all-users >> ${RECOM_DIR}/state/taste.log 2>&1"
 
-# Tonight email (4pm Fri + Sat — last-minute picks)
+# Weekend preview (Thursday 6pm — plan your weekend)
+WEEKEND_CMD="0 18 * * 4 cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_weekend_preview.py --all-users >> ${RECOM_DIR}/state/weekend.log 2>&1"
+
+# Tonight email (4pm Fri + Sat — last-minute impulse picks)
 TONIGHT_CMD="0 16 * * 5,6 cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_tonight.py --all-users >> ${RECOM_DIR}/state/tonight.log 2>&1"
 
 # Post-event rating emails (10pm daily)
 RATINGS_CMD="0 22 * * * cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_ratings.py --send >> ${RECOM_DIR}/state/ratings.log 2>&1"
 
 # Remove existing recom cron entries and install all fresh
-(crontab -l 2>/dev/null | grep -v "recom\|send_daily_taste\|send_tonight\|send_ratings"; \
+(crontab -l 2>/dev/null | grep -v "recom\|send_daily_taste\|send_tonight\|send_ratings\|send_weekend"; \
   echo "$WEEKLY_CMD"; \
   echo "$DAILY_CMD"; \
   echo "$TASTE_CMD"; \
+  echo "$WEEKEND_CMD"; \
   echo "$TONIGHT_CMD"; \
   echo "$RATINGS_CMD") | crontab -
 
@@ -49,13 +53,16 @@ echo ""
 echo "  Daily taste matchup (9am Mon-Fri):"
 echo "    uv run python scripts/send_daily_taste.py --all-users"
 echo ""
+echo "  Weekend preview (Thursday 6pm):"
+echo "    uv run python scripts/send_weekend_preview.py --all-users"
+echo ""
 echo "  Tonight picks (4pm Fri+Sat):"
 echo "    uv run python scripts/send_tonight.py --all-users"
 echo ""
 echo "  Post-event ratings (10pm daily):"
 echo "    uv run python scripts/send_ratings.py --send"
 echo ""
-echo "  Logs: ${RECOM_DIR}/state/{cron,daily,taste,tonight,ratings}.log"
+echo "  Logs: ${RECOM_DIR}/state/{cron,daily,taste,weekend,tonight,ratings}.log"
 echo ""
 echo "To verify: crontab -l"
-echo "To remove: crontab -l | grep -v 'recom\|send_daily_taste\|send_tonight\|send_ratings' | crontab -"
+echo "To remove: crontab -l | grep -v 'recom\|send_daily_taste\|send_weekend\|send_tonight\|send_ratings' | crontab -"

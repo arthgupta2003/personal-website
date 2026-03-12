@@ -288,6 +288,8 @@ async def email_preview_index(request: Request):
                 <span style="color:#9ca3af;font-size:13px;margin-left:8px;">— rendered from latest run</span></li>
             <li><a href="/admin/email-preview/tonight" style="color:#2563eb;font-weight:600;">Tonight Email</a>
                 <span style="color:#9ca3af;font-size:13px;margin-left:8px;">— last minute daily digest</span></li>
+            <li><a href="/admin/email-preview/weekend" style="color:#2563eb;font-weight:600;">Weekend Preview Email</a>
+                <span style="color:#9ca3af;font-size:13px;margin-left:8px;">— Thursday Fri/Sat/Sun picks</span></li>
             <li><a href="/admin/email-preview/welcome" style="color:#2563eb;font-weight:600;">Welcome Email</a>
                 <span style="color:#9ca3af;font-size:13px;margin-left:8px;">— new user onboarding</span></li>
         </ul>
@@ -449,6 +451,64 @@ async def email_preview_tonight(request: Request):
     </div>
     """
     resp = HTMLResponse(_layout("Email Preview: Tonight", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/admin/email-preview/weekend", response_class=HTMLResponse)
+async def email_preview_weekend(request: Request):
+    """Admin: preview the Thursday weekend preview email."""
+    import html as _html
+
+    current_user = _get_current_user(request)
+    if not current_user or current_user.get("id") != 1:
+        return RedirectResponse("/login")
+
+    db = get_db()
+    settings = Settings()
+
+    run = db.get_user_latest_run(current_user["id"])
+    if not run:
+        runs = db.get_runs()
+        run = runs[0] if runs else None
+
+    if not run:
+        body = """
+        <h1>Email Preview: Weekend</h1>
+        <div class="card"><p style="color:#6b7280;">No runs available.</p></div>
+        """
+        return HTMLResponse(_layout("Email Preview: Weekend", body, current_user))
+
+    run_id = run["id"]
+    ranked = _build_ranked_events_from_run(run_id)
+
+    from recom.email.composer import compose_weekend_email
+    result = compose_weekend_email(
+        ranked_events=ranked,
+        dashboard_url=settings.dashboard_url,
+        user_token=current_user.get("user_token", ""),
+    )
+
+    if result is None:
+        body = """
+        <h1>Email Preview: Weekend</h1>
+        <div class="card"><p style="color:#6b7280;">Fewer than 3 weekend events in the latest run. Weekend email would not be sent.</p></div>
+        """
+        return HTMLResponse(_layout("Email Preview: Weekend", body, current_user))
+
+    subject, html_body = result
+    escaped = _html.escape(html_body)
+    body = f"""
+    <h1>Email Preview: Weekend</h1>
+    <div class="card" style="margin-bottom:16px;">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Subject line:</div>
+        <h2 style="font-size:18px;font-weight:700;color:#1e293b;">{_html.escape(subject)}</h2>
+    </div>
+    <div class="card">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">HTML body preview:</div>
+        <iframe srcdoc="{escaped}" style="width:100%;height:600px;border:1px solid #e2e8f0;border-radius:6px;"></iframe>
+    </div>
+    """
+    resp = HTMLResponse(_layout("Email Preview: Weekend", body, current_user))
     return _maybe_set_cookie(request, resp, current_user)
 
 

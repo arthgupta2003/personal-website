@@ -596,6 +596,147 @@ def compose_daily_email(
 
 
 # ---------------------------------------------------------------------------
+# Weekend preview email
+# ---------------------------------------------------------------------------
+
+_WEEKEND_TEMPLATE = _env.from_string(
+    """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ subject }}</title>
+</head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;margin:0;padding:0;color:#1a1a1a;">
+
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;">
+<tr><td align="center" style="padding:20px 16px 32px;">
+<table width="100%" style="max-width:600px;" cellpadding="0" cellspacing="0">
+
+  <!-- Header -->
+  <tr><td style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px 16px 0 0;padding:28px 28px 24px;text-align:center;">
+    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">&loz; RECOM &middot; Weekend</p>
+    <h1 style="margin:0;font-size:26px;font-weight:800;color:white;letter-spacing:-.5px;">
+      <a href="{{ dashboard_url }}" style="color:white;text-decoration:none;">Your Weekend</a>
+    </h1>
+    <p style="margin:8px 0 0;font-size:15px;color:rgba(255,255,255,.7);">{{ total_count }} things to do</p>
+  </td></tr>
+
+  <!-- Content -->
+  <tr><td style="background:white;border-radius:0 0 16px 16px;padding:24px 20px;">
+
+    {% for day_label, events in days %}
+    <p style="margin:{% if not loop.first %}24px{% else %}0{% endif %} 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#4f46e5;">{{ day_label }}</p>
+
+    {% for r in events %}
+    {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#8b5cf6" if r.vibe == "intellectual" else "#3b82f6") %}
+    {% set score_bg = "#dcfce7" if r.score >= 70 else ("#fef3c7" if r.score >= 50 else "#f3f4f6") %}
+    {% set score_color = "#166534" if r.score >= 70 else ("#92400e" if r.score >= 50 else "#6b7280") %}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;border-radius:10px;border:1px solid #f3f4f6;overflow:hidden;">
+      <tr>
+        <td style="padding:12px 14px;border-left:4px solid {{ vibe_color }};">
+          <p style="margin:0 0 2px;font-size:14px;font-weight:700;line-height:1.3;">
+            {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#111827;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
+            <span style="display:inline-block;background:{{ score_bg }};color:{{ score_color }};font-size:11px;font-weight:800;padding:1px 8px;border-radius:8px;margin-left:6px;">{{ r.score | int }}</span>
+          </p>
+          <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} &middot; {{ r.event.location_name }}{% endif %}{% if r.event.price %} &middot; {{ r.event.price }}{% endif %}</p>
+          {% if r.match_reason %}<p style="margin:0 0 6px;font-size:12px;color:#6d28d9;">{{ r.match_reason }}</p>{% endif %}
+          {% if user_token %}
+          <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#16a34a;text-decoration:none;padding:4px 14px;border-radius:8px;">&#128197; Add to my week</a>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+    {% endfor %}
+    {% endfor %}
+
+    {% if not days %}
+    <p style="color:#9ca3af;text-align:center;padding:20px 0;">No weekend events found. Check the <a href="{{ dashboard_url }}" style="color:#4f46e5;">full calendar</a>.</p>
+    {% endif %}
+
+    <div style="text-align:center;margin-top:20px;">
+      <a href="{{ dashboard_url }}/?u={{ user_token }}" style="display:inline-block;background:#f1f5f9;color:#374151;text-decoration:none;font-weight:600;font-size:14px;padding:12px 28px;border-radius:50px;">
+        See all events &rarr;
+      </a>
+    </div>
+
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="padding:16px 24px;text-align:center;">
+    <p style="margin:0;font-size:12px;color:#9ca3af;">
+      Powered by <a href="{{ dashboard_url }}" style="color:#6366f1;text-decoration:none;">Recom</a> &middot; Discover Weekly for your real life
+    </p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+)
+
+
+def compose_weekend_email(
+    ranked_events: list[RankedEvent],
+    dashboard_url: str = "https://recom.arthgupta.dev",
+    user_token: str = "",
+) -> tuple[str, str] | None:
+    """Build a Thursday weekend preview email with Fri/Sat/Sun events by day.
+
+    Returns (subject, html_body) or None if fewer than 3 weekend events.
+    """
+    from datetime import timedelta
+
+    now = datetime.now()
+    # Find next Fri/Sat/Sun
+    days_ahead = (4 - now.weekday()) % 7  # 4 = Friday
+    if days_ahead == 0 and now.hour >= 18:
+        days_ahead = 7
+    friday = (now + timedelta(days=days_ahead)).date()
+    saturday = friday + timedelta(days=1)
+    sunday = friday + timedelta(days=2)
+    weekend_dates = {
+        friday.isoformat(): friday.strftime("%A, %B %-d"),
+        saturday.isoformat(): saturday.strftime("%A, %B %-d"),
+        sunday.isoformat(): sunday.strftime("%A, %B %-d"),
+    }
+
+    # Filter to weekend events
+    day_groups: dict[str, list[RankedEvent]] = {d: [] for d in weekend_dates}
+    for r in ranked_events:
+        if not r.keep or r.score < 25 or r.event.start_time is None:
+            continue
+        st = r.event.start_time
+        event_date = (st.replace(tzinfo=None) if st.tzinfo else st).date().isoformat()
+        if event_date in day_groups:
+            day_groups[event_date].append(r)
+
+    # Sort each day by score, limit to 5
+    for date_key in day_groups:
+        day_groups[date_key].sort(key=lambda r: r.score, reverse=True)
+        day_groups[date_key] = day_groups[date_key][:5]
+
+    # Build ordered list of (label, events) tuples
+    days = [(weekend_dates[d], day_groups[d]) for d in sorted(day_groups) if day_groups[d]]
+    total_count = sum(len(evts) for _, evts in days)
+
+    if total_count < 3:
+        return None
+
+    subject = f"Your weekend: {total_count} things to do"
+    html_body = _WEEKEND_TEMPLATE.render(
+        subject=subject,
+        total_count=total_count,
+        days=days,
+        dashboard_url=dashboard_url,
+        user_token=user_token,
+    )
+    return subject, html_body
+
+
+# ---------------------------------------------------------------------------
 # Welcome email
 # ---------------------------------------------------------------------------
 

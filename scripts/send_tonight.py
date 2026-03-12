@@ -21,9 +21,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 TONIGHT_SUBJECT_TEMPLATES = [
-    "No plans tonight? Here are {n} ideas",
-    "Free tonight? {n} things happening now",
-    "{n} things to do tonight — last call",
+    "Still free tonight? {n} ideas",
+    "Nothing on tonight? {n} last-minute picks",
+    "Tonight: {n} things you could do right now",
 ]
 
 
@@ -142,8 +142,8 @@ def send_tonight_digest(user_id: int = 1) -> bool:
 <table width="100%" style="max-width:520px;" cellpadding="0" cellspacing="0">
   <tr><td style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px 16px 0 0;padding:28px 24px;text-align:center;">
     <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">recom · tonight</p>
-    <h1 style="margin:0 0 6px;font-size:26px;font-weight:800;color:white;line-height:1.2;">{n} things<br>happening now</h1>
-    <p style="margin:0;font-size:14px;color:rgba(255,255,255,.6);">{now.strftime('%A, %B %-d')}</p>
+    <h1 style="margin:0 0 6px;font-size:26px;font-weight:800;color:white;line-height:1.2;">Still free tonight?</h1>
+    <p style="margin:0;font-size:14px;color:rgba(255,255,255,.6);">{n} last-minute picks for {now.strftime('%A, %B %-d')}</p>
   </td></tr>
   <tr><td style="background:white;border-radius:0 0 16px 16px;">
     <table width="100%" cellpadding="0" cellspacing="0">
