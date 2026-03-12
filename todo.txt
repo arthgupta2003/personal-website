@@ -90,7 +90,7 @@
 # === Files to modify ===
 # src/recom/dashboard/app.py — _layout() styles + each page route
 #
-# Status: NOT STARTED
+# Status: DONE
 
 # ============================================================
 # PRIORITY 0 — QUICK FIX, DO FIRST
