@@ -569,7 +569,7 @@
 # src/recom/dashboard/app.py — nav HTML, Profile page, Events page
 # scripts/smoke_test.sh — update expected nav structure if tested
 #
-# Status: NOT STARTED
+# Status: DONE
 
 # ============================================================
 # [2026-03-09 22:30] TASK: Add RSVP links to per-user iCal feed

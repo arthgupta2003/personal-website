@@ -59,22 +59,21 @@ def render_nav(user: dict | None = None) -> str:
         name = user.get("name") or user.get("email", "")
         is_admin = user.get("id") == 1
         admin_overflow = '<a href="/admin" class="nav-overflow-item">⚙️ Admin</a>' if is_admin else ""
+        overflow_html = ""
+        if admin_overflow:
+            overflow_html = f"""<div class="nav-overflow">
+            <button class="nav-overflow-btn" onclick="this.nextElementSibling.classList.toggle('open')" aria-label="More">···</button>
+            <div class="nav-overflow-menu">
+              {admin_overflow}
+            </div>
+          </div>"""
         return f"""<nav class="app-nav"><div class="app-nav-inner">
           <a href="/" class="app-logo">recom</a>
           <a href="/" class="nav-link">📅 Events</a>
-          <a href="/taste" class="nav-link">🎯 Taste</a>
+          <a href="/search" class="nav-link">🔍 Search</a>
           <a href="/groups" class="nav-link">👥 Groups</a>
           <a href="/profile" class="nav-link">👤 Profile</a>
-          <div class="nav-overflow">
-            <button class="nav-overflow-btn" onclick="this.nextElementSibling.classList.toggle('open')" aria-label="More">···</button>
-            <div class="nav-overflow-menu">
-              <a href="/search" class="nav-overflow-item">🔍 Search</a>
-              <a href="/attended" class="nav-overflow-item">📜 History</a>
-              <a href="/venues" class="nav-overflow-item">📍 Venues</a>
-              <a href="/bucket-list" class="nav-overflow-item">🪣 Bucket List</a>
-              {admin_overflow}
-            </div>
-          </div>
+          {overflow_html}
           <div class="nav-divider"></div>
           <span style="font-size:13px;color:rgba(255,255,255,.7);font-weight:500;">{name}</span>
         </div></nav>"""
@@ -1343,7 +1342,7 @@ async def interests_redirect():
 
 @app.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request, response: Response):
-    """User profile / settings page."""
+    """User profile / settings page with tabs: Settings, History, Calendars."""
     db = get_db()
     current_user = _get_current_user(request)
     if not current_user:
@@ -1353,11 +1352,45 @@ async def profile_page(request: Request, response: Response):
     home_lon = float(current_user["home_lon"]) if current_user.get("home_lon") else settings.longitude
     name = current_user.get("name") or ""
     email = current_user.get("email") or ""
+    user_id = current_user["id"]
+
+    # --- History data ---
+    try:
+        attended_rows = db.conn.execute(
+            "SELECT a.*, e.title FROM attended a LEFT JOIN events e ON e.event_id = a.event_id WHERE a.user_id = ? ORDER BY a.attended_at DESC",
+            (user_id,),
+        ).fetchall()
+    except Exception:
+        attended_rows = []
+    history_rows_html = ""
+    for r in attended_rows:
+        r = dict(r)
+        stars = "\u2605" * (r.get("rating") or 0) + "\u2606" * (5 - (r.get("rating") or 0))
+        title = (r.get("title") or r.get("event_id", ""))[:50]
+        history_rows_html += f"""<tr>
+            <td>{title}</td>
+            <td>{(r.get('attended_at') or '')[:10]}</td>
+            <td style="color:#f59e0b;">{stars}</td>
+            <td>{r.get('notes') or ''}</td>
+        </tr>"""
+    if not history_rows_html:
+        history_rows_html = '<tr><td colspan="4" style="color:#9ca3af;padding:12px;">No events marked yet.</td></tr>'
+
+    # --- Calendar feed data ---
+    token = current_user.get("user_token", "")
+    dashboard_url = settings.dashboard_url
+    feed_url = f"{dashboard_url}/u/{token}/feed.ics"
+    rsvps_url = f"{dashboard_url}/u/{token}/rsvps.ics"
+    webcal_feed = feed_url.replace("https://", "webcal://").replace("http://", "webcal://")
+    webcal_rsvps = rsvps_url.replace("https://", "webcal://").replace("http://", "webcal://")
+    safe_feed_url = feed_url.replace("'", "\\\\'")
+    safe_rsvps_url = rsvps_url.replace("'", "\\\\'")
+
     resp = HTMLResponse(_layout("Profile", f"""
 <style>
-.profile-page{{max-width:560px;margin:0 auto;padding:32px 16px 80px}}
+.profile-page{{max-width:620px;margin:0 auto;padding:32px 16px 80px}}
 .profile-page h1{{font-size:1.8rem;font-weight:800;color:#1e293b;margin-bottom:4px}}
-.profile-page .sub{{font-size:14px;color:#64748b;margin-bottom:32px}}
+.profile-page .sub{{font-size:14px;color:#64748b;margin-bottom:24px}}
 .profile-page .card{{background:white;border-radius:16px;padding:24px;margin-bottom:20px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.05)}}
 .profile-page .card h2{{font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}}
 .profile-page label{{display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px}}
@@ -1371,33 +1404,126 @@ async def profile_page(request: Request, response: Response):
 .save-success{{display:none;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:12px}}
 .locate-btn{{background:white;border:1.5px solid #e5e7eb;color:#374151;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:12px;display:flex;align-items:center;gap:6px}}
 .locate-btn:hover{{border-color:#4f46e5;color:#4f46e5}}
+.profile-tabs{{display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:24px}}
+.profile-tab{{padding:10px 20px;font-size:14px;font-weight:600;color:#6b7280;cursor:pointer;border:none;background:none;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}}
+.profile-tab:hover{{color:#374151}}
+.profile-tab.active{{color:#4f46e5;border-bottom-color:#4f46e5}}
+.tab-panel{{display:none}}
+.tab-panel.active{{display:block}}
 </style>
 <div class="profile-page">
   <h1>Profile</h1>
-  <p class="sub">Your personal settings and preferences.</p>
+  <p class="sub">Your settings, event history, and calendar feeds.</p>
 
-  <div class="card">
-    <h2>Account</h2>
-    <div class="field"><label>Name</label><input id="name" value="{name}"></div>
-    <div class="field"><label>Email</label><input id="email" value="{email}" disabled style="background:#f9fafb;color:#9ca3af"></div>
+  <div class="profile-tabs">
+    <button class="profile-tab active" onclick="switchTab('settings')">Settings</button>
+    <button class="profile-tab" onclick="switchTab('history')">History</button>
+    <button class="profile-tab" onclick="switchTab('calendars')">Calendars</button>
   </div>
 
-  <div class="card">
-    <h2>Home Location</h2>
-    <p style="font-size:13px;color:#64748b;margin-bottom:16px;">Your home coordinates are used to calculate event distances and improve recommendations.</p>
-    <button class="locate-btn" onclick="useGPS()">Use my current location</button>
-    <div class="row">
-      <div class="field"><label>Latitude</label><input id="home_lat" type="number" step="0.0001" value="{home_lat}"></div>
-      <div class="field"><label>Longitude</label><input id="home_lon" type="number" step="0.0001" value="{home_lon}"></div>
+  <!-- Settings Tab -->
+  <div id="tab-settings" class="tab-panel active">
+    <div class="card">
+      <h2>Account</h2>
+      <div class="field"><label>Name</label><input id="name" value="{name}"></div>
+      <div class="field"><label>Email</label><input id="email" value="{email}" disabled style="background:#f9fafb;color:#9ca3af"></div>
     </div>
-    <p class="map-hint">Tip: You can get coordinates from <a href="https://maps.google.com" target="_blank" style="color:#4f46e5">Google Maps</a> by right-clicking your location.</p>
+
+    <div class="card">
+      <h2>Home Location</h2>
+      <p style="font-size:13px;color:#64748b;margin-bottom:16px;">Your home coordinates are used to calculate event distances and improve recommendations.</p>
+      <button class="locate-btn" onclick="useGPS()">Use my current location</button>
+      <div class="row">
+        <div class="field"><label>Latitude</label><input id="home_lat" type="number" step="0.0001" value="{home_lat}"></div>
+        <div class="field"><label>Longitude</label><input id="home_lon" type="number" step="0.0001" value="{home_lon}"></div>
+      </div>
+      <p class="map-hint">Tip: You can get coordinates from <a href="https://maps.google.com" target="_blank" style="color:#4f46e5">Google Maps</a> by right-clicking your location.</p>
+    </div>
+
+    <button class="save-btn" onclick="save()">Save changes</button>
+    <div class="save-success" id="success">Saved!</div>
   </div>
 
-  <button class="save-btn" onclick="save()">Save changes</button>
-  <div class="save-success" id="success">Saved!</div>
+  <!-- History Tab -->
+  <div id="tab-history" class="tab-panel">
+    <div class="card">
+      <h2>Events You Attended</h2>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:16px;">Mark events as attended from the calendar view. Ratings feed back into recommendations.</p>
+      <table>
+        <thead><tr><th>Event</th><th>Date</th><th>Rating</th><th>Notes</th></tr></thead>
+        <tbody>{history_rows_html}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Calendars Tab -->
+  <div id="tab-calendars" class="tab-panel">
+    <div class="card">
+      <h2>Calendar Subscriptions</h2>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:16px;">Subscribe to these feeds in Google Calendar, Apple Calendar, or Outlook. They update automatically.</p>
+
+      <div style="padding:14px 0;border-bottom:1px solid #e5e7eb;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+          <div>
+            <div style="font-weight:700;font-size:15px;color:#4f46e5;">My Recommendations</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px;">All events scored &ge;55 from your latest run</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <a href="{webcal_feed}" style="padding:5px 12px;background:#f3f4f6;color:#374151;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">+ Calendar</a>
+            <button onclick="navigator.clipboard.writeText('{safe_feed_url}');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy URL',1500)"
+                    style="padding:5px 12px;background:#e0e7ff;color:#3730a3;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">Copy URL</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:14px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+          <div>
+            <div style="font-weight:700;font-size:15px;color:#16a34a;">My Confirmed Plans</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px;">Only events you RSVP'd going or maybe</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <a href="{webcal_rsvps}" style="padding:5px 12px;background:#f3f4f6;color:#374151;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">+ Calendar</a>
+            <button onclick="navigator.clipboard.writeText('{safe_rsvps_url}');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy URL',1500)"
+                    style="padding:5px 12px;background:#e0e7ff;color:#3730a3;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">Copy URL</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p style="font-size:13px;color:#6b7280;margin-bottom:8px;"><strong>How to subscribe:</strong></p>
+      <ul style="font-size:13px;color:#6b7280;margin:0;padding-left:20px;line-height:1.8;">
+        <li><strong>Google Calendar:</strong> Other calendars &rarr; + &rarr; From URL &rarr; paste URL</li>
+        <li><strong>Apple Calendar:</strong> File &rarr; New Calendar Subscription &rarr; paste URL</li>
+        <li><strong>Outlook:</strong> Add calendar &rarr; From internet &rarr; paste URL</li>
+      </ul>
+    </div>
+  </div>
 </div>
 
 <script>
+function switchTab(tab) {{
+  document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  event.target.classList.add('active');
+  // Update URL hash for bookmarking
+  history.replaceState(null, '', '#' + tab);
+}}
+// Activate tab from URL hash on load
+(function() {{
+  const hash = window.location.hash.slice(1);
+  if (['settings','history','calendars'].includes(hash)) {{
+    document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + hash).classList.add('active');
+    document.querySelectorAll('.profile-tab').forEach(t => {{
+      if (t.textContent.toLowerCase() === hash) t.classList.add('active');
+    }});
+  }}
+}})();
+
 function useGPS() {{
   if (!navigator.geolocation) {{ alert('Geolocation not supported'); return; }}
   navigator.geolocation.getCurrentPosition(pos => {{
@@ -2510,6 +2636,30 @@ async def calendar_view(request: Request, run_id: int | None = None):
 
     top_picks = len(kept)
 
+    # Bucket list items for "Seasonal Ideas" section
+    bucket_html = ""
+    if current_user:
+        bucket_user_id = current_user["id"]
+        bucket_items = db.get_user_bucket_list(bucket_user_id)
+        pending_bucket = [i for i in bucket_items if i.get("status", "pending") != "done"]
+        if pending_bucket:
+            bl_items_html = ""
+            for bi in pending_bucket[:8]:
+                bl_items_html += f'<span style="display:inline-block;padding:5px 14px;background:#ede9fe;color:#5b21b6;border-radius:16px;font-size:13px;font-weight:600;margin:3px 4px;">{bi["activity"]}</span>'
+            done_count = len(bucket_items) - len(pending_bucket)
+            bucket_html = f'''
+            <details style="margin-top:20px;">
+              <summary style="cursor:pointer;font-size:15px;font-weight:700;color:#1e293b;padding:12px 0;list-style:none;display:flex;align-items:center;gap:8px;">
+                <span style="font-size:16px;">🌿</span> Seasonal Ideas
+                <span style="font-size:12px;color:#9ca3af;font-weight:400;">({len(pending_bucket)} pending{f", {done_count} done" if done_count else ""})</span>
+                <span style="margin-left:auto;font-size:12px;color:#6366f1;">▸</span>
+              </summary>
+              <div class="card" style="margin-top:4px;">
+                <div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:12px;">{bl_items_html}</div>
+                <a href="/bucket-list" style="font-size:13px;color:#4f46e5;font-weight:600;">Manage bucket list →</a>
+              </div>
+            </details>'''
+
     page_html = LAYOUT_STYLE.replace("__TITLE__", "This Week in Cambridge") + render_nav(current_user) + '<div class="app-content">' + f"""
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
     <style>
@@ -2699,6 +2849,8 @@ async def calendar_view(request: Request, run_id: int | None = None):
     <div id="list-view"></div>
     <div id="timeline-view"><div class="timeline-week" id="tl-week"></div></div>
     <div id="heat-view"><div class="heat-grid" id="heat-grid"></div></div>
+
+    {bucket_html}
 
     <!-- Event detail modal -->
     <div class="evt-modal-overlay" id="evt-modal" onclick="if(event.target===this)closeModal()">
