@@ -105,7 +105,7 @@ LAYOUT_STYLE = """<!DOCTYPE html>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-         background: #f4f4f8; color: #1a1a1a; line-height: 1.5; min-height: 100vh; }
+         background: #f8fafc; color: #374151; font-size: 14px; line-height: 1.5; min-height: 100vh; }
   /* --- App shell --- */
   .app-nav { background: #1a1a2e; padding: 0 16px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 12px rgba(0,0,0,.25); }
   .app-nav-inner { display: flex; align-items: center; max-width: 960px; margin: 0 auto; height: 52px; gap: 8px; }
@@ -118,32 +118,37 @@ LAYOUT_STYLE = """<!DOCTYPE html>
   .nav-divider { width: 1px; height: 20px; background: rgba(255,255,255,.15); margin: 0 4px; }
   .app-content { max-width: 960px; margin: 0 auto; padding: 20px 16px 40px; }
   /* --- Shared components --- */
-  h1 { margin-bottom: 16px; color: #1a1a1a; font-size: 22px; font-weight: 700; }
-  h2 { margin: 20px 0 10px; color: #1a1a1a; font-size: 17px; font-weight: 700; }
-  a { color: #1e40af; text-decoration: none; }
+  h1 { margin-bottom: 20px; color: #1e293b; font-size: 1.6rem; font-weight: 800; }
+  h2 { margin: 20px 0 16px; color: #64748b; font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+  a { color: #4f46e5; text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .card { background: white; border-radius: 10px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .card { background: white; border-radius: 16px; padding: 24px; margin-bottom: 20px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
   .badge-green { background: #dcfce7; color: #166534; }
   .badge-yellow { background: #fef3c7; color: #92400e; }
   .badge-gray { background: #f3f4f6; color: #374151; }
   .badge-red { background: #fee2e2; color: #991b1b; }
-  table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  table { width: 100%; border-collapse: collapse; background: white; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
   th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #f3f4f6; }
   th { background: #fafafa; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #9ca3af; cursor: pointer; }
   th:hover { background: #f3f4f6; }
   tr:hover { background: #fafafa; }
   .stat { display: inline-block; margin-right: 20px; }
-  .stat-value { font-size: 22px; font-weight: 700; color: #1a1a1a; }
+  .stat-value { font-size: 22px; font-weight: 700; color: #1e293b; }
   .stat-label { font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: .5px; }
   .score-bar { height: 6px; border-radius: 3px; background: #f3f4f6; }
   .score-fill { height: 100%; border-radius: 3px; }
   .filter-row { margin-bottom: 16px; }
-  .filter-row input, .filter-row select { padding: 8px 12px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-size: 14px; transition: border-color .15s; }
-  .filter-row input:focus, .filter-row select:focus { outline: none; border-color: #1e40af; box-shadow: 0 0 0 3px rgba(30,64,175,.1); }
+  .filter-row input, .filter-row select { padding: 10px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; font-size: 14px; font-family: inherit; transition: border-color .15s, box-shadow .15s; }
+  .filter-row input:focus, .filter-row select:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,.1); }
   .interests-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
   .interest-tag { padding: 4px 12px; border-radius: 16px; background: #ede9fe; color: #5b21b6; font-size: 13px; }
-  .cost-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 12px; margin: 10px 0; }
+  .cost-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 16px; padding: 12px; margin: 10px 0; }
+  .btn-primary { background: #4f46e5; color: white; border: none; border-radius: 10px; padding: 10px 24px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; transition: background .15s; }
+  .btn-primary:hover { background: #4338ca; }
+  .btn-secondary { background: #f1f5f9; color: #374151; border: none; border-radius: 10px; padding: 10px 24px; font-weight: 600; font-size: 14px; cursor: pointer; font-family: inherit; }
+  .btn-secondary:hover { background: #e2e8f0; }
+  .btn-pill { border-radius: 20px; padding: 6px 16px; font-size: 13px; }
   /* --- Overflow nav menu --- */
   .nav-overflow { position: relative; }
   .nav-overflow-btn { background: none; border: none; color: rgba(255,255,255,.6); font-size: 18px; font-weight: 700; cursor: pointer; padding: 6px 10px; border-radius: 8px; line-height: 1; letter-spacing: 2px; transition: all .15s; }
@@ -283,13 +288,13 @@ async def email_preview_index(request: Request):
     <div class="card" style="max-width:500px;">
         <p style="color:#6b7280;margin-bottom:16px;">Preview and test outgoing emails without sending them via SMTP.</p>
         <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:10px;">
-            <li><a href="/admin/email-preview/daily" style="color:#2563eb;font-weight:600;">Weekly Digest Email</a>
+            <li><a href="/admin/email-preview/daily" style="color:#4f46e5;font-weight:600;">Weekly Digest Email</a>
                 <span style="color:#9ca3af;font-size:13px;margin-left:8px;">— rendered from latest run</span></li>
-            <li><a href="/admin/email-preview/tonight" style="color:#2563eb;font-weight:600;">Tonight Email</a>
+            <li><a href="/admin/email-preview/tonight" style="color:#4f46e5;font-weight:600;">Tonight Email</a>
                 <span style="color:#9ca3af;font-size:13px;margin-left:8px;">— last minute daily digest</span></li>
-            <li><a href="/admin/email-preview/weekend" style="color:#2563eb;font-weight:600;">Weekend Preview Email</a>
+            <li><a href="/admin/email-preview/weekend" style="color:#4f46e5;font-weight:600;">Weekend Preview Email</a>
                 <span style="color:#9ca3af;font-size:13px;margin-left:8px;">— Thursday Fri/Sat/Sun picks</span></li>
-            <li><a href="/admin/email-preview/welcome" style="color:#2563eb;font-weight:600;">Welcome Email</a>
+            <li><a href="/admin/email-preview/welcome" style="color:#4f46e5;font-weight:600;">Welcome Email</a>
                 <span style="color:#9ca3af;font-size:13px;margin-left:8px;">— new user onboarding</span></li>
         </ul>
     </div>
@@ -353,7 +358,7 @@ async def email_preview_daily(request: Request):
         <h3 style="margin:0 0 8px;font-size:15px;">Send test to me</h3>
         <form onsubmit="sendTest(event)">
             <input type="hidden" name="type" value="daily">
-            <button type="submit" style="padding:8px 20px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;">Send Test Email</button>
+            <button type="submit" style="padding:8px 20px;background:#4f46e5;color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer;font-weight:600;">Send Test Email</button>
             <span id="sendMsg" style="margin-left:10px;font-size:13px;"></span>
         </form>
     </div>
@@ -699,7 +704,7 @@ async def run_history(request: Request):
             </div>
             <div style="display:flex;align-items:center;gap:12px;">
                 <button type="button" onclick="saveSchedule()"
-                        style="padding:8px 20px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;">Save &amp; Reinstall Cron</button>
+                        style="padding:8px 20px;background:#4f46e5;color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer;font-weight:600;">Save &amp; Reinstall Cron</button>
                 <span id="sched-status" style="font-size:13px;color:#6b7280;"></span>
             </div>
         </form>
@@ -1137,7 +1142,7 @@ async def interests_page(request: Request):
         col = CAT_COLORS_PY.get(item["category"], "#6b7280")
         taste_rows += f"""<div style="display:flex;align-items:center;gap:10px;padding:8px 0;{'' if rank == len(taste_items) else 'border-bottom:1px solid #f3f4f6;'}">
           <span style="font-size:12px;font-weight:800;color:#9ca3af;width:18px;">#{rank}</span>
-          <span style="font-size:13px;font-weight:600;color:#1a1a1a;flex:1;">{item['label']}</span>
+          <span style="font-size:13px;font-weight:600;color:#1e293b;flex:1;">{item['label']}</span>
           <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:{col}">{item['category']}</span>
           <span style="font-size:12px;font-weight:700;color:#818cf8">{round(item['elo_rating'])}</span>
         </div>"""
@@ -1145,7 +1150,7 @@ async def interests_page(request: Request):
     <div class="card" style="margin-bottom:16px;border-left:4px solid #6366f1;background:linear-gradient(135deg,#fafafa,#f5f3ff);">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div>
-          <h3 style="font-size:15px;font-weight:800;color:#1a1a1a;margin-bottom:2px;">🏆 Taste Stack</h3>
+          <h3 style="font-size:15px;font-weight:800;color:#1e293b;margin-bottom:2px;">🏆 Taste Stack</h3>
           <p style="font-size:12px;color:#9ca3af;">{taste_count} matchups · Elo-ranked activity preferences</p>
         </div>
         <a href="/profile" style="font-size:13px;font-weight:600;color:#4f46e5;text-decoration:none;">View profile →</a>
@@ -1952,7 +1957,7 @@ async def landing_page():
 
   /* Vibe showcase */
   .vibe-cards {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 40px; }}
-  .vibe-card {{ border-radius: 14px; padding: 22px 20px; border: 1px solid; }}
+  .vibe-card {{ border-radius: 16px; padding: 22px 20px; border: 1px solid; }}
   .vibe-card.social {{ background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.2); }}
   .vibe-card.intellectual {{ background: rgba(139,92,246,.08); border-color: rgba(139,92,246,.2); }}
   .vibe-card.mixed {{ background: rgba(59,130,246,.08); border-color: rgba(59,130,246,.2); }}
@@ -2316,7 +2321,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
         taste_count = db.get_taste_matchup_count(current_user["id"])
         if taste_count < 3:
             taste_nudge_html = f'''<a href="/taste" style="text-decoration:none;display:block;margin-bottom:12px;">
-              <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:12px;color:white;">
+              <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:12px;color:white;">
                 <span style="font-size:22px;">🏆</span>
                 <div style="flex:1;">
                   <div style="font-size:13px;font-weight:700;color:white;">Build your Taste Stack</div>
@@ -2330,7 +2335,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
             if pair:
                 a_label = pair[0]["label"]
                 b_label = pair[1]["label"]
-                taste_nudge_html = f'''<div style="background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px;">
+                taste_nudge_html = f'''<div style="background:#fefce8;border:1px solid #fde68a;border-radius:16px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px;">
                   <span style="font-size:18px;">⚡</span>
                   <div style="flex:1;font-size:13px;color:#92400e;">
                     <strong>Quick pick:</strong> {a_label} vs {b_label}?
@@ -2343,8 +2348,8 @@ async def calendar_view(request: Request, run_id: int | None = None):
         if user_groups:
             group_cards = ""
             for g in user_groups:
-                group_cards += f'<a href="/group/{g["slug"]}" style="flex-shrink:0;display:inline-block;background:white;border-radius:10px;padding:12px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-decoration:none;min-width:140px;"><strong style="color:#1a1a1a;font-size:14px;">{g["name"]}</strong><div style="color:#9ca3af;font-size:12px;">{g["member_count"]} members</div></a>'
-            group_cards += f'<a href="/groups" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;border:2px dashed #d1d5db;border-radius:10px;padding:12px 16px;text-decoration:none;color:#9ca3af;font-size:13px;min-width:120px;">Browse groups</a>'
+                group_cards += f'<a href="/group/{g["slug"]}" style="flex-shrink:0;display:inline-block;background:white;border-radius:16px;padding:12px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-decoration:none;min-width:140px;"><strong style="color:#1e293b;font-size:14px;">{g["name"]}</strong><div style="color:#9ca3af;font-size:12px;">{g["member_count"]} members</div></a>'
+            group_cards += f'<a href="/groups" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;border:2px dashed #d1d5db;border-radius:16px;padding:12px 16px;text-decoration:none;color:#9ca3af;font-size:13px;min-width:120px;">Browse groups</a>'
             groups_html = f'<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;">{group_cards}</div>'
 
         # Friend activity
@@ -2400,7 +2405,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
       .toolbar {{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }}
       .view-toggle {{ display: flex; background: #f3f4f6; border-radius: 8px; overflow: hidden; }}
       .view-toggle button {{ padding: 7px 16px; border: none; background: transparent; cursor: pointer; font-size: 13px; font-weight: 500; color: #6b7280; transition: all .15s; }}
-      .view-toggle button.active {{ background: white; color: #1e40af; box-shadow: 0 1px 3px rgba(0,0,0,.1); border-radius: 7px; }}
+      .view-toggle button.active {{ background: white; color: #4f46e5; box-shadow: 0 1px 3px rgba(0,0,0,.1); border-radius: 7px; }}
       .vibe-filters {{ display: flex; gap: 6px; }}
       .vibe-filter {{ padding: 5px 12px; border-radius: 16px; border: 1.5px solid #e5e7eb; background: white; cursor: pointer; font-size: 12px; font-weight: 600; color: #6b7280; transition: all .15s; }}
       .vibe-filter.active {{ border-color: currentColor; }}
@@ -2418,7 +2423,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
       .search-input {{ flex: 1; min-width: 160px; padding: 7px 12px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-size: 13px; color: #374151; outline: none; transition: border-color .15s; }}
       .search-input:focus {{ border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1); }}
       .score-filter-wrap {{ display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6b7280; white-space: nowrap; }}
-      .score-filter-wrap input[type=range] {{ width: 80px; accent-color: #1e40af; cursor: pointer; }}
+      .score-filter-wrap input[type=range] {{ width: 80px; accent-color: #4f46e5; cursor: pointer; }}
       #score-label {{ font-weight: 700; color: #374151; min-width: 20px; }}
       /* --- FullCalendar --- */
       #fc-container .fc {{ font-size: 13px; }}
@@ -2432,7 +2437,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
       @keyframes slideUp {{ from {{ transform: translateY(100%); }} to {{ transform: translateY(0); }} }}
       .evt-modal .drag-handle {{ width: 36px; height: 4px; background: #d1d5db; border-radius: 2px; margin: 0 auto 16px; }}
       .evt-modal h3 {{ margin: 0 0 8px; font-size: 18px; color: #1a1a1a; }}
-      .evt-modal h3 a {{ color: #1e40af; }}
+      .evt-modal h3 a {{ color: #4f46e5; }}
       .evt-modal .close {{ position: absolute; top: 16px; right: 16px; font-size: 20px; cursor: pointer; color: #9ca3af; background: #f3f4f6; border: none; width: 32px; height: 32px; border-radius: 16px; display: flex; align-items: center; justify-content: center; }}
       .evt-modal .close:hover {{ background: #e5e7eb; color: #374151; }}
       .evt-modal .modal-meta {{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }}
@@ -2471,7 +2476,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
       .see-more-btn:hover {{ background: #ede9fe; border-color: #a78bfa; color: #4f46e5; }}
       .see-more-collapse {{ color: #9ca3af; border-style: solid; background: transparent; }}
       .see-more-collapse:hover {{ background: #f3f4f6; border-color: #d1d5db; color: #6b7280; }}
-      .evt-card {{ background: white; border-radius: 12px; margin: 8px 0; box-shadow: 0 1px 4px rgba(0,0,0,.07); border-left: 4px solid; transition: box-shadow .15s, transform .1s; cursor: pointer; overflow: hidden; display: flex; }}
+      .evt-card {{ background: white; border-radius: 16px; margin: 8px 0; box-shadow: 0 1px 4px rgba(0,0,0,.07); border-left: 4px solid; transition: box-shadow .15s, transform .1s; cursor: pointer; overflow: hidden; display: flex; }}
       .evt-card:hover {{ box-shadow: 0 4px 16px rgba(0,0,0,.13); transform: translateY(-1px); }}
       .evt-card.vibe-social {{ border-left-color: #f59e0b; }}
       .evt-card.vibe-intellectual {{ border-left-color: #8b5cf6; }}
@@ -2495,12 +2500,12 @@ async def calendar_view(request: Request, run_id: int | None = None):
       #timeline-view {{ display: none; overflow-x: auto; padding-bottom: 8px; }}
       .timeline-week {{ display: flex; gap: 12px; min-width: max-content; padding: 4px 0 12px; }}
       .timeline-col {{ width: 220px; flex-shrink: 0; }}
-      .timeline-col-header {{ background: white; border-radius: 10px 10px 0 0; padding: 10px 14px 8px; border-bottom: 3px solid #e5e7eb; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }}
+      .timeline-col-header {{ background: white; border-radius: 16px 16px 0 0; padding: 10px 14px 8px; border-bottom: 3px solid #e5e7eb; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }}
       .timeline-col-header .col-day {{ font-size: 13px; font-weight: 700; color: #374151; }}
       .timeline-col-header .col-date {{ font-size: 11px; color: #9ca3af; margin-top: 2px; }}
       .timeline-col-header .col-count {{ font-size: 11px; font-weight: 600; background: #f3f4f6; color: #6b7280; padding: 1px 6px; border-radius: 8px; display: inline-block; margin-top: 4px; }}
-      .timeline-col-header.today {{ border-bottom-color: #1e40af; }}
-      .timeline-col-header.today .col-day {{ color: #1e40af; }}
+      .timeline-col-header.today {{ border-bottom-color: #4f46e5; }}
+      .timeline-col-header.today .col-day {{ color: #4f46e5; }}
       .tl-card {{ background: white; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.06); border-top: 3px solid; cursor: pointer; transition: box-shadow .15s, transform .1s; }}
       .tl-card:hover {{ box-shadow: 0 3px 10px rgba(0,0,0,.12); transform: translateY(-1px); }}
       .tl-card.vibe-social {{ border-top-color: #f59e0b; }}
@@ -2518,7 +2523,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
       /* --- Heatmap view (score overview) --- */
       #heat-view {{ display: none; }}
       .heat-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }}
-      .heat-day {{ border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); transition: box-shadow .15s; }}
+      .heat-day {{ border-radius: 16px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); transition: box-shadow .15s; }}
       .heat-day:hover {{ box-shadow: 0 4px 14px rgba(0,0,0,.14); }}
       .heat-day-header {{ padding: 12px 16px 10px; display: flex; align-items: baseline; justify-content: space-between; }}
       .heat-day-header .hd-name {{ font-size: 15px; font-weight: 700; color: white; text-shadow: 0 1px 2px rgba(0,0,0,.2); }}
@@ -3119,7 +3124,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
       // Color based on top score: green=high, amber=mid, blue=normal, gray=low
       function dayBg(score) {{
         if (score >= 75) return 'linear-gradient(135deg,#166534,#16a34a)';
-        if (score >= 60) return 'linear-gradient(135deg,#1e40af,#2563eb)';
+        if (score >= 60) return 'linear-gradient(135deg,#4338ca,#4f46e5)';
         if (score >= 45) return 'linear-gradient(135deg,#92400e,#d97706)';
         return 'linear-gradient(135deg,#374151,#6b7280)';
       }}
@@ -3355,9 +3360,9 @@ async def attend_via_link(event_id: str, title: str = ""):
     db.conn.commit()
     return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
-    .box {{ background: white; border-radius: 12px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}</style></head>
+    .box {{ background: white; border-radius: 16px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}</style></head>
     <body><div class="box"><h2 style="color:#059669">Marked as attended!</h2><p style="color:#6b7280">{title[:60]}</p>
-    <a href="/" style="color:#2563eb;margin-top:12px;display:inline-block">Back to calendar</a></div></body></html>""")
+    <a href="/" style="color:#4f46e5;margin-top:12px;display:inline-block">Back to calendar</a></div></body></html>""")
 
 
 @app.post("/api/rsvp", response_class=JSONResponse)
@@ -3427,10 +3432,10 @@ async def rsvp_via_link(event_id: str, status: str, u: str = "", title: str = ""
     status_labels = {"going": "Going", "maybe": "Maybe", "cant": "Can't go"}
     return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
-    .box {{ background: white; border-radius: 12px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}</style></head>
-    <body><div class="box"><h2 style="color:#2563eb">RSVP: {status_labels.get(status, status)}</h2>
+    .box {{ background: white; border-radius: 16px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}</style></head>
+    <body><div class="box"><h2 style="color:#4f46e5">RSVP: {status_labels.get(status, status)}</h2>
     <p style="color:#6b7280">{title[:60]}</p>
-    <a href="/?u={u}" style="color:#2563eb;margin-top:12px;display:inline-block">Back to calendar</a></div></body></html>""")
+    <a href="/?u={u}" style="color:#4f46e5;margin-top:12px;display:inline-block">Back to calendar</a></div></body></html>""")
 
 
 @app.get("/api/ping-group", response_class=HTMLResponse)
@@ -3451,7 +3456,7 @@ async def ping_group(request: Request, event_id: str = "", u: str = "", group_id
     if not groups:
         return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
-        .box {{ background: white; border-radius: 12px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
+        .box {{ background: white; border-radius: 16px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
         <body><div class="box"><h2>No groups yet</h2>
         <p style="color:#6b7280;">Create a group to share events with friends.</p>
         <a href="/groups?u={u}" style="display:inline-block;padding:12px 24px;background:#4f46e5;color:white;border-radius:8px;text-decoration:none;font-weight:600;margin-top:12px;">Go to Groups</a>
@@ -3465,10 +3470,10 @@ async def ping_group(request: Request, event_id: str = "", u: str = "", group_id
             gid = g["id"]
             gname = g["name"]
             count = g.get("member_count", 0)
-            links += f'<a href="/api/ping-group?event_id={event_id}&u={u}&group_id={gid}" style="display:block;padding:14px 20px;margin:8px 0;background:#f1f5f9;border-radius:10px;text-decoration:none;color:#1e293b;font-weight:600;border:1px solid #e2e8f0;">{gname} <span style="color:#9ca3af;font-weight:400;">({count} members)</span></a>'
+            links += f'<a href="/api/ping-group?event_id={event_id}&u={u}&group_id={gid}" style="display:block;padding:14px 20px;margin:8px 0;background:#f1f5f9;border-radius:16px;text-decoration:none;color:#1e293b;font-weight:600;border:1px solid #e2e8f0;">{gname} <span style="color:#9ca3af;font-weight:400;">({count} members)</span></a>'
         return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
-        .box {{ background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
+        .box {{ background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
         <body><div class="box"><h2>Which group?</h2>
         <p style="color:#6b7280;margin-bottom:16px;">Share <strong>{title}</strong> with:</p>
         {links}
@@ -3502,10 +3507,10 @@ async def ping_group(request: Request, event_id: str = "", u: str = "", group_id
             msg = "Daily ping limit reached (max 3 per day). Try again tomorrow."
         return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
-        .box {{ background: white; border-radius: 12px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
+        .box {{ background: white; border-radius: 16px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
         <body><div class="box"><h2 style="color:#f59e0b;">Already pinged</h2>
         <p style="color:#6b7280;">{msg}</p>
-        <a href="/?u={u}" style="color:#2563eb;margin-top:12px;display:inline-block;">Back to calendar</a>
+        <a href="/?u={u}" style="color:#4f46e5;margin-top:12px;display:inline-block;">Back to calendar</a>
         </div></body></html>""")
 
     # Send ping emails to all group members (skip the sender)
@@ -3538,10 +3543,10 @@ async def ping_group(request: Request, event_id: str = "", u: str = "", group_id
 
     return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
-    .box {{ background: white; border-radius: 12px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
+    .box {{ background: white; border-radius: 16px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
     <body><div class="box"><h2 style="color:#059669;">Pinged {group_name}!</h2>
     <p style="color:#6b7280;">Sent to {sent_count} friend{"s" if sent_count != 1 else ""} about <strong>{title[:60]}</strong></p>
-    <a href="/?u={u}" style="color:#2563eb;margin-top:12px;display:inline-block;">Back to calendar</a>
+    <a href="/?u={u}" style="color:#4f46e5;margin-top:12px;display:inline-block;">Back to calendar</a>
     </div></body></html>""")
 
 
@@ -3769,7 +3774,7 @@ async def bucket_list_page(request: Request, response: Response):
                    style="flex:1;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;"
                    onkeydown="if(event.key==='Enter')addItem()">
             <button onclick="addItem()"
-                    style="padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Add</button>
+                    style="padding:9px 18px;background:#4f46e5;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Add</button>
         </div>
         <div id="pending-list">{pending_html}</div>
     </div>
@@ -3918,7 +3923,7 @@ async def search_page(request: Request, response: Response):
                    style="flex:1;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;"
                    onkeydown="if(event.key==='Enter')doSearch()">
             <button id="search-btn" onclick="doSearch()"
-                    style="padding:10px 20px;background:linear-gradient(135deg,#2563eb,#059669);color:white;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;">Search</button>
+                    style="padding:10px 20px;background:linear-gradient(135deg,#4f46e5,#059669);color:white;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;">Search</button>
         </div>
         <div id="tier-hint" style="margin-top:6px;font-size:11px;color:#9ca3af;"></div>
         <div id="results" style="margin-top:16px;"></div>
@@ -3966,7 +3971,7 @@ async def search_page(request: Request, response: Response):
         let dbResults = (dbData.results || []).map(e => ({...e, source_tier: e.source_tier || 'db'}));
         if (dbResults.length) {
             hint.textContent = `Found ${dbResults.length} in your database — checking the web too...`;
-            hint.style.color = '#2563eb';
+            hint.style.color = '#4f46e5';
             res.innerHTML = renderResults(dbResults, 'db');
         } else {
             res.innerHTML = '<p style="color:#6b7280;">Nothing in DB — waiting for web results...</p>';
@@ -4234,7 +4239,7 @@ async def group_create_page(request: Request):
         <div class="card" style="max-width:400px;">
             <p style="color:#6b7280;">Sign in to create a group.</p>
             <div style="margin-top:12px;">
-                <a href="/login" style="padding:8px 20px;background:#2563eb;color:white;border-radius:6px;
+                <a href="/login" style="padding:8px 20px;background:#4f46e5;color:white;border-radius:10px;
                    font-size:14px;text-decoration:none;font-weight:600;">Sign in</a>
                 <a href="/join" style="margin-left:12px;font-size:14px;">or join</a>
             </div>
@@ -4255,7 +4260,7 @@ async def group_create_page(request: Request):
                 <input name="slug" placeholder="weekend-crew" required pattern="[a-z0-9\\-]+"
                        style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;width:100%;">
             </div>
-            <button type="submit" style="padding:8px 20px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;width:fit-content;">
+            <button type="submit" style="padding:8px 20px;background:#4f46e5;color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer;font-weight:600;width:fit-content;">
                 Create Group
             </button>
         </form>
@@ -4361,7 +4366,7 @@ async def group_calendar(slug: str, request: Request):
             day_label = day_str
         is_today = day_str == dt.now().strftime("%Y-%m-%d")
         today_style = "background:#eff6ff;border-color:#3b82f6;" if is_today else ""
-        events_html += f'<h3 style="margin:16px 0 8px;color:#1e40af;font-size:14px;{today_style}">{day_label}</h3>'
+        events_html += f'<h3 style="margin:16px 0 8px;color:#4f46e5;font-size:14px;{today_style}">{day_label}</h3>'
 
         for event_dt, e in day_events[:5]:
             eid = e.get("event_id", "")
@@ -4415,7 +4420,7 @@ async def group_calendar(slug: str, request: Request):
                     <input name="email" type="email" placeholder="friend@gmail.com" required
                            style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
                 </div>
-                <button type="submit" style="padding:6px 14px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Invite</button>
+                <button type="submit" style="padding:6px 14px;background:#4f46e5;color:white;border:none;border-radius:10px;font-size:13px;cursor:pointer;">Invite</button>
             </form>
         </div>'''
 
@@ -4850,9 +4855,9 @@ body {{ font-family: 'Inter', sans-serif; background: #0f0f1a; color: #e2e8f0; m
 .welcome-icon {{ font-size: 48px; text-align: center; margin-bottom: 16px; }}
 .welcome-title {{ font-size: 1.8rem; font-weight: 900; text-align: center; background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }}
 .welcome-sub {{ text-align: center; color: #94a3b8; font-size: 15px; line-height: 1.6; margin-bottom: 28px; }}
-.btn-primary {{ display: block; width: 100%; padding: 14px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; cursor: pointer; font-family: inherit; text-align: center; text-decoration: none; transition: transform .15s, box-shadow .15s; box-shadow: 0 4px 20px rgba(79,70,229,.4); }}
+.btn-primary {{ display: block; width: 100%; padding: 14px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; border: none; border-radius: 16px; font-size: 16px; font-weight: 700; cursor: pointer; font-family: inherit; text-align: center; text-decoration: none; transition: transform .15s, box-shadow .15s; box-shadow: 0 4px 20px rgba(79,70,229,.4); }}
 .btn-primary:hover {{ transform: translateY(-1px); box-shadow: 0 6px 28px rgba(79,70,229,.5); }}
-.btn-secondary {{ display: block; width: 100%; padding: 12px; background: transparent; color: #6b7280; border: 1px solid #374151; border-radius: 14px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: center; margin-top: 10px; transition: all .15s; text-decoration: none; }}
+.btn-secondary {{ display: block; width: 100%; padding: 12px; background: transparent; color: #6b7280; border: 1px solid #374151; border-radius: 16px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: center; margin-top: 10px; transition: all .15s; text-decoration: none; }}
 .btn-secondary:hover {{ border-color: #6b7280; color: #9ca3af; }}
 /* Matchup */
 .matchup-label {{ text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; color: #6366f1; margin-bottom: 20px; }}
@@ -4870,7 +4875,7 @@ body {{ font-family: 'Inter', sans-serif; background: #0f0f1a; color: #e2e8f0; m
 .finish-icon {{ font-size: 56px; text-align: center; margin-bottom: 16px; }}
 .finish-title {{ font-size: 1.6rem; font-weight: 900; text-align: center; color: #e2e8f0; margin-bottom: 8px; }}
 .finish-sub {{ text-align: center; color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }}
-.top-3 {{ background: #1e1e3a; border-radius: 14px; padding: 16px; margin-bottom: 20px; border: 1px solid #2d2d5e; }}
+.top-3 {{ background: #1e1e3a; border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid #2d2d5e; }}
 .top-3-label {{ font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #6366f1; margin-bottom: 12px; }}
 .top-item {{ display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #2d2d5e; }}
 .top-item:last-child {{ border-bottom: none; }}
@@ -5103,7 +5108,7 @@ async def login_page():
         <form action="/api/login" method="post" style="display:flex;flex-direction:column;gap:12px;">
             <input name="email" type="email" placeholder="you@gmail.com" required
                    style="padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:15px;">
-            <button type="submit" style="padding:10px 20px;background:#2563eb;color:white;border:none;
+            <button type="submit" style="padding:10px 20px;background:#4f46e5;color:white;border:none;
                     border-radius:8px;font-size:15px;cursor:pointer;font-weight:600;">Send me my link</button>
         </form>
         <p style="margin-top:16px;font-size:13px;color:#9ca3af;">New here? <a href="/join">Join Recom</a></p>
@@ -5144,10 +5149,10 @@ async def groups_page(request: Request):
     cards_html = ""
     for g in groups:
         is_member = db.is_group_member(g["id"], current_user["id"]) if current_user else False
-        action = f'<a href="/group/{g["slug"]}" style="color:#2563eb;font-size:13px;">View</a>'
+        action = f'<a href="/group/{g["slug"]}" style="color:#4f46e5;font-size:13px;">View</a>'
         if current_user and not is_member:
             action = f'''<form action="/group/{g["slug"]}/join" method="post" style="display:inline;">
-                <button type="submit" style="padding:4px 14px;background:#2563eb;color:white;border:none;
+                <button type="submit" style="padding:4px 14px;background:#4f46e5;color:white;border:none;
                         border-radius:6px;font-size:13px;cursor:pointer;">Join</button></form>'''
         cards_html += f"""<div class="card" style="display:flex;justify-content:space-between;align-items:center;">
             <div>
@@ -5159,7 +5164,7 @@ async def groups_page(request: Request):
 
     create_btn = ""
     if current_user:
-        create_btn = f'<a href="/group/create" style="display:inline-block;padding:8px 20px;background:#2563eb;color:white;border-radius:8px;font-weight:600;font-size:14px;text-decoration:none;margin-bottom:16px;">Create Group</a>'
+        create_btn = f'<a href="/group/create" style="display:inline-block;padding:8px 20px;background:#4f46e5;color:white;border-radius:8px;font-weight:600;font-size:14px;text-decoration:none;margin-bottom:16px;">Create Group</a>'
 
     return HTMLResponse(_layout("Groups", f"""
     <h1>Groups</h1>
@@ -5672,7 +5677,7 @@ async def _render_cal_page(user: dict, token: str, request: Request):
             <h2 style="font-size:18px;font-weight:700;color:#1e1b4b;margin:4px 0 8px;">CalDAV Account (Apple / Outlook / Fantastical)</h2>
             <p style="font-size:13px;color:#6b7280;line-height:1.6;">Add <strong>one account</strong> and get all your sub-calendars (recommendations, RSVPs, friends, groups) with individual toggle and color control. This is the best experience.</p>
         </div>
-        <div style="background:white;border-radius:10px;padding:16px;margin:12px 0;">
+        <div style="background:white;border-radius:16px;padding:16px;margin:12px 0;">
             <p style="font-size:13px;font-weight:700;color:#1e1b4b;margin-bottom:12px;">Apple Calendar (macOS / iOS)</p>
             <ol style="font-size:13px;color:#374151;margin:0;padding-left:20px;line-height:2;">
                 <li>Open <strong>Settings</strong> (iOS) or <strong>System Settings</strong> (macOS)</li>
@@ -5688,18 +5693,18 @@ async def _render_cal_page(user: dict, token: str, request: Request):
                 <li>Your sub-calendars will appear automatically with colors</li>
             </ol>
         </div>
-        <div style="background:white;border-radius:10px;padding:16px;margin:12px 0;">
+        <div style="background:white;border-radius:16px;padding:16px;margin:12px 0;">
             <p style="font-size:13px;font-weight:700;color:#1e1b4b;margin-bottom:8px;">Fantastical / BusyCal</p>
             <p style="font-size:13px;color:#374151;line-height:1.6;">Same as Apple Calendar: add a CalDAV account with the server, username, and password above.</p>
         </div>
-        <div style="background:white;border-radius:10px;padding:16px;margin:12px 0;">
+        <div style="background:white;border-radius:16px;padding:16px;margin:12px 0;">
             <p style="font-size:13px;font-weight:700;color:#1e1b4b;margin-bottom:8px;">Outlook</p>
             <p style="font-size:13px;color:#374151;line-height:1.6;">
                 Add a CalDAV subscription with this URL:<br>
                 <code style="font-size:12px;background:#f1f5f9;padding:4px 8px;border-radius:4px;word-break:break-all;">{caldav_url}</code>
             </p>
         </div>
-        <div style="background:#fffbeb;border-radius:10px;padding:12px 16px;margin:12px 0;border:1px solid #fde68a;">
+        <div style="background:#fffbeb;border-radius:16px;padding:12px 16px;margin:12px 0;border:1px solid #fde68a;">
             <p style="font-size:13px;color:#92400e;line-height:1.5;">
                 <strong>Google Calendar</strong> does not support CalDAV subscriptions. Use the individual .ics feed URLs below instead.
             </p>
@@ -6381,7 +6386,7 @@ async def variants_index(request: Request):
     body = """
 <style>
 .variants-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
-.variant-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); border-left: 4px solid #818cf8; }
+.variant-card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); border-left: 4px solid #818cf8; }
 .variant-card h3 { font-size: 15px; font-weight: 700; color: #1a1a1a; margin-bottom: 4px; }
 .variant-card .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 2px 8px; border-radius: 8px; margin-bottom: 8px; }
 .tag-dense { background: #f3f4f6; color: #374151; }
@@ -6537,7 +6542,7 @@ async def v_calendar_dense(request: Request):
         score_color = "#166534" if score >= 70 else "#92400e" if score >= 40 else "#6b7280"
         rows += f"""<tr>
           <td style="max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-            <a href="{e.get('url','#')}" target="_blank" style="color:#1e40af;font-size:12px;font-weight:600;">{e.get('title','')[:60]}</a>
+            <a href="{e.get('url','#')}" target="_blank" style="color:#4f46e5;font-size:12px;font-weight:600;">{e.get('title','')[:60]}</a>
           </td>
           <td style="font-size:12px;color:#374151;white-space:nowrap;">{_fmt_event_dt(e.get('start_time'))}</td>
           <td style="font-size:12px;color:#374151;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{e.get('location_name','')[:30]}</td>
@@ -7024,7 +7029,7 @@ body {{ background: #ffffff; }}
 .mn-reason {{ font-style: italic; line-height: 1.4; }}
 .mn-desc {{ color: #a3a3a3; font-size: 12px; line-height: 1.5; }}
 .mn-ext {{ display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 600;
-           color: #2563eb; text-decoration: none; }}
+           color: #4f46e5; text-decoration: none; }}
 .mn-ext:hover {{ color: #1d4ed8; }}
 /* Expand hint */
 .mn-row::after {{ content: '+'; position: absolute; right: 0; top: 14px; font-size: 14px;
@@ -7195,7 +7200,7 @@ body {{ background: #121212 !important; color: #ffffff; }}
 .sp-section {{ margin-bottom: 32px; }}
 .sp-section-label {{ font-size: 22px; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 16px; color: #fff; }}
 /* Cards */
-.sp-card {{ display: flex; gap: 16px; align-items: center; background: #181818; border-radius: 12px;
+.sp-card {{ display: flex; gap: 16px; align-items: center; background: #181818; border-radius: 16px;
             padding: 16px; margin-bottom: 8px; transition: background .2s, transform .15s;
             animation: sp-fadein .4s ease both; }}
 .sp-card:hover {{ background: #282828; transform: translateX(4px); }}
@@ -7332,7 +7337,7 @@ body {{ background: #f8fafc !important; }}
 .mp-legend-item {{ display: flex; align-items: center; gap: 4px; }}
 .mp-legend-dot {{ width: 8px; height: 8px; border-radius: 50%; }}
 /* Area sections */
-.mp-area {{ background: #ffffff; border-radius: 12px; padding: 0; margin-bottom: 16px;
+.mp-area {{ background: #ffffff; border-radius: 16px; padding: 0; margin-bottom: 16px;
             box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }}
 .mp-area-header {{ display: flex; align-items: center; gap: 10px; padding: 14px 20px;
                    border-bottom: 1px solid #f3f4f6; }}
@@ -7914,7 +7919,7 @@ async def v_taste_magazine(request: Request):
     for rank, item in enumerate(items[3:], 4):
         col = CAT_COLORS.get(item["category"], "#6b7280")
         rest_html += f"""
-<div style="background:white;border-radius:14px;padding:18px 20px;margin-bottom:12px;display:flex;align-items:center;gap:16px;box-shadow:0 2px 8px rgba(0,0,0,.05);">
+<div style="background:white;border-radius:16px;padding:18px 20px;margin-bottom:12px;display:flex;align-items:center;gap:16px;box-shadow:0 2px 8px rgba(0,0,0,.05);">
   <span style="font-size:24px;font-weight:900;color:#e5e7eb;min-width:32px;">#{rank}</span>
   <div style="flex:1;">
     <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:{col};margin-bottom:2px;">{item['category']}</div>
@@ -8056,7 +8061,7 @@ async def v_groups_dense(request: Request):
           <td style="font-size:12px;font-weight:600;color:#374151;">{g['name']} {member_badge}</td>
           <td style="font-size:12px;color:#9ca3af;text-align:center;">{g['member_count']}</td>
           <td style="font-size:12px;">
-            <a href="/group/{g['slug']}" style="color:#1e40af;font-weight:600;">View</a>
+            <a href="/group/{g['slug']}" style="color:#4f46e5;font-weight:600;">View</a>
           </td>
         </tr>"""
 
@@ -8195,7 +8200,7 @@ async def v_profile_dense(request: Request):
 <div style="max-width:500px;margin:0 auto;padding:12px 16px 40px;">
   <a href="/variants" style="font-size:12px;color:#6b7280;">&larr; All variants</a>
   <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;padding:20px;margin-top:10px;font-size:13px;color:#374151;">
-    Not logged in. <a href="/login" style="color:#1e40af;font-weight:600;">Sign in</a> to view your profile.
+    Not logged in. <a href="/login" style="color:#4f46e5;font-weight:600;">Sign in</a> to view your profile.
   </div>
 </div>"""
     else:
@@ -8419,34 +8424,34 @@ async def admin_metrics(request: Request, days: int = 90):
 
   <!-- KPI grid -->
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:28px;">
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
-      <div style="font-size:28px;font-weight:800;color:#2563eb;">{ar}%</div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#4f46e5;">{ar}%</div>
       <div style="font-size:12px;color:#6b7280;margin-top:2px;">Attend Rate</div>
     </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:#7c3aed;">{metrics["avg_rating"]}/5</div>
       <div style="font-size:12px;color:#6b7280;margin-top:2px;">Avg Rating</div>
     </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:#059669;">{dr}%</div>
       <div style="font-size:12px;color:#6b7280;margin-top:2px;">Discovery Rate</div>
     </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:#d97706;">{metrics["rsvps_going"]}</div>
       <div style="font-size:12px;color:#6b7280;margin-top:2px;">RSVPs Going</div>
     </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:#6b7280;">{metrics["total_attended"]}</div>
       <div style="font-size:12px;color:#6b7280;margin-top:2px;">Total Attended</div>
     </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:#6b7280;">{metrics["total_rated"]}</div>
       <div style="font-size:12px;color:#6b7280;margin-top:2px;">Rated Events</div>
     </div>
   </div>
 
   <!-- Per-run table -->
-  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;margin-bottom:24px;">
     <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">Per-Run Stats</div>
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead>
@@ -8463,7 +8468,7 @@ async def admin_metrics(request: Request, days: int = 90):
   </div>
 
   <div style="text-align:center;margin-top:16px;">
-    <a href="/admin/backtest" style="display:inline-block;padding:8px 20px;background:#2563eb;color:white;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">View Backtest &rarr;</a>
+    <a href="/admin/backtest" style="display:inline-block;padding:8px 20px;background:#4f46e5;color:white;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">View Backtest &rarr;</a>
     <a href="/admin/ranking-analysis" style="display:inline-block;margin-left:8px;padding:8px 20px;background:#7c3aed;color:white;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">Score Analysis &rarr;</a>
   </div>
 </div>"""
@@ -8492,7 +8497,7 @@ async def admin_ranking_analysis(request: Request, run_id: int | None = None):
           <div style="font-size:10px;color:#6b7280;margin-bottom:2px;">{b}</div>
           <div style="width:100%;height:100px;background:#f1f5f9;border-radius:4px 4px 0 0;position:relative;display:flex;align-items:flex-end;">
             <div style="width:100%;height:{total_h}%;background:#e2e8f0;border-radius:4px 4px 0 0;position:relative;">
-              <div style="width:100%;height:{int(k/max(b,1)*100)}%;background:#2563eb;border-radius:4px 4px 0 0;position:absolute;bottom:0;"></div>
+              <div style="width:100%;height:{int(k/max(b,1)*100)}%;background:#4f46e5;border-radius:4px 4px 0 0;position:absolute;bottom:0;"></div>
             </div>
           </div>
           <div style="font-size:9px;color:#9ca3af;margin-top:2px;writing-mode:vertical-rl;transform:rotate(180deg);height:40px;text-align:center;">{lbl}</div>
@@ -8505,7 +8510,7 @@ async def admin_ranking_analysis(request: Request, run_id: int | None = None):
     for d in dims_order:
         val = dim_avgs.get(d) or 0
         pct = int(val / 15 * 100)
-        color = "#2563eb" if pct >= 60 else ("#f59e0b" if pct >= 40 else "#ef4444")
+        color = "#4f46e5" if pct >= 60 else ("#f59e0b" if pct >= 40 else "#ef4444")
         dim_rows += f"""<div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
             <span style="color:#374151;text-transform:capitalize;">{d}</span>
@@ -8525,7 +8530,7 @@ async def admin_ranking_analysis(request: Request, run_id: int | None = None):
         vc = color_map.get(vibe, "#6b7280")
         top_rows += f"""<tr style="border-bottom:1px solid #f1f5f9;">
           <td style="padding:8px 12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;">{ev.get("title","")[:60]}</td>
-          <td style="padding:8px;text-align:center;"><span style="background:#eff6ff;color:#2563eb;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:700;">{score:.0f}</span></td>
+          <td style="padding:8px;text-align:center;"><span style="background:#eff6ff;color:#4f46e5;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:700;">{score:.0f}</span></td>
           <td style="padding:8px;text-align:center;"><span style="background:{vc}22;color:{vc};padding:2px 8px;border-radius:12px;font-size:11px;">{vibe}</span></td>
           <td style="padding:8px;text-align:center;font-size:11px;color:#6b7280;">{ev.get("interest_score",0):.0f}/{ev.get("social_score",0):.0f}/{ev.get("urgency_score",0):.0f}</td>
         </tr>"""
@@ -8540,10 +8545,10 @@ async def admin_ranking_analysis(request: Request, run_id: int | None = None):
 
   <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:28px;">
     <!-- Score distribution -->
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:20px;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:20px;">
       <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:16px;">Score Distribution
         <span style="margin-left:8px;font-size:11px;font-weight:400;color:#6b7280;">
-          <span style="display:inline-block;width:10px;height:10px;background:#2563eb;border-radius:2px;"></span> kept
+          <span style="display:inline-block;width:10px;height:10px;background:#4f46e5;border-radius:2px;"></span> kept
           <span style="margin-left:6px;display:inline-block;width:10px;height:10px;background:#e2e8f0;border-radius:2px;"></span> all
         </span>
       </div>
@@ -8554,14 +8559,14 @@ async def admin_ranking_analysis(request: Request, run_id: int | None = None):
     </div>
 
     <!-- Dimension averages -->
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:20px;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:20px;">
       <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:16px;">Avg Dim Scores (kept)</div>
       {dim_rows or '<p style="color:#9ca3af;font-size:13px;">No data</p>'}
     </div>
   </div>
 
   <!-- Top events -->
-  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
     <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">Top 20 Kept Events</div>
     <table style="width:100%;border-collapse:collapse;">
       <thead>
@@ -8668,7 +8673,7 @@ async def admin_pipeline(request: Request):
               </div>
             </div>"""
         sliders_by_vibe += f"""
-        <div style="background:white;border:1px solid {vibe_color}44;border-left:3px solid {vibe_color};border-radius:10px;padding:18px;margin-bottom:16px;">
+        <div style="background:white;border:1px solid {vibe_color}44;border-left:3px solid {vibe_color};border-radius:16px;padding:18px;margin-bottom:16px;">
           <div style="font-size:14px;font-weight:700;color:#1e293b;text-transform:capitalize;margin-bottom:14px;">{vibe} Events</div>
           {slider_rows}
         </div>"""
@@ -8687,7 +8692,7 @@ async def admin_pipeline(request: Request):
   </div>
 
   <!-- Keep threshold -->
-  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:20px;">
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:18px;margin-bottom:20px;">
     <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:12px;">Keep Threshold (score 0–100)</div>
     <div style="display:flex;align-items:center;gap:16px;">
       <input type="range" min="0" max="60" step="1" value="{threshold}" id="threshold-slider"
@@ -8701,7 +8706,7 @@ async def admin_pipeline(request: Request):
   {sliders_by_vibe}
 
   <div style="display:flex;gap:12px;margin-top:20px;">
-    <button onclick="saveConfig()" style="padding:10px 28px;background:#2563eb;color:white;border-radius:8px;font-size:14px;font-weight:700;border:none;cursor:pointer;">Save Config</button>
+    <button onclick="saveConfig()" style="padding:10px 28px;background:#4f46e5;color:white;border-radius:8px;font-size:14px;font-weight:700;border:none;cursor:pointer;">Save Config</button>
     <button onclick="resetAll()" style="padding:10px 20px;background:white;color:#6b7280;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Reset to Defaults</button>
   </div>
 </div>
@@ -8758,11 +8763,11 @@ async function saveConfig() {{
   if (data.ok) {{
     btn.textContent = 'Saved!';
     btn.style.background = '#059669';
-    setTimeout(() => {{ btn.textContent = 'Save Config'; btn.style.background = '#2563eb'; }}, 2000);
+    setTimeout(() => {{ btn.textContent = 'Save Config'; btn.style.background = '#4f46e5'; }}, 2000);
   }} else {{
     btn.textContent = 'Error';
     btn.style.background = '#ef4444';
-    setTimeout(() => {{ btn.textContent = 'Save Config'; btn.style.background = '#2563eb'; }}, 2000);
+    setTimeout(() => {{ btn.textContent = 'Save Config'; btn.style.background = '#4f46e5'; }}, 2000);
   }}
 }}
 </script>"""
@@ -8826,7 +8831,7 @@ async def admin_backtest(request: Request):
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
     <!-- Per-run precision/recall -->
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
       <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">
         Per-Run Precision & Recall
       </div>
@@ -8845,7 +8850,7 @@ async def admin_backtest(request: Request):
     </div>
 
     <!-- Signal attribution / dimension lift -->
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
       <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">
         Signal Attribution
         <span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:6px;">Hit-rate lift (high vs low)</span>
@@ -8865,7 +8870,7 @@ async def admin_backtest(request: Request):
   </div>
 
   <!-- ML model section -->
-  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin-bottom:20px;">
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:20px;">
     <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:10px;">ML Distillation Model</div>
     <p style="font-size:13px;color:#6b7280;margin:0 0 12px;">Train a logistic regression to predict attendance from dimension scores.
     Helps diagnose which signals the model over/under-weights compared to actual behavior.</p>
@@ -8877,7 +8882,7 @@ async def admin_backtest(request: Request):
   </div>
 
   <div style="text-align:center;">
-    <a href="/admin/metrics" style="display:inline-block;padding:8px 20px;background:#2563eb;color:white;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">&larr; Metrics</a>
+    <a href="/admin/metrics" style="display:inline-block;padding:8px 20px;background:#4f46e5;color:white;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">&larr; Metrics</a>
     <a href="/admin/ranking-analysis" style="display:inline-block;margin-left:8px;padding:8px 20px;background:#7c3aed;color:white;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">Score Analysis &rarr;</a>
   </div>
 </div>
@@ -8970,7 +8975,7 @@ async def admin_retros(request: Request):
             {r.get('query','')[:50]}
           </td>
           <td style="padding:8px;text-align:center;font-size:12px;color:#6b7280;">{db_c}</td>
-          <td style="padding:8px;text-align:center;font-size:12px;color:#2563eb;font-weight:600;">{web_c}</td>
+          <td style="padding:8px;text-align:center;font-size:12px;color:#4f46e5;font-weight:600;">{web_c}</td>
           <td style="padding:8px;font-size:12px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{web_titles}</td>
           <td style="padding:8px;text-align:center;">
             <span style="background:{gap_color}22;color:{gap_color};padding:2px 8px;border-radius:10px;font-size:11px;">{gap or 'partial'}</span>
@@ -9004,15 +9009,15 @@ async def admin_retros(request: Request):
 
   <!-- Stats -->
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;">
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:#ef4444;">{db_miss}</div>
       <div style="font-size:12px;color:#6b7280;">DB Miss (web-only results)</div>
     </div>
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
-      <div style="font-size:28px;font-weight:800;color:#2563eb;">{avg_web:.1f}</div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#4f46e5;">{avg_web:.1f}</div>
       <div style="font-size:12px;color:#6b7280;">Avg Web Results</div>
     </div>
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:#6b7280;">{total}</div>
       <div style="font-size:12px;color:#6b7280;">Total Web Fallbacks</div>
     </div>
@@ -9020,7 +9025,7 @@ async def admin_retros(request: Request):
 
   <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:24px;">
     <!-- Recent retros table -->
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
       <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">Recent Searches Needing Web Fallback</div>
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;min-width:600px;">
@@ -9040,7 +9045,7 @@ async def admin_retros(request: Request):
     </div>
 
     <!-- Top gap queries -->
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:20px;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:20px;">
       <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:14px;">Top Gap Queries</div>
       <div style="font-size:12px;color:#6b7280;margin-bottom:10px;">Queries with most web-only results = missing sources</div>
       {top_gap_html or '<p style="color:#9ca3af;font-size:13px;">No gaps yet</p>'}
@@ -9143,39 +9148,39 @@ async def admin_cal_preview(request: Request):
 
   <!-- Stats -->
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;">
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
-      <div style="font-size:28px;font-weight:800;color:#2563eb;">{vevent_count}</div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#4f46e5;">{vevent_count}</div>
       <div style="font-size:12px;color:#6b7280;">Events in .ics Feed</div>
     </div>
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:#7c3aed;">{len(kept)}</div>
       <div style="font-size:12px;color:#6b7280;">Kept Events (score &ge; 55)</div>
     </div>
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:16px;font-weight:700;color:#1e293b;">{date_min} &mdash; {date_max}</div>
       <div style="font-size:12px;color:#6b7280;">Date Range</div>
     </div>
   </div>
 
   <!-- Feed URLs -->
-  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:24px;">
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:24px;">
     <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:10px;">Feed URLs</div>
     <div style="font-size:13px;margin-bottom:6px;">
       <b>Default (score &ge; 55):</b>
-      <a href="/feed.ics" style="color:#2563eb;word-break:break-all;">{base_url}/feed.ics</a>
+      <a href="/feed.ics" style="color:#4f46e5;word-break:break-all;">{base_url}/feed.ics</a>
     </div>
     <div style="font-size:13px;margin-bottom:6px;">
       <b>All kept events:</b>
-      <a href="/feed.ics?min_score=25" style="color:#2563eb;word-break:break-all;">{base_url}/feed.ics?min_score=25</a>
+      <a href="/feed.ics?min_score=25" style="color:#4f46e5;word-break:break-all;">{base_url}/feed.ics?min_score=25</a>
     </div>
     <div style="font-size:13px;">
       <b>Top picks only:</b>
-      <a href="/feed.ics?min_score=75" style="color:#2563eb;word-break:break-all;">{base_url}/feed.ics?min_score=75</a>
+      <a href="/feed.ics?min_score=75" style="color:#4f46e5;word-break:break-all;">{base_url}/feed.ics?min_score=75</a>
     </div>
   </div>
 
   <!-- Sample events -->
-  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;margin-bottom:24px;">
     <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">
       Sample Events (top 30 by score)
     </div>
@@ -9196,7 +9201,7 @@ async def admin_cal_preview(request: Request):
   </div>
 
   <!-- Raw iCal -->
-  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
     <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">
       Raw .ics Content
     </div>
@@ -9266,7 +9271,7 @@ async def admin_ml(request: Request):
     feat_section = ""
     if model_loaded:
         feat_section = f"""
-  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;margin-bottom:24px;">
     <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:14px;color:#1e293b;">
       Feature Importance (Logistic Regression Coefficients)
     </div>
@@ -9292,26 +9297,26 @@ async def admin_ml(request: Request):
 
   <!-- Stats -->
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
-      <div style="font-size:28px;font-weight:800;color:#2563eb;">{attended_count}</div>
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#4f46e5;">{attended_count}</div>
       <div style="font-size:12px;color:#6b7280;">Attended Events</div>
     </div>
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:#7c3aed;">{kept_count}</div>
       <div style="font-size:12px;color:#6b7280;">Kept Rankings (training pool)</div>
     </div>
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:#1e293b;">{ranker.n_samples if model_loaded else '—'}</div>
       <div style="font-size:12px;color:#6b7280;">Training Samples</div>
     </div>
-    <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+    <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:#1e293b;">{len(FEATURE_NAMES)}</div>
       <div style="font-size:12px;color:#6b7280;">Features</div>
     </div>
   </div>
 
   <!-- Model info -->
-  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:24px;">
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:24px;">
     <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:10px;">Model Info</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:13px;">
       <div><span style="color:#6b7280;">Type:</span> Logistic Regression (balanced)</div>
@@ -9323,9 +9328,9 @@ async def admin_ml(request: Request):
   {feat_section}
 
   <!-- Train button -->
-  <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin-bottom:24px;">
+  <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:24px;">
     <div style="display:flex;align-items:center;gap:16px;">
-      <button id="train-btn" onclick="trainModel()" style="padding:10px 24px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
+      <button id="train-btn" onclick="trainModel()" style="padding:10px 24px;background:#4f46e5;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
         Train ML Model
       </button>
       <span style="font-size:13px;color:#6b7280;">Trains on {kept_count} kept rankings with {attended_count} attended labels</span>

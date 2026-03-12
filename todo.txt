@@ -3,6 +3,96 @@
 # Status: DONE / IN_PROGRESS / DONE
 
 # ============================================================
+# PRIORITY 0 — UI POLISH, DO FIRST
+# [2026-03-12] TASK: Design language audit — consistent UI across all pages
+# ============================================================
+#
+# WHY: Dashboard pages were built incrementally by different prompts.
+# Result: inconsistent card styles, spacing, colors, button shapes,
+# typography, and overall feel across pages. We're in beta — first
+# impressions matter. Every page should feel like the same app.
+#
+# === Design tokens to standardize ===
+#
+# Colors:
+#   Primary: #4f46e5 (indigo) — links, active tabs, primary buttons
+#   Success: #16a34a (green) — RSVP going, positive actions
+#   Warning: #f59e0b (amber) — social vibe, streaks
+#   Purple: #8b5cf6 — intellectual vibe, match reasons
+#   Text: #1e293b (headings), #374151 (body), #6b7280 (secondary), #9ca3af (muted)
+#   Backgrounds: #f8fafc (page bg), white (cards), #f1f5f9 (subtle bg)
+#   Borders: #e2e8f0 (cards), #f3f4f6 (dividers)
+#
+# Typography:
+#   Font stack: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif
+#   Page title: 1.8rem, font-weight 800, color #1e293b
+#   Card heading: 14px, font-weight 700, uppercase, letter-spacing 1px, color #64748b
+#   Body text: 14-15px, line-height 1.6
+#   Small/meta: 12-13px, color #6b7280
+#
+# Cards:
+#   background: white
+#   border-radius: 16px
+#   padding: 24px
+#   border: 1px solid #e2e8f0
+#   box-shadow: 0 1px 3px rgba(0,0,0,.05)
+#   margin-bottom: 20px
+#
+# Buttons:
+#   Primary: bg #4f46e5, white text, border-radius 8px, padding 10px 24px,
+#            font-weight 700, font-size 14px. Hover: #4338ca
+#   Secondary: bg #f1f5f9, color #374151, same radius/padding
+#   Small/pill: border-radius 20px, padding 6px 16px, font-size 13px
+#
+# Page layout:
+#   max-width: 900px (main pages), 620px (profile/settings)
+#   margin: 0 auto
+#   padding: 12px 16px 60px
+#
+# === Pages to audit (check each one) ===
+#
+# 1. / (Events/calendar) — main page, should be the gold standard
+# 2. /search — search results cards, input styling
+# 3. /groups, /group/{slug} — group cards, member list, RSVP buttons
+# 4. /profile — tabs, form inputs, history table, calendar section
+# 5. /cal — calendar setup page, instruction cards
+# 6. /login — login form
+# 7. /landing — about/marketing page
+# 8. /interests — interest profile display
+# 9. /bucket-list — bucket list items
+# 10. /attended — event history (also in profile tab)
+# 11. Admin pages: /admin/*, email previews
+#
+# === Specific known issues ===
+# - Some cards use border-radius:14px, others 16px, others 12px
+# - Button padding varies: some 10px 24px, others 8px 16px, others 7px 18px
+# - Page titles: some use h1 with margin, some with padding, some inline
+# - Color inconsistency: some links #2563eb, others #4f46e5, others #6366f1
+# - Card shadows vary: some have shadow, some don't, some have border only
+# - Some pages wrap in max-width div, others don't
+# - Form inputs: different border widths (1px vs 1.5px vs 2px)
+#
+# === Implementation approach ===
+# 1. Define CSS custom properties (variables) in _layout() <style> block
+# 2. Update each page to use the shared variables
+# 3. Don't refactor into separate CSS files — keep inline for simplicity
+# 4. Focus on visual consistency, not code elegance
+#
+# === Acceptance criteria ===
+# 1. All pages use the same card style (radius, shadow, padding, border)
+# 2. All buttons follow primary/secondary/pill patterns
+# 3. All page titles use same font-size/weight/color
+# 4. All links use #4f46e5 (not #2563eb or #6366f1)
+# 5. Form inputs have consistent border, radius, padding
+# 6. Every page wraps content in a max-width container
+# 7. Import check passes
+#
+# === Files to modify ===
+# src/recom/dashboard/app.py — _layout() styles + each page route
+#
+# Status: NOT STARTED
+
+# ============================================================
 # PRIORITY 0 — QUICK FIX, DO FIRST
 # [2026-03-12] TASK: /cal route works for cookie-authenticated users
 # ============================================================
