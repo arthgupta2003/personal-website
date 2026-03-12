@@ -481,7 +481,7 @@
 # src/recom/email/sender.py — new send_group_ping() function
 # src/recom/db.py — ping_log table + rate limit helpers
 #
-# Status: NOT STARTED
+# Status: DONE
 
 # ============================================================
 # PRIORITY 7

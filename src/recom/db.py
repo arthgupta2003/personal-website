@@ -442,6 +442,19 @@ class Database:
             self.conn.execute("ALTER TABLE runs ADD COLUMN notes TEXT")
             self.conn.commit()
 
+        # ping_log table for group pings from email
+        try:
+            self.conn.execute("SELECT 1 FROM ping_log LIMIT 1")
+        except Exception:
+            self.conn.execute("""CREATE TABLE IF NOT EXISTS ping_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                event_id TEXT NOT NULL,
+                group_id INTEGER NOT NULL,
+                sent_at TEXT NOT NULL
+            )""")
+            self.conn.commit()
+
         # bucket list status column
         cur = self.conn.execute("PRAGMA table_info(user_bucket_list)")
         bl_cols = {row["name"] for row in cur.fetchall()}
@@ -895,6 +908,32 @@ class Database:
             (group_id, user_id),
         ).fetchone()
         return row is not None
+
+    def can_ping(self, user_id: int, event_id: str, group_id: int) -> bool:
+        """Check rate limits: max 3 pings per user per day, max 1 ping per event per group."""
+        # Check if this event was already pinged to this group
+        row = self.conn.execute(
+            "SELECT 1 FROM ping_log WHERE event_id = ? AND group_id = ?",
+            (event_id, group_id),
+        ).fetchone()
+        if row:
+            return False
+        # Check daily limit: max 3 pings per user per day
+        row = self.conn.execute(
+            "SELECT COUNT(*) as cnt FROM ping_log WHERE user_id = ? AND sent_at > datetime('now', '-1 day')",
+            (user_id,),
+        ).fetchone()
+        if row and row["cnt"] >= 3:
+            return False
+        return True
+
+    def log_ping(self, user_id: int, event_id: str, group_id: int) -> None:
+        """Record a ping in the log."""
+        self.conn.execute(
+            "INSERT INTO ping_log (user_id, event_id, group_id, sent_at) VALUES (?, ?, ?, ?)",
+            (user_id, event_id, group_id, datetime.now().isoformat()),
+        )
+        self.conn.commit()
 
     def get_recent_friend_rsvps(self, user_id: int, hours: int = 48) -> list[dict]:
         rows = self.conn.execute(

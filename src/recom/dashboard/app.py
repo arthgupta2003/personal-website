@@ -11,7 +11,7 @@ from starlette.responses import RedirectResponse
 
 from recom.config import Settings
 from recom.db import Database
-from recom.email.sender import send_magic_link, send_invite_email, send_rsvp_notify
+from recom.email.sender import send_magic_link, send_invite_email, send_rsvp_notify, send_group_ping
 
 logger = logging.getLogger(__name__)
 
@@ -3549,6 +3549,118 @@ async def rsvp_via_link(event_id: str, status: str, u: str = "", title: str = ""
     <body><div class="box"><h2 style="color:#2563eb">RSVP: {status_labels.get(status, status)}</h2>
     <p style="color:#6b7280">{title[:60]}</p>
     <a href="/?u={u}" style="color:#2563eb;margin-top:12px;display:inline-block">Back to calendar</a></div></body></html>""")
+
+
+@app.get("/api/ping-group", response_class=HTMLResponse)
+async def ping_group(request: Request, event_id: str = "", u: str = "", group_id: int = 0):
+    """Send a 'Bring friends?' ping to group members from email link."""
+    db = get_db()
+    user = db.get_user_by_token(u) if u else None
+    if not user:
+        return HTMLResponse("<h1>Invalid link</h1><p>Please log in.</p>", status_code=401)
+    event = _find_event(db, event_id)
+    if not event:
+        return HTMLResponse("<h1>Event not found</h1>", status_code=404)
+
+    user_id = user["id"]
+    user_name = user.get("name") or user.get("email", "Someone")
+    groups = db.get_user_groups(user_id)
+
+    if not groups:
+        return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+        <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
+        .box {{ background: white; border-radius: 12px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
+        <body><div class="box"><h2>No groups yet</h2>
+        <p style="color:#6b7280;">Create a group to share events with friends.</p>
+        <a href="/groups?u={u}" style="display:inline-block;padding:12px 24px;background:#4f46e5;color:white;border-radius:8px;text-decoration:none;font-weight:600;margin-top:12px;">Go to Groups</a>
+        </div></body></html>""")
+
+    # If multiple groups and no group_id specified, show picker
+    if len(groups) > 1 and group_id == 0:
+        title = event.get("title", "Event")[:60]
+        links = ""
+        for g in groups:
+            gid = g["id"]
+            gname = g["name"]
+            count = g.get("member_count", 0)
+            links += f'<a href="/api/ping-group?event_id={event_id}&u={u}&group_id={gid}" style="display:block;padding:14px 20px;margin:8px 0;background:#f1f5f9;border-radius:10px;text-decoration:none;color:#1e293b;font-weight:600;border:1px solid #e2e8f0;">{gname} <span style="color:#9ca3af;font-weight:400;">({count} members)</span></a>'
+        return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+        <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
+        .box {{ background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
+        <body><div class="box"><h2>Which group?</h2>
+        <p style="color:#6b7280;margin-bottom:16px;">Share <strong>{title}</strong> with:</p>
+        {links}
+        </div></body></html>""")
+
+    # Use single group if only one, or the specified group_id
+    target_group = None
+    if group_id > 0:
+        for g in groups:
+            if g["id"] == group_id:
+                target_group = g
+                break
+        if not target_group:
+            return HTMLResponse("<h1>Group not found</h1>", status_code=404)
+    else:
+        target_group = groups[0]
+
+    gid = target_group["id"]
+
+    # Rate limit check
+    if not db.can_ping(user_id, event_id, gid):
+        # Determine which limit was hit
+        from datetime import datetime as _dt
+        row = db.conn.execute(
+            "SELECT 1 FROM ping_log WHERE event_id = ? AND group_id = ?",
+            (event_id, gid),
+        ).fetchone()
+        if row:
+            msg = "This event was already shared with this group."
+        else:
+            msg = "Daily ping limit reached (max 3 per day). Try again tomorrow."
+        return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+        <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
+        .box {{ background: white; border-radius: 12px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
+        <body><div class="box"><h2 style="color:#f59e0b;">Already pinged</h2>
+        <p style="color:#6b7280;">{msg}</p>
+        <a href="/?u={u}" style="color:#2563eb;margin-top:12px;display:inline-block;">Back to calendar</a>
+        </div></body></html>""")
+
+    # Send ping emails to all group members (skip the sender)
+    members = db.get_group_members(gid)
+    settings = Settings()
+    title = event.get("title", "Event")
+    sent_count = 0
+    for member in members:
+        if member["id"] == user_id:
+            continue
+        member_token = member.get("user_token", "")
+        member_email = member.get("email", "")
+        if not member_email:
+            continue
+        try:
+            send_group_ping(
+                to_email=member_email,
+                to_token=member_token,
+                pinger_name=user_name,
+                event=event,
+                dashboard_url=settings.dashboard_url,
+                settings=settings,
+            )
+            sent_count += 1
+        except Exception:
+            logger.exception("Failed to send ping to %s", member_email)
+
+    db.log_ping(user_id, event_id, gid)
+    group_name = target_group["name"]
+
+    return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
+    .box {{ background: white; border-radius: 12px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
+    <body><div class="box"><h2 style="color:#059669;">Pinged {group_name}!</h2>
+    <p style="color:#6b7280;">Sent to {sent_count} friend{"s" if sent_count != 1 else ""} about <strong>{title[:60]}</strong></p>
+    <a href="/?u={u}" style="color:#2563eb;margin-top:12px;display:inline-block;">Back to calendar</a>
+    </div></body></html>""")
 
 
 @app.get("/api/steer", response_class=HTMLResponse)

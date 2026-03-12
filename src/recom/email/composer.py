@@ -142,6 +142,7 @@ _DIGEST_TEMPLATE = _env.from_string(
           {% if user_token %}<a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ hero.event.id }}.ics" style="display:inline-block;background:#16a34a;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:10px 24px;border-radius:50px;">&#128197; Add to my week</a>{% endif %}
           {% if hero.event.url %}<a href="{{ hero.event.url }}" style="display:inline-block;margin-left:8px;color:#4f46e5;text-decoration:none;font-weight:600;font-size:13px;">Get tickets &rarr;</a>{% endif %}
           <span style="display:inline-block;margin-left:8px;background:#dcfce7;color:#166534;font-weight:800;font-size:13px;padding:9px 14px;border-radius:50px;">{{ hero.score | int }}</span>
+          {% if user_token %}<a href="{{ dashboard_url }}/api/ping-group?event_id={{ hero.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:10px;">Bring friends? &rarr;</a>{% endif %}
         </div>
       </td></tr>
     </table>
@@ -496,6 +497,7 @@ _DAILY_TEMPLATE = _env.from_string(
             {% if user_token %}
             <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#16a34a;text-decoration:none;padding:5px 16px;border-radius:10px;margin-right:6px;">&#128197; Add to my week</a>
             <a href="{{ dashboard_url }}/api/rsvp-link?event_id={{ r.event.id }}&status=maybe&u={{ user_token }}&title={{ r.event.title | urlencode }}" style="display:inline-block;font-size:12px;font-weight:600;color:#92400e;text-decoration:none;border:1.5px solid #fde68a;padding:4px 14px;border-radius:10px;margin-right:6px;">Maybe</a>
+            <a href="{{ dashboard_url }}/api/ping-group?event_id={{ r.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:6px;">Bring friends? &rarr;</a>
             {% endif %}
             {% if r.event.url %}<a href="{{ r.event.url }}" style="display:inline-block;font-size:12px;font-weight:600;color:#4f46e5;text-decoration:none;padding:4px 0;">Get tickets &rarr;</a>{% endif %}
           </p>
@@ -644,6 +646,7 @@ _WEEKEND_TEMPLATE = _env.from_string(
           {% if r.match_reason %}<p style="margin:0 0 6px;font-size:12px;color:#6d28d9;">{{ r.match_reason }}</p>{% endif %}
           {% if user_token %}
           <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#16a34a;text-decoration:none;padding:4px 14px;border-radius:8px;">&#128197; Add to my week</a>
+          <a href="{{ dashboard_url }}/api/ping-group?event_id={{ r.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:10px;">Bring friends? &rarr;</a>
           {% endif %}
         </td>
       </tr>
@@ -812,6 +815,7 @@ _WELCOME_TEMPLATE = _env.from_string(
             <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} &middot; {{ r.event.location_name }}{% endif %}</p>
             {% if user_token %}
             <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#16a34a;text-decoration:none;padding:4px 14px;border-radius:8px;margin-top:4px;">&#128197; Add to my week</a>
+            <a href="{{ dashboard_url }}/api/ping-group?event_id={{ r.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:10px;">Bring friends? &rarr;</a>
             {% endif %}
           </td>
         </tr>
