@@ -44,6 +44,57 @@
 #
 # Status: DONE
 
+# ============================================================
+# PRIORITY 0.1 — QUICK CLEANUP
+# [2026-03-12] TASK: Kill taste email + simplify daily email
+# ============================================================
+#
+# === Part 1: Remove daily taste matchup email ===
+#
+# The taste matchup email (9am Mon-Fri) asks users to pick between two
+# activity archetypes. It's busywork — too much effort for hypothetical
+# signal. Kill it entirely:
+#   - Delete scripts/send_daily_taste.py
+#   - Remove the taste matchup cron entry from scripts/install_cron.sh
+#   - Delete send_daily_matchup() from src/recom/email/sender.py
+#   - Keep /api/taste/vote and /api/taste/vote-link (profile widget may use them)
+#   - Keep taste_items and taste_matchups tables (data still feeds ranking)
+#
+# === Part 2: Simplify daily digest email ===
+#
+# Current daily email forces 10 events every morning. That's too many —
+# most days don't have 10 good events, so it pads with mediocre picks
+# that erode trust. Fix:
+#
+#   - Show only events scoring >= 40 (not >= 25)
+#   - Cap at 5 events, not 10
+#   - No minimum — if only 1 event is good today, show 1 event
+#   - If 0 events pass the threshold, don't send the email at all
+#   - Drop the "max 4 events per vibe" diversity constraint — just show
+#     the best events, period. If all 5 are concerts, that's fine.
+#   - Subject line should reflect count: "1 thing to do today" vs
+#     "4 things to do today" (not a fixed "Your daily picks")
+#
+# The daily email should feel like a friend texting you "hey there's
+# this one thing tonight you'd love" — not a newsletter dump.
+#
+# === Acceptance criteria ===
+# 1. No taste matchup emails sent (cron removed, script deleted)
+# 2. Daily email shows max 5 events, only score >= 40
+# 3. Daily email skips sending when 0 events pass threshold
+# 4. Subject line reflects actual event count
+# 5. crontab -l shows no taste matchup entry after install_cron.sh
+# 6. smoke_test.sh passes
+#
+# === Files to modify/delete ===
+# Delete: scripts/send_daily_taste.py
+# Modify: scripts/install_cron.sh — remove taste cron entry
+# Modify: src/recom/email/sender.py — remove send_daily_matchup()
+# Modify: src/recom/daily.py — score threshold, cap, subject line, skip logic
+# Modify: src/recom/email/composer.py — if daily template is there
+#
+# Status: DONE
+
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # PRIORITY 1 — DO THIS FIRST. DO NOT SKIP. DO NOT MARK PARTIAL.
 # This task is NOT done until the acceptance criteria ALL pass.

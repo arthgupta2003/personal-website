@@ -18,9 +18,6 @@ WEEKLY_CMD="0 ${PIPELINE_HOUR} * * ${DOW} cd ${RECOM_DIR} && ${UV_PATH} run reco
 # Daily digest email (send today's picks from latest run)
 DAILY_CMD="0 ${DAILY_HOUR} * * * cd ${RECOM_DIR} && ${UV_PATH} run recom-daily >> ${RECOM_DIR}/state/daily.log 2>&1"
 
-# Daily taste matchup email (9am Mon-Fri)
-TASTE_CMD="0 9 * * 1-5 cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_daily_taste.py --all-users >> ${RECOM_DIR}/state/taste.log 2>&1"
-
 # Weekend preview (Thursday 6pm — plan your weekend)
 WEEKEND_CMD="0 18 * * 4 cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_weekend_preview.py --all-users >> ${RECOM_DIR}/state/weekend.log 2>&1"
 
@@ -34,7 +31,6 @@ RATINGS_CMD="0 22 * * * cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_ra
 (crontab -l 2>/dev/null | grep -v "recom\|send_daily_taste\|send_tonight\|send_ratings\|send_weekend"; \
   echo "$WEEKLY_CMD"; \
   echo "$DAILY_CMD"; \
-  echo "$TASTE_CMD"; \
   echo "$WEEKEND_CMD"; \
   echo "$TONIGHT_CMD"; \
   echo "$RATINGS_CMD") | crontab -
@@ -50,9 +46,6 @@ echo ""
 echo "  Daily digest (${DAILY_HOUR}:00 every day):"
 echo "    uv run recom-daily"
 echo ""
-echo "  Daily taste matchup (9am Mon-Fri):"
-echo "    uv run python scripts/send_daily_taste.py --all-users"
-echo ""
 echo "  Weekend preview (Thursday 6pm):"
 echo "    uv run python scripts/send_weekend_preview.py --all-users"
 echo ""
@@ -62,7 +55,7 @@ echo ""
 echo "  Post-event ratings (10pm daily):"
 echo "    uv run python scripts/send_ratings.py --send"
 echo ""
-echo "  Logs: ${RECOM_DIR}/state/{cron,daily,taste,weekend,tonight,ratings}.log"
+echo "  Logs: ${RECOM_DIR}/state/{cron,daily,weekend,tonight,ratings}.log"
 echo ""
 echo "To verify: crontab -l"
 echo "To remove: crontab -l | grep -v 'recom\|send_daily_taste\|send_weekend\|send_tonight\|send_ratings' | crontab -"

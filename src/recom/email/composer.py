@@ -554,10 +554,10 @@ def compose_daily_email(
     target_str = target_date.strftime("%Y-%m-%d")
     day_label = target_date.strftime("%A, %B %-d")
 
-    # Filter to events on this day
+    # Filter to events on this day with score >= 40
     todays = []
     for r in ranked_events:
-        if not r.keep or r.score < 25:
+        if not r.keep or r.score < 40:
             continue
         if r.event.start_time is None:
             continue
@@ -566,22 +566,15 @@ def compose_daily_email(
         if event_date.strftime("%Y-%m-%d") == target_str:
             todays.append(r)
 
-    # Sort by score, pick top 5 with vibe diversity
+    # Sort by score, cap at 5 — just show the best events
     todays.sort(key=lambda r: r.score, reverse=True)
-    diverse: list[RankedEvent] = []
-    vibe_counts: dict[str, int] = defaultdict(int)
-    for r in todays:
-        if len(diverse) >= 10:
-            break
-        if vibe_counts[r.vibe] >= 4:
-            continue
-        diverse.append(r)
-        vibe_counts[r.vibe] += 1
+    diverse = todays[:5]
 
-    if not diverse and not bucket_suggestions:
+    if not diverse:
         return None
 
-    subject = f"{day_label}: {len(diverse)} events for you" if diverse else f"{day_label}: No events, but here are some ideas"
+    n = len(diverse)
+    subject = f"{n} thing{'s' if n != 1 else ''} to do today" if n > 1 else "1 thing to do today"
 
     html_body = _DAILY_TEMPLATE.render(
         subject=subject,

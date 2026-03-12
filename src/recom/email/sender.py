@@ -84,59 +84,6 @@ def send_invite_email(
     send_email(f"{inviter_name} invited you to {group_name}", html, settings, to=email)
 
 
-def send_daily_matchup(
-    email: str,
-    token: str,
-    item_a: dict,
-    item_b: dict,
-    dashboard_url: str,
-    settings: Settings,
-) -> None:
-    """Send the daily Elo taste matchup email with three vote links."""
-    label_a = item_a.get("label", "Option A")
-    label_b = item_b.get("label", "Option B")
-    id_a = item_a.get("id", 0)
-    id_b = item_b.get("id", 0)
-    elo_a = int(item_a.get("elo_rating", 1400))
-    elo_b = int(item_b.get("elo_rating", 1400))
-
-    def vote_url(winner_id: int | None) -> str:
-        w = winner_id if winner_id is not None else ""
-        return f"{dashboard_url}/api/taste/vote-link?a={id_a}&b={id_b}&winner={w}&u={token}"
-
-    subject = f"Quick pick: {label_a[:25]} vs {label_b[:25]}?"
-    html = f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;margin:0;padding:0;">
-<div style="max-width:480px;margin:0 auto;padding:32px 16px;">
-  <div style="text-align:center;margin-bottom:8px;">
-    <span style="font-size:11px;font-weight:700;letter-spacing:3px;color:#6366f1;text-transform:uppercase;">recom · daily taste</span>
-  </div>
-  <h1 style="font-size:22px;font-weight:800;color:#1e293b;text-align:center;margin:0 0 24px;">
-    Which would you rather do?
-  </h1>
-  <div style="background:white;border:2px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:12px;text-align:center;">
-    <div style="font-size:17px;font-weight:700;color:#1e293b;margin-bottom:4px;">{label_a}</div>
-    <div style="font-size:11px;color:#9ca3af;margin-bottom:14px;">Elo {elo_a}</div>
-    <a href="{vote_url(id_a)}" style="display:inline-block;padding:12px 32px;background:#4f46e5;color:white;border-radius:10px;text-decoration:none;font-size:15px;font-weight:700;">Choose this</a>
-  </div>
-  <div style="text-align:center;font-size:13px;color:#9ca3af;font-weight:700;margin:4px 0;">VS</div>
-  <div style="background:white;border:2px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px;text-align:center;">
-    <div style="font-size:17px;font-weight:700;color:#1e293b;margin-bottom:4px;">{label_b}</div>
-    <div style="font-size:11px;color:#9ca3af;margin-bottom:14px;">Elo {elo_b}</div>
-    <a href="{vote_url(id_b)}" style="display:inline-block;padding:12px 32px;background:#ec4899;color:white;border-radius:10px;text-decoration:none;font-size:15px;font-weight:700;">Choose this</a>
-  </div>
-  <div style="text-align:center;margin-bottom:24px;">
-    <a href="{vote_url(None)}" style="font-size:13px;color:#9ca3af;text-decoration:none;">Equal / Both equally great</a>
-  </div>
-  <div style="text-align:center;border-top:1px solid #e2e8f0;padding-top:16px;">
-    <a href="{dashboard_url}/taste?u={token}" style="font-size:13px;color:#6b7280;text-decoration:none;">View your full taste profile →</a>
-  </div>
-</div>
-</body></html>"""
-    send_email(subject, html, settings, to=email)
-
-
 def send_group_ping(
     to_email: str, to_token: str, pinger_name: str,
     event: dict, dashboard_url: str, settings: Settings,
