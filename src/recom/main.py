@@ -249,6 +249,21 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
     else:
         logger.info("Step 5: No events to recommend — skipping email")
 
+    # === Step 5.5: Welcome email for new users ===
+    if user and not user.get("welcome_sent") and recommended and settings.smtp_password:
+        from recom.email.composer import compose_welcome_email
+        logger.info("Step 5.5: Sending welcome email to new user...")
+        w_subject, w_html = compose_welcome_email(
+            user_name=user.get("name") or user.get("email", "").split("@")[0],
+            user_token=user.get("user_token", ""),
+            event_count=len(recommended),
+            top_events=recommended[:3],
+            dashboard_url=settings.dashboard_url,
+        )
+        send_email(w_subject, w_html, settings, to=email_to)
+        db.update_user(user_id, welcome_sent=1)
+        logger.info(f"  Welcome email sent to {email_to}")
+
     step_timings["total"] = _time.monotonic() - _t0_total
     logger.info(f"Run #{run_id} complete for {user_label} (total: {step_timings['total']:.1f}s)")
 

@@ -426,6 +426,15 @@ class Database:
             )""")
             self.conn.commit()
 
+        # welcome_sent column on users
+        cur = self.conn.execute("PRAGMA table_info(users)")
+        user_cols3 = {row["name"] for row in cur.fetchall()}
+        if "welcome_sent" not in user_cols3:
+            self.conn.execute("ALTER TABLE users ADD COLUMN welcome_sent INTEGER DEFAULT 0")
+            # Mark existing users as already welcomed (don't retroactively send)
+            self.conn.execute("UPDATE users SET welcome_sent = 1")
+            self.conn.commit()
+
         # notes column on runs (stores step timings JSON)
         cur = self.conn.execute("PRAGMA table_info(runs)")
         run_cols = {row["name"] for row in cur.fetchall()}

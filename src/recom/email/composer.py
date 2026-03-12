@@ -548,3 +548,143 @@ def compose_daily_email(
     )
 
     return subject, html_body
+
+
+# ---------------------------------------------------------------------------
+# Welcome email
+# ---------------------------------------------------------------------------
+
+_WELCOME_TEMPLATE = _env.from_string(
+    """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ subject }}</title>
+</head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;margin:0;padding:0;color:#1a1a1a;">
+
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;">
+<tr><td align="center" style="padding:20px 16px 32px;">
+<table width="100%" style="max-width:600px;" cellpadding="0" cellspacing="0">
+
+  <!-- Header -->
+  <tr><td style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px 16px 0 0;padding:32px 28px;text-align:center;">
+    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">&loz; RECOM</p>
+    <h1 style="margin:0;font-size:26px;font-weight:800;color:white;letter-spacing:-.5px;">Your event calendar is ready</h1>
+    <p style="margin:8px 0 0;font-size:15px;color:rgba(255,255,255,.7);">We found {{ event_count }} events this week that match your interests.</p>
+  </td></tr>
+
+  <!-- Content -->
+  <tr><td style="background:white;padding:28px 24px;">
+
+    <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 24px;">
+      Hey {{ user_name }}, get your picks on your calendar in one click:
+    </p>
+
+    <!-- Calendar buttons -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+      <tr>
+        <td align="center" style="padding:6px;">
+          <a href="{{ webcal_url }}" style="display:block;background:#1e1b4b;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:14px 20px;border-radius:12px;text-align:center;">
+            &#127823; Add to Apple Calendar
+          </a>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding:6px;">
+          <a href="{{ gcal_url }}" style="display:block;background:#4285f4;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:14px 20px;border-radius:12px;text-align:center;">
+            &#128197; Add to Google Calendar
+          </a>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding:6px;">
+          <a href="{{ outlook_url }}" style="display:block;background:#0078d4;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:14px 20px;border-radius:12px;text-align:center;">
+            &#128233; Add to Outlook
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <p style="font-size:13px;color:#9ca3af;text-align:center;margin:0 0 24px;">
+      Your calendar updates automatically every week with fresh picks.
+    </p>
+
+    {% if top_events %}
+    <div style="border-top:1px solid #e5e7eb;padding-top:20px;margin-top:4px;">
+      <p style="margin:0 0 14px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#9ca3af;">Preview: this week&apos;s top picks</p>
+      {% for r in top_events %}
+      {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#8b5cf6" if r.vibe == "intellectual" else "#3b82f6") %}
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border-radius:10px;border:1px solid #f3f4f6;overflow:hidden;">
+        <tr>
+          <td style="padding:12px 14px;border-left:4px solid {{ vibe_color }};">
+            <p style="margin:0 0 2px;font-size:14px;font-weight:700;line-height:1.3;">
+              {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#111827;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
+            </p>
+            <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} &middot; {{ r.event.location_name }}{% endif %}</p>
+            {% if user_token %}
+            <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#16a34a;text-decoration:none;padding:4px 14px;border-radius:8px;margin-top:4px;">&#128197; Add to my week</a>
+            {% endif %}
+          </td>
+        </tr>
+      </table>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div style="text-align:center;margin-top:20px;">
+      <a href="{{ dashboard_url }}/?u={{ user_token }}" style="display:inline-block;background:#f1f5f9;color:#374151;text-decoration:none;font-weight:600;font-size:14px;padding:12px 28px;border-radius:50px;">
+        See all {{ event_count }} events &rarr;
+      </a>
+    </div>
+
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="background:white;border-radius:0 0 16px 16px;border-top:1px solid #f3f4f6;padding:16px 24px;text-align:center;">
+    <p style="margin:0;font-size:12px;color:#9ca3af;">
+      Powered by <a href="{{ dashboard_url }}" style="color:#6366f1;text-decoration:none;">Recom</a> &middot; Discover Weekly for your real life
+    </p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+)
+
+
+def compose_welcome_email(
+    user_name: str,
+    user_token: str,
+    event_count: int,
+    top_events: list[RankedEvent],
+    dashboard_url: str = "https://recom.arthgupta.dev",
+) -> tuple[str, str]:
+    """Build the welcome/onboarding email for a new user.
+
+    Returns (subject, html_body).
+    """
+    import urllib.parse as _urlparse
+
+    feed_url = f"{dashboard_url}/u/{user_token}/feed.ics"
+    webcal_url = feed_url.replace("https://", "webcal://").replace("http://", "webcal://")
+    gcal_url = f"https://calendar.google.com/calendar/r?cid={_urlparse.quote(feed_url, safe='')}"
+    outlook_url = feed_url
+
+    subject = "Your event calendar is ready"
+    html_body = _WELCOME_TEMPLATE.render(
+        subject=subject,
+        user_name=user_name or "there",
+        user_token=user_token,
+        event_count=event_count,
+        top_events=top_events[:3],
+        webcal_url=webcal_url,
+        gcal_url=gcal_url,
+        outlook_url=outlook_url,
+        dashboard_url=dashboard_url,
+    )
+    return subject, html_body
