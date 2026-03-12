@@ -566,9 +566,17 @@ def compose_daily_email(
         if event_date.strftime("%Y-%m-%d") == target_str:
             todays.append(r)
 
-    # Sort by score, cap at 5 — just show the best events
+    # Sort by score, pick top 5 with vibe diversity
     todays.sort(key=lambda r: r.score, reverse=True)
-    diverse = todays[:5]
+    diverse: list[RankedEvent] = []
+    vibe_counts: dict[str, int] = defaultdict(int)
+    for r in todays:
+        if len(diverse) >= 5:
+            break
+        if vibe_counts[r.vibe] >= 3:
+            continue
+        diverse.append(r)
+        vibe_counts[r.vibe] += 1
 
     if not diverse:
         return None
