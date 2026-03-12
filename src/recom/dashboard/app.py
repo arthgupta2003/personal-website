@@ -1148,9 +1148,9 @@ async def interests_page(request: Request):
           <h3 style="font-size:15px;font-weight:800;color:#1a1a1a;margin-bottom:2px;">🏆 Taste Stack</h3>
           <p style="font-size:12px;color:#9ca3af;">{taste_count} matchups · Elo-ranked activity preferences</p>
         </div>
-        <a href="/taste" style="font-size:13px;font-weight:600;color:#4f46e5;text-decoration:none;">View all →</a>
+        <a href="/profile" style="font-size:13px;font-weight:600;color:#4f46e5;text-decoration:none;">View profile →</a>
       </div>
-      {taste_rows if taste_rows else '<p style="font-size:13px;color:#9ca3af;">No matchups yet. <a href="/taste" style="color:#4f46e5">Start ranking →</a></p>'}
+      {taste_rows if taste_rows else '<p style="font-size:13px;color:#9ca3af;">No matchups yet.</p>'}
     </div>"""
 
     # Get latest ingest stats for the data sources section
@@ -1442,6 +1442,11 @@ async def profile_page(request: Request, response: Response):
 
     <button class="save-btn" onclick="save()">Save changes</button>
     <div class="save-success" id="success">Saved!</div>
+
+    <div class="card" style="margin-top:24px;">
+      <h2>Your Taste Profile</h2>
+      <div id="radar-section" style="display:flex;justify-content:center;margin:12px 0;"></div>
+    </div>
   </div>
 
   <!-- History Tab -->
@@ -1553,6 +1558,31 @@ function save() {{
     }}
   }});
 }}
+
+// Taste radar chart
+fetch('/api/taste/radar').then(r => r.json()).then(d => {{
+  const sec = document.getElementById('radar-section');
+  if (!sec || !d.axes || d.axes.length < 3) {{ if (sec) sec.innerHTML = '<p style="font-size:13px;color:#9ca3af;text-align:center;">Not enough taste data yet.</p>'; return; }}
+  const n = d.axes.length, size = 220, cx = size/2, cy = size/2, rad = size*0.38, lr = size*0.48, TWO_PI = Math.PI*2;
+  let svg = `<svg width="${{size}}" height="${{size}}" viewBox="0 0 ${{size}} ${{size}}" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">`;
+  [0.25,0.5,0.75,1.0].forEach(level => {{
+    const pts = d.axes.map((_,i) => {{ const a = TWO_PI*i/n - Math.PI/2; return `${{(cx+Math.cos(a)*rad*level).toFixed(1)}},${{(cy+Math.sin(a)*rad*level).toFixed(1)}}`; }});
+    svg += `<polygon points="${{pts.join(' ')}}" fill="none" stroke="#e5e7eb" stroke-width="0.8"/>`;
+  }});
+  d.axes.forEach((_,i) => {{ const a = TWO_PI*i/n - Math.PI/2; svg += `<line x1="${{cx}}" y1="${{cy}}" x2="${{(cx+Math.cos(a)*rad).toFixed(1)}}" y2="${{(cy+Math.sin(a)*rad).toFixed(1)}}" stroke="#e5e7eb" stroke-width="0.8"/>`; }});
+  const dpts = d.values.map((v,i) => {{ const a = TWO_PI*i/n - Math.PI/2; return `${{(cx+Math.cos(a)*rad*v).toFixed(1)}},${{(cy+Math.sin(a)*rad*v).toFixed(1)}}`; }});
+  svg += `<polygon points="${{dpts.join(' ')}}" fill="rgba(129,140,248,0.25)" stroke="#818cf8" stroke-width="2"/>`;
+  d.values.forEach((v,i) => {{
+    const a = TWO_PI*i/n - Math.PI/2;
+    const px = (cx+Math.cos(a)*rad*v).toFixed(1), py = (cy+Math.sin(a)*rad*v).toFixed(1);
+    const lx = (cx+Math.cos(a)*lr).toFixed(1), ly = (cy+Math.sin(a)*lr).toFixed(1);
+    const anchor = Math.cos(a) < -0.1 ? 'end' : Math.cos(a) > 0.1 ? 'start' : 'middle';
+    svg += `<circle cx="${{px}}" cy="${{py}}" r="3" fill="#818cf8"/>`;
+    svg += `<text x="${{lx}}" y="${{ly}}" text-anchor="${{anchor}}" dominant-baseline="middle" font-size="9" fill="#6b7280" font-family="system-ui">${{d.axes[i]}}</text>`;
+  }});
+  svg += '</svg>';
+  sec.innerHTML = svg + `<div style="font-size:11px;color:#9ca3af;margin-top:8px;text-align:center;">Based on ${{d.axes.length}} categories</div>`;
+}});
 </script>
 """, current_user))
     return _maybe_set_cookie(request, resp, current_user)
@@ -1583,309 +1613,6 @@ async def profile_update(request: Request):
         db.conn.commit()
     return {"ok": True}
 
-
-@app.get("/taste", response_class=HTMLResponse)
-async def taste_page(request: Request, response: Response):
-    """Elo-based taste discovery page."""
-    db = get_db()
-    current_user = _get_current_user(request)
-    user_id = current_user["id"] if current_user else 1
-
-    db.seed_taste_items(user_id)
-    items = db.get_taste_items(user_id)
-    pair = db.get_taste_matchup_pair(user_id)
-    matchup_count = db.get_taste_matchup_count(user_id)
-    streak_info = db.get_taste_streak(user_id)
-
-    pair_json = json.dumps([dict(pair[0]), dict(pair[1])]) if pair else "null"
-    items_json = json.dumps(items, default=str)
-
-    resp = HTMLResponse(_layout("Taste Stack", f"""
-<style>
-.page-wrap {{ max-width: 700px; margin: 0 auto; padding: 12px 0 60px; }}
-.hero {{ text-align: center; padding: 24px 0 20px; }}
-.hero h1 {{ font-size: 1.8rem; font-weight: 800; color: #1a1a1a; margin-bottom: 4px; }}
-.hero p {{ color: #6b7280; font-size: 0.95rem; max-width: 400px; margin: 0 auto; }}
-.matchup-card {{ background: white; border-radius: 14px; padding: 28px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; }}
-.matchup-label {{ text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #6366f1; margin-bottom: 20px; }}
-.matchup-vs {{ display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center; }}
-.matchup-option {{ background: #f8f9fa; border: 2px solid #e5e7eb; border-radius: 14px; padding: 24px 16px; text-align: center; cursor: pointer; transition: all .2s; }}
-.matchup-option:hover {{ border-color: #818cf8; background: #f0f0ff; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(129,140,248,.15); }}
-.matchup-option.selected {{ border-color: #22c55e; background: #f0fdf4; }}
-.matchup-option .category {{ font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #9ca3af; margin-bottom: 8px; }}
-.matchup-option .label {{ font-size: 1.05rem; font-weight: 700; color: #1a1a1a; line-height: 1.3; }}
-.vs-badge {{ font-size: 18px; font-weight: 900; color: #d1d5db; }}
-.equal-btn {{ display: block; text-align: center; margin: 16px auto 0; background: transparent; border: 1px solid #e5e7eb; color: #9ca3af; font-size: 13px; padding: 8px 24px; border-radius: 20px; cursor: pointer; font-family: inherit; transition: all .15s; }}
-.equal-btn:hover {{ border-color: #9ca3af; color: #6b7280; }}
-.stats-row {{ display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }}
-.stat-pill {{ background: white; border: 1px solid #e5e7eb; border-radius: 20px; padding: 6px 16px; font-size: 13px; color: #6b7280; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }}
-.stat-pill strong {{ color: #1a1a1a; }}
-.stack-section {{ margin-top: 32px; }}
-.stack-header {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }}
-.stack-header h2 {{ font-size: 1.1rem; font-weight: 700; color: #1a1a1a; }}
-.add-form {{ display: flex; gap: 8px; }}
-.add-form input, .add-form select {{ background: white; border: 1.5px solid #e5e7eb; color: #1a1a1a; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-family: inherit; }}
-.add-form input {{ flex: 1; }}
-.add-form input:focus, .add-form select:focus {{ outline: none; border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129,140,248,.1); }}
-.add-form button {{ background: #4f46e5; color: white; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }}
-.add-form button:hover {{ background: #4338ca; }}
-.taste-item {{ display: flex; align-items: center; gap: 12px; background: white; border-radius: 10px; padding: 12px 16px; margin: 6px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #f3f4f6; }}
-.rank-num {{ font-size: 13px; font-weight: 800; color: #d1d5db; width: 24px; flex-shrink: 0; text-align: right; }}
-.item-info {{ flex: 1; min-width: 0; }}
-.item-label {{ font-size: 14px; font-weight: 600; color: #1a1a1a; }}
-.item-cat {{ font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }}
-.elo-bar-wrap {{ width: 120px; flex-shrink: 0; }}
-.elo-bar {{ height: 6px; background: #f3f4f6; border-radius: 3px; overflow: hidden; }}
-.elo-bar-fill {{ height: 100%; background: linear-gradient(90deg, #818cf8, #c084fc); border-radius: 3px; transition: width .4s; }}
-.elo-num {{ font-size: 12px; font-weight: 700; color: #6366f1; text-align: right; margin-top: 3px; }}
-.item-actions {{ display: flex; gap: 8px; }}
-.del-btn {{ background: transparent; border: none; color: #d1d5db; cursor: pointer; font-size: 16px; padding: 4px; transition: color .15s; }}
-.del-btn:hover {{ color: #ef4444; }}
-.category-group {{ margin-bottom: 28px; }}
-.cat-label {{ font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #9ca3af; margin-bottom: 10px; padding-left: 4px; }}
-.congrats {{ text-align: center; padding: 32px; color: #6b7280; }}
-</style>
-<div class="page-wrap">
-  <div class="hero">
-    <h1>Your Taste Stack</h1>
-    <p>Rank what you love. The more you compare, the better your recommendations get.</p>
-  </div>
-
-  <div class="stats-row">
-    <div class="stat-pill"><strong>{matchup_count}</strong> matchups</div>
-    <div class="stat-pill"><strong>{len(items)}</strong> activity types</div>
-    {'<div class="stat-pill" style="border-color:#f59e0b;color:#f59e0b;"><strong style=\'color:#f59e0b;\'>' + str(streak_info["streak"]) + '</strong> day streak</div>' if streak_info["streak"] > 0 else '<div class="stat-pill" style="color:#6b7280;">Start a streak!</div>'}
-    {'<div class="stat-pill" style="color:#22c55e;border-color:#166534;">✓ done today</div>' if streak_info["today_done"] else ''}
-    {'<a href="/taste/share/' + (current_user["user_token"] if current_user else "") + '" target="_blank" style="text-decoration:none;"><div class="stat-pill" style="cursor:pointer;border-color:#4b5563;color:#94a3b8;">↗ Share</div></a>' if current_user else ''}
-  </div>
-
-  <div id="radar-section" style="display:flex;justify-content:center;margin:0 0 24px;"></div>
-
-  <div class="matchup-card" id="matchup-card">
-    <div class="matchup-label">Which sounds better to you?</div>
-    <div class="matchup-vs" id="matchup-vs">Loading...</div>
-    <button class="equal-btn" id="equal-btn" onclick="vote(null)">Equal / Can't decide</button>
-  </div>
-
-  <div class="stack-section">
-    <div class="stack-header">
-      <h2>Your Rankings</h2>
-      <div class="add-form" id="add-form">
-        <input type="text" id="new-label" placeholder="Add activity...">
-        <select id="new-cat">
-          <option value="general">general</option>
-          <option value="music">music</option>
-          <option value="social">social</option>
-          <option value="arts">arts</option>
-          <option value="intellectual">intellectual</option>
-          <option value="active">active</option>
-          <option value="food">food</option>
-          <option value="maker">maker</option>
-        </select>
-        <button onclick="addItem()">Add</button>
-      </div>
-    </div>
-    <div id="stack-list"></div>
-  </div>
-</div>
-
-<script>
-const ITEMS = {items_json};
-let PAIR = {pair_json};
-let currentItems = [...ITEMS];
-
-const CAT_COLORS = {{
-  music: '#d97706', social: '#2563eb', arts: '#db2777',
-  intellectual: '#7c3aed', active: '#16a34a', food: '#ea580c',
-  maker: '#0891b2', general: '#6b7280'
-}};
-
-function renderMatchup() {{
-  const vs = document.getElementById('matchup-vs');
-  const eq = document.getElementById('equal-btn');
-  if (!PAIR) {{
-    vs.innerHTML = '<div class="congrats" style="grid-column:1/-1"><p style="font-size:1.1rem;color:#818cf8;font-weight:700;">You&apos;ve ranked everything!</p><p style="margin-top:8px;">Add more activities to keep refining your taste.</p></div>';
-    eq.style.display = 'none';
-    return;
-  }}
-  const [a, b] = PAIR;
-  eq.style.display = '';
-  vs.innerHTML = `
-    <div class="matchup-option" id="opt-a" onclick="vote(${{a.id}})">
-      <div class="category" style="color:${{CAT_COLORS[a.category] || '#6b7280'}}">${{a.category}}</div>
-      <div class="label">${{a.label}}</div>
-      <div style="font-size:11px;color:#9ca3af;margin-top:8px">${{Math.round(a.elo_rating)}} elo</div>
-    </div>
-    <div class="vs-badge">vs</div>
-    <div class="matchup-option" id="opt-b" onclick="vote(${{b.id}})">
-      <div class="category" style="color:${{CAT_COLORS[b.category] || '#6b7280'}}">${{b.category}}</div>
-      <div class="label">${{b.label}}</div>
-      <div style="font-size:11px;color:#4b5563;margin-top:8px">${{Math.round(b.elo_rating)}} elo</div>
-    </div>`;
-}}
-
-function vote(winnerId) {{
-  if (!PAIR) return;
-  const [a, b] = PAIR;
-  fetch('/api/taste/vote', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{item_a_id: a.id, item_b_id: b.id, winner_id: winnerId}})
-  }}).then(r => r.json()).then(d => {{
-    if (d.ok) {{
-      PAIR = d.next_pair;
-      currentItems = d.items;
-      renderMatchup();
-      renderStack();
-      // Update stat pills
-      const pills = document.querySelectorAll('.stat-pill');
-      if (pills[0]) pills[0].innerHTML = `<strong>${{d.matchup_count}}</strong> matchups`;
-      if (d.streak && pills[2]) {{
-        const s = d.streak;
-        if (s.streak > 0) {{
-          pills[2].innerHTML = `<strong style="color:#f59e0b;">${{s.streak}}</strong> day streak`;
-          pills[2].style.borderColor = '#f59e0b';
-          pills[2].style.color = '#f59e0b';
-        }}
-      }}
-    }}
-  }});
-}}
-
-function renderStack() {{
-  const container = document.getElementById('stack-list');
-  if (!currentItems.length) {{ container.innerHTML = '<p style="color:#4b5563;text-align:center">No items yet.</p>'; return; }}
-
-  // Group by category
-  const cats = {{}};
-  currentItems.forEach(item => {{
-    if (!cats[item.category]) cats[item.category] = [];
-    cats[item.category].push(item);
-  }});
-
-  const maxElo = Math.max(...currentItems.map(i => i.elo_rating));
-  const minElo = Math.min(...currentItems.map(i => i.elo_rating));
-  const range = maxElo - minElo || 1;
-
-  let rank = 1;
-  let html = '';
-  // Render sorted by elo
-  const sorted = [...currentItems].sort((a,b) => b.elo_rating - a.elo_rating);
-  const byCat = {{}};
-  sorted.forEach(item => {{
-    if (!byCat[item.category]) byCat[item.category] = [];
-    byCat[item.category].push(item);
-  }});
-
-  sorted.forEach(item => {{
-    const pct = Math.round((item.elo_rating - minElo) / range * 100);
-    html += `<div class="taste-item">
-      <span class="rank-num">#${{rank++}}</span>
-      <div class="item-info">
-        <div class="item-label">${{item.label}}</div>
-        <div class="item-cat" style="color:${{CAT_COLORS[item.category] || '#6b7280'}}">${{item.category}}</div>
-      </div>
-      <div class="elo-bar-wrap">
-        <div class="elo-bar"><div class="elo-bar-fill" style="width:${{pct}}%"></div></div>
-        <div class="elo-num">${{Math.round(item.elo_rating)}}</div>
-      </div>
-      <div class="item-actions">
-        <button class="del-btn" onclick="deleteItem(${{item.id}}, event)" title="Remove">✕</button>
-      </div>
-    </div>`;
-  }});
-  container.innerHTML = html;
-}}
-
-function addItem() {{
-  const label = document.getElementById('new-label').value.trim();
-  const cat = document.getElementById('new-cat').value;
-  if (!label) return;
-  fetch('/api/taste/add', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{label, category: cat}})
-  }}).then(r => r.json()).then(d => {{
-    if (d.ok) {{
-      currentItems = d.items;
-      PAIR = d.next_pair;
-      renderMatchup();
-      renderStack();
-      document.getElementById('new-label').value = '';
-    }}
-  }});
-}}
-
-function deleteItem(id, e) {{
-  e.stopPropagation();
-  fetch('/api/taste/delete', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{item_id: id}})
-  }}).then(r => r.json()).then(d => {{
-    if (d.ok) {{
-      currentItems = d.items;
-      PAIR = d.next_pair;
-      renderMatchup();
-      renderStack();
-    }}
-  }});
-}}
-
-renderMatchup();
-renderStack();
-
-// Load radar chart
-fetch('/api/taste/radar').then(r => r.json()).then(d => {{
-  const sec = document.getElementById('radar-section');
-  if (!sec || !d.axes || d.axes.length < 3) return;
-  const n = d.axes.length;
-  const size = 200;
-  const cx = cy = size / 2;
-  const r = size * 0.38;
-  const lr = size * 0.48;
-  const TWO_PI = Math.PI * 2;
-  // Grid rings
-  let svg = `<svg width="${{size}}" height="${{size}}" viewBox="0 0 ${{size}} ${{size}}" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">`;
-  [0.25,0.5,0.75,1.0].forEach(level => {{
-    const pts = d.axes.map((_,i) => {{
-      const a = TWO_PI * i / n - Math.PI/2;
-      return `${{(cx+Math.cos(a)*r*level).toFixed(1)}},${{(cy+Math.sin(a)*r*level).toFixed(1)}}`;
-    }});
-    svg += `<polygon points="${{pts.join(' ')}}" fill="none" stroke="#e5e7eb" stroke-width="0.8"/>`;
-  }});
-  // Axes
-  d.axes.forEach((_,i) => {{
-    const a = TWO_PI * i / n - Math.PI/2;
-    svg += `<line x1="${{cx.toFixed(1)}}" y1="${{cy.toFixed(1)}}" x2="${{(cx+Math.cos(a)*r).toFixed(1)}}" y2="${{(cy+Math.sin(a)*r).toFixed(1)}}" stroke="#e5e7eb" stroke-width="0.8"/>`;
-  }});
-  // Data
-  const dpts = d.values.map((v,i) => {{
-    const a = TWO_PI * i / n - Math.PI/2;
-    return `${{(cx+Math.cos(a)*r*v).toFixed(1)}},${{(cy+Math.sin(a)*r*v).toFixed(1)}}`;
-  }});
-  svg += `<polygon points="${{dpts.join(' ')}}" fill="rgba(129,140,248,0.25)" stroke="#818cf8" stroke-width="2"/>`;
-  // Dots + labels
-  d.values.forEach((v,i) => {{
-    const a = TWO_PI * i / n - Math.PI/2;
-    const px = (cx+Math.cos(a)*r*v).toFixed(1);
-    const py = (cy+Math.sin(a)*r*v).toFixed(1);
-    const lx = (cx+Math.cos(a)*lr).toFixed(1);
-    const ly = (cy+Math.sin(a)*lr).toFixed(1);
-    const anchor = cx-Math.cos(a)*r > 5 ? 'end' : cx+Math.cos(a)*r > 5 ? 'start' : 'middle';
-    svg += `<circle cx="${{px}}" cy="${{py}}" r="3" fill="#818cf8"/>`;
-    svg += `<text x="${{lx}}" y="${{ly}}" text-anchor="${{anchor}}" dominant-baseline="middle" font-size="9" fill="#6b7280" font-family="system-ui">${{d.axes[i]}}</text>`;
-  }});
-  svg += '</svg>';
-  sec.innerHTML = `<div style="background:white;border:1px solid #e5e7eb;border-radius:14px;padding:20px 32px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-    <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#6366f1;margin-bottom:12px;">Taste Profile</div>
-    ${{svg}}
-    <div style="font-size:11px;color:#9ca3af;margin-top:8px;">Based on ${{d.axes.length}} categories · updates with each matchup</div>
-  </div>`;
-}});
-</script>
-""", current_user))
-    return _maybe_set_cookie(request, resp, current_user)
 
 
 @app.post("/api/taste/vote")
