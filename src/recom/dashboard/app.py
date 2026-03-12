@@ -5911,25 +5911,685 @@ async def user_cal_page(token: str, request: Request):
             </div>
         </div>"""
 
+    caldav_server = dashboard_url.replace("https://", "").replace("http://", "")
+    caldav_url = f"{dashboard_url}/caldav/{token}/"
+
     return HTMLResponse(_layout("Your Calendars", f"""
     <h1>Your Calendars</h1>
     <p style="color:#6b7280;margin-bottom:20px;font-size:14px;">
         Subscribe to any of these feeds in Google Calendar, Apple Calendar, or Outlook.
         They update automatically.
     </p>
+
+    <div class="card" style="max-width:640px;margin-bottom:16px;border:2px solid #4f46e5;background:#f5f3ff;">
+        <div style="padding:16px 0 8px;">
+            <span style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#4f46e5;">Recommended</span>
+            <h2 style="font-size:18px;font-weight:700;color:#1e1b4b;margin:4px 0 8px;">CalDAV Account (Apple / Outlook / Fantastical)</h2>
+            <p style="font-size:13px;color:#6b7280;line-height:1.6;">Add <strong>one account</strong> and get all your sub-calendars (recommendations, RSVPs, friends, groups) with individual toggle and color control. This is the best experience.</p>
+        </div>
+        <div style="background:white;border-radius:10px;padding:16px;margin:12px 0;">
+            <p style="font-size:13px;font-weight:700;color:#1e1b4b;margin-bottom:12px;">Apple Calendar (macOS / iOS)</p>
+            <ol style="font-size:13px;color:#374151;margin:0;padding-left:20px;line-height:2;">
+                <li>Open <strong>Settings</strong> (iOS) or <strong>System Settings</strong> (macOS)</li>
+                <li>Go to <strong>Internet Accounts</strong> (or <strong>Passwords &amp; Accounts</strong> on iOS)</li>
+                <li>Tap <strong>Add Account</strong> &rarr; <strong>Other</strong> &rarr; <strong>Add CalDAV Account</strong></li>
+                <li>Fill in:
+                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin:6px 0;font-family:monospace;font-size:12px;line-height:1.8;">
+                        Server: <strong>{caldav_server}</strong><br>
+                        Username: <strong>{token}</strong><br>
+                        Password: <strong>{token}</strong>
+                    </div>
+                </li>
+                <li>Your sub-calendars will appear automatically with colors</li>
+            </ol>
+        </div>
+        <div style="background:white;border-radius:10px;padding:16px;margin:12px 0;">
+            <p style="font-size:13px;font-weight:700;color:#1e1b4b;margin-bottom:8px;">Fantastical / BusyCal</p>
+            <p style="font-size:13px;color:#374151;line-height:1.6;">Same as Apple Calendar: add a CalDAV account with the server, username, and password above.</p>
+        </div>
+        <div style="background:white;border-radius:10px;padding:16px;margin:12px 0;">
+            <p style="font-size:13px;font-weight:700;color:#1e1b4b;margin-bottom:8px;">Outlook</p>
+            <p style="font-size:13px;color:#374151;line-height:1.6;">
+                Add a CalDAV subscription with this URL:<br>
+                <code style="font-size:12px;background:#f1f5f9;padding:4px 8px;border-radius:4px;word-break:break-all;">{caldav_url}</code>
+            </p>
+        </div>
+        <div style="background:#fffbeb;border-radius:10px;padding:12px 16px;margin:12px 0;border:1px solid #fde68a;">
+            <p style="font-size:13px;color:#92400e;line-height:1.5;">
+                <strong>Google Calendar</strong> does not support CalDAV subscriptions. Use the individual .ics feed URLs below instead.
+            </p>
+        </div>
+    </div>
+
     <div class="card" style="max-width:640px;">
-        {_feed_row("My Recommendations", feed_url, webcal_feed, "All events scored ≥55 from your latest run", "#4f46e5")}
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;">.ics Feed URLs (Google Calendar &amp; others)</h3>
+        <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">For apps that don&apos;t support CalDAV, subscribe to individual feeds.</p>
+        {_feed_row("My Recommendations", feed_url, webcal_feed, "All events scored &ge;55 from your latest run", "#4f46e5")}
         {_feed_row("My Confirmed Plans", rsvps_url, webcal_rsvps, "Only events you RSVP'd going or maybe", "#16a34a")}
     </div>
     <div class="card" style="max-width:640px;margin-top:16px;">
-        <p style="font-size:13px;color:#6b7280;margin-bottom:8px;"><strong>How to subscribe:</strong></p>
+        <p style="font-size:13px;color:#6b7280;margin-bottom:8px;"><strong>How to subscribe (Google Calendar):</strong></p>
         <ul style="font-size:13px;color:#6b7280;margin:0;padding-left:20px;line-height:1.8;">
-            <li><strong>Google Calendar:</strong> Other calendars → + → From URL → paste URL</li>
-            <li><strong>Apple Calendar:</strong> File → New Calendar Subscription → paste URL</li>
-            <li><strong>Outlook:</strong> Add calendar → From internet → paste URL</li>
+            <li><strong>Google Calendar:</strong> Other calendars &rarr; + &rarr; From URL &rarr; paste URL</li>
+            <li><strong>Apple Calendar:</strong> File &rarr; New Calendar Subscription &rarr; paste URL</li>
+            <li><strong>Outlook:</strong> Add calendar &rarr; From internet &rarr; paste URL</li>
         </ul>
     </div>
     """, user=user))
+
+
+# ---------------------------------------------------------------------------
+# CalDAV Server — Native CalDAV in FastAPI
+# ---------------------------------------------------------------------------
+
+import base64
+import xml.etree.ElementTree as ET
+
+
+def _caldav_auth(request: Request) -> dict | None:
+    """Extract Basic Auth credentials, validate token against users table.
+    CalDAV apps send username=token, password=token."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Basic "):
+        return None
+    try:
+        decoded = base64.b64decode(auth[6:]).decode("utf-8")
+        username, _password = decoded.split(":", 1)
+    except Exception:
+        return None
+    db = get_db()
+    return db.get_user_by_token(username)
+
+
+def _caldav_error_401() -> Response:
+    """Return 401 with WWW-Authenticate: Basic header."""
+    return Response(
+        content="Unauthorized",
+        status_code=401,
+        headers={"WWW-Authenticate": 'Basic realm="recom"'},
+    )
+
+
+def _get_subcalendars(user: dict, db) -> list[dict]:
+    """Return list of sub-calendar dicts for the given user."""
+    token = user["user_token"]
+    calendars = [
+        {
+            "name": "my-recs",
+            "path": f"/caldav/{token}/my-recs/",
+            "displayname": "My Recommendations",
+            "color": "#4f46e5",
+            "description": "Events scored >= 25 from your latest run",
+        },
+        {
+            "name": "my-rsvps",
+            "path": f"/caldav/{token}/my-rsvps/",
+            "displayname": "My Confirmed Plans",
+            "color": "#16a34a",
+            "description": "Events you RSVP'd going or maybe",
+        },
+    ]
+    # Add group calendars
+    groups = db.get_user_groups(user["id"])
+    for g in groups:
+        slug = g.get("slug", "")
+        name = g.get("name", slug)
+        calendars.append({
+            "name": f"group-{slug}",
+            "path": f"/caldav/{token}/group-{slug}/",
+            "displayname": f"Group: {name}",
+            "color": "#8b5cf6",
+            "description": f"Blend of all {name} members' picks",
+        })
+        # Add friend calendars for each group member
+        members = db.get_group_members(g["id"])
+        for m in members:
+            if m["id"] == user["id"]:
+                continue
+            friend_name = (m.get("name") or m.get("email", "unknown")).split()[0].lower()
+            friend_slug = f"friend-{friend_name}-{m['id']}"
+            display = m.get("name") or m.get("email", "")
+            calendars.append({
+                "name": friend_slug,
+                "path": f"/caldav/{token}/{friend_slug}/",
+                "displayname": f"Friend: {display}",
+                "color": "#f59e0b",
+                "description": f"{display}'s confirmed plans",
+            })
+    return calendars
+
+
+def _caldav_get_events_for_calendar(cal_name: str, user: dict, db) -> list[dict]:
+    """Return list of event dicts for a specific sub-calendar."""
+    user_id = user["id"]
+    if cal_name == "my-recs":
+        run = db.get_user_latest_run(user_id)
+        if not run:
+            return []
+        events = db.get_run_events(run["id"])
+        return [e for e in events if e.get("keep") and (e.get("score") or 0) >= 25]
+    elif cal_name == "my-rsvps":
+        rows = db.conn.execute(
+            """SELECT r.status, r.event_id, e.title, e.start_time, e.end_time,
+                      e.location_name, e.location_address, e.url, e.price,
+                      e.description, e.lat, e.lon, e.event_id,
+                      COALESCE(rk.score, 0) as score,
+                      COALESCE(rk.match_reason, '') as match_reason,
+                      COALESCE(rk.vibe, 'mixed') as vibe
+               FROM rsvps r
+               JOIN events e ON e.event_id = r.event_id
+               LEFT JOIN rankings rk ON rk.event_id = r.event_id AND rk.run_id = e.run_id
+               WHERE r.user_id = ? AND r.status IN ('going', 'maybe')
+               ORDER BY e.start_time ASC LIMIT 100""",
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    elif cal_name.startswith("group-"):
+        slug = cal_name[6:]  # Remove "group-" prefix
+        group = db.get_group(slug)
+        if not group:
+            return []
+        if not db.is_group_member(group["id"], user_id):
+            return []
+        events = db.get_group_events(group["id"])
+        return [e for e in events if (e.get("score") or 0) >= 25]
+    elif cal_name.startswith("friend-"):
+        # Parse friend-{name}-{id}
+        parts = cal_name.rsplit("-", 1)
+        if len(parts) != 2:
+            return []
+        try:
+            friend_id = int(parts[1])
+        except ValueError:
+            return []
+        # Verify they share a group
+        user_groups = db.get_user_groups(user_id)
+        shares_group = False
+        for g in user_groups:
+            if db.is_group_member(g["id"], friend_id):
+                shares_group = True
+                break
+        if not shares_group:
+            return []
+        # Get friend's RSVPs
+        rows = db.conn.execute(
+            """SELECT r.status, r.event_id, e.title, e.start_time, e.end_time,
+                      e.location_name, e.location_address, e.url, e.price,
+                      e.description, e.lat, e.lon, e.event_id,
+                      COALESCE(rk.score, 0) as score,
+                      COALESCE(rk.match_reason, '') as match_reason,
+                      COALESCE(rk.vibe, 'mixed') as vibe
+               FROM rsvps r
+               JOIN events e ON e.event_id = r.event_id
+               LEFT JOIN rankings rk ON rk.event_id = r.event_id AND rk.run_id = e.run_id
+               WHERE r.user_id = ? AND r.status IN ('going', 'maybe')
+               ORDER BY e.start_time ASC LIMIT 100""",
+            (friend_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    return []
+
+
+def _build_vevent(event: dict, uid_suffix: str, token: str) -> str:
+    """Build a single VEVENT string from an event dict."""
+    import html as _html
+    from datetime import timezone as _tz
+
+    def _esc(text: str) -> str:
+        text = _html.unescape(str(text))
+        return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+    def _fold(line: str) -> str:
+        encoded = line.encode("utf-8")
+        if len(encoded) <= 75:
+            return line
+        chunks = []
+        while len(encoded) > 75:
+            cut = 75
+            while cut > 0 and (encoded[cut] & 0xC0) == 0x80:
+                cut -= 1
+            if cut == 0:
+                cut = 75
+            chunks.append(encoded[:cut].decode("utf-8"))
+            encoded = encoded[cut:]
+        if encoded:
+            chunks.append(encoded.decode("utf-8"))
+        return "\r\n ".join(chunks)
+
+    utcnow = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
+    start = event.get("start_time")
+    if not start:
+        return ""
+    try:
+        dt = datetime.fromisoformat(start)
+    except (ValueError, TypeError):
+        return ""
+    dtstart = dt.strftime("%Y%m%dT%H%M%S")
+
+    eid = event.get("event_id", "unknown")
+    title = _esc(event.get("title") or "Event")
+    location = _esc(event.get("location_name") or "")
+    url = event.get("url") or ""
+    score = int(event.get("score") or 0)
+    reason = _esc(event.get("match_reason") or "")
+    price = _esc(event.get("price") or "Free")
+    vibe = event.get("vibe", "mixed")
+
+    desc_parts = []
+    if reason:
+        desc_parts.append(reason)
+    if price and price != "Free":
+        desc_parts.append(f"Price: {price}")
+    if url:
+        desc_parts.append(f"Tickets: {url}")
+    desc = _esc("\\n".join(desc_parts))
+
+    lines = [
+        "BEGIN:VEVENT",
+        f"UID:{eid}@recom-{uid_suffix}",
+        f"DTSTAMP:{utcnow}",
+        f"DTSTART:{dtstart}",
+        _fold(f"SUMMARY:[{score}] {title}"),
+        _fold(f"LOCATION:{location}"),
+        _fold(f"URL:{url}"),
+        _fold(f"DESCRIPTION:{desc}"),
+        f"CATEGORIES:{vibe}",
+        "DURATION:PT2H",
+        "TRANSP:TRANSPARENT",
+    ]
+    lat, lon = event.get("lat"), event.get("lon")
+    if lat and lon:
+        lines.append(f"GEO:{lat};{lon}")
+    lines.extend([
+        "BEGIN:VALARM",
+        "TRIGGER:-PT2H",
+        "ACTION:DISPLAY",
+        f"DESCRIPTION:Reminder: {title}",
+        "END:VALARM",
+        "END:VEVENT",
+    ])
+    return "\r\n".join(lines)
+
+
+def _build_vcalendar(cal_name: str, displayname: str, color: str,
+                     events: list[dict], token: str) -> str:
+    """Build a full VCALENDAR string with VEVENTs."""
+    import html as _html
+    def _esc(text: str) -> str:
+        text = _html.unescape(str(text))
+        return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        f"PRODID:-//recom//CalDAV {_esc(displayname)}//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        f"X-WR-CALNAME:{_esc(displayname)}",
+        f"X-APPLE-CALENDAR-COLOR:{color}",
+        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+    ]
+    for e in events[:100]:
+        vevent = _build_vevent(e, f"caldav-{cal_name}", token)
+        if vevent:
+            lines.append(vevent)
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines)
+
+
+def _caldav_xml_multistatus(responses: list[tuple[str, dict, list[str] | None]]) -> str:
+    """Build XML multistatus response.
+    Each tuple is (href, found_props, not_found_prop_names)."""
+    xml_lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:A="http://apple.com/ns/ical/" xmlns:CS="http://calendarserver.org/ns/">',
+    ]
+    for href, props, not_found in responses:
+        xml_lines.append("  <D:response>")
+        xml_lines.append(f"    <D:href>{href}</D:href>")
+        if props:
+            xml_lines.append("    <D:propstat>")
+            xml_lines.append("      <D:prop>")
+            for k, v in props.items():
+                xml_lines.append(f"        {v}")
+            xml_lines.append("      </D:prop>")
+            xml_lines.append("      <D:status>HTTP/1.1 200 OK</D:status>")
+            xml_lines.append("    </D:propstat>")
+        if not_found:
+            xml_lines.append("    <D:propstat>")
+            xml_lines.append("      <D:prop>")
+            for nf in not_found:
+                xml_lines.append(f"        {nf}")
+            xml_lines.append("      </D:prop>")
+            xml_lines.append("      <D:status>HTTP/1.1 404 Not Found</D:status>")
+            xml_lines.append("    </D:propstat>")
+        xml_lines.append("  </D:response>")
+    xml_lines.append("</D:multistatus>")
+    return "\n".join(xml_lines)
+
+
+def _parse_propfind_body(body: bytes) -> list[str]:
+    """Parse PROPFIND request body to find which properties are requested.
+    Returns list of property local names. If allprop or empty, return ['allprop']."""
+    if not body or not body.strip():
+        return ["allprop"]
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        return ["allprop"]
+    # Check for allprop
+    for elem in root.iter():
+        if elem.tag.endswith("}allprop") or elem.tag == "allprop":
+            return ["allprop"]
+    # Collect requested prop names
+    props = []
+    for elem in root.iter():
+        tag = elem.tag
+        if "}" in tag:
+            local = tag.split("}", 1)[1]
+        else:
+            local = tag
+        if local not in ("propfind", "prop", "allprop"):
+            props.append(local)
+    return props if props else ["allprop"]
+
+
+def _make_principal_props(token: str, user: dict) -> dict:
+    """Build property dict for the principal resource."""
+    user_name = user.get("name") or user.get("email", "")
+    return {
+        "displayname": f"<D:displayname>{user_name}</D:displayname>",
+        "resourcetype": "<D:resourcetype><D:collection/><D:principal/></D:resourcetype>",
+        "current-user-principal": f"<D:current-user-principal><D:href>/caldav/{token}/</D:href></D:current-user-principal>",
+        "calendar-home-set": f"<C:calendar-home-set><D:href>/caldav/{token}/</D:href></C:calendar-home-set>",
+    }
+
+
+def _make_calendar_props(cal: dict, run_id: int | None) -> dict:
+    """Build property dict for a calendar collection."""
+    ctag = f"run-{run_id}" if run_id else "run-0"
+    return {
+        "displayname": f"<D:displayname>{cal['displayname']}</D:displayname>",
+        "resourcetype": "<D:resourcetype><D:collection/><C:calendar/></D:resourcetype>",
+        "supported-calendar-component-set": '<C:supported-calendar-component-set><C:comp name="VEVENT"/></C:supported-calendar-component-set>',
+        "calendar-color": f"<A:calendar-color>{cal['color']}</A:calendar-color>",
+        "getctag": f"<CS:getctag>{ctag}</CS:getctag>",
+        "calendar-description": f"<C:calendar-description>{cal['description']}</C:calendar-description>",
+        "supported-calendar-data": '<C:supported-calendar-data><C:calendar-data content-type="text/calendar" version="2.0"/></C:supported-calendar-data>',
+        "current-user-privilege-set": "<D:current-user-privilege-set><D:privilege><D:read/></D:privilege></D:current-user-privilege-set>",
+    }
+
+
+# --- CalDAV OPTIONS ---
+
+@app.api_route("/caldav/{token}/{path:path}", methods=["OPTIONS"])
+@app.api_route("/caldav/{token}/", methods=["OPTIONS"])
+@app.api_route("/caldav/{token}", methods=["OPTIONS"])
+async def caldav_options(token: str, path: str = ""):
+    return Response(
+        content="",
+        status_code=200,
+        headers={
+            "DAV": "1, calendar-access",
+            "Allow": "OPTIONS, GET, HEAD, PROPFIND, REPORT",
+        },
+    )
+
+
+# --- CalDAV PROPFIND principal ---
+
+@app.api_route("/caldav/{token}/", methods=["PROPFIND"])
+@app.api_route("/caldav/{token}", methods=["PROPFIND"])
+async def caldav_propfind_principal(token: str, request: Request):
+    user = _caldav_auth(request)
+    if not user:
+        return _caldav_error_401()
+    if user["user_token"] != token:
+        return _caldav_error_401()
+
+    db = get_db()
+    depth = request.headers.get("Depth", "0")
+    body = await request.body()
+    _requested = _parse_propfind_body(body)
+
+    run = db.get_user_latest_run(user["id"])
+    run_id = run["id"] if run else None
+
+    responses = []
+    # Principal itself
+    responses.append((
+        f"/caldav/{token}/",
+        _make_principal_props(token, user),
+        None,
+    ))
+
+    if depth == "1":
+        calendars = _get_subcalendars(user, db)
+        for cal in calendars:
+            responses.append((
+                cal["path"],
+                _make_calendar_props(cal, run_id),
+                None,
+            ))
+
+    xml = _caldav_xml_multistatus(responses)
+    return Response(content=xml, media_type="application/xml; charset=utf-8", status_code=207)
+
+
+# --- CalDAV PROPFIND calendar collection ---
+
+@app.api_route("/caldav/{token}/{cal_name}/", methods=["PROPFIND"])
+@app.api_route("/caldav/{token}/{cal_name}", methods=["PROPFIND"])
+async def caldav_propfind_calendar(token: str, cal_name: str, request: Request):
+    user = _caldav_auth(request)
+    if not user:
+        return _caldav_error_401()
+    if user["user_token"] != token:
+        return _caldav_error_401()
+
+    db = get_db()
+    depth = request.headers.get("Depth", "0")
+    body = await request.body()
+    _requested = _parse_propfind_body(body)
+
+    run = db.get_user_latest_run(user["id"])
+    run_id = run["id"] if run else None
+
+    # Find matching calendar
+    calendars = _get_subcalendars(user, db)
+    cal = None
+    for c in calendars:
+        if c["name"] == cal_name:
+            cal = c
+            break
+    if not cal:
+        return Response(content="Not Found", status_code=404)
+
+    responses = []
+    # Calendar itself
+    responses.append((
+        cal["path"],
+        _make_calendar_props(cal, run_id),
+        None,
+    ))
+
+    if depth == "1":
+        # List events as hrefs
+        events = _caldav_get_events_for_calendar(cal_name, user, db)
+        from datetime import timezone as _tz
+        utcnow = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
+        for e in events[:100]:
+            eid = e.get("event_id", "")
+            if not eid or not e.get("start_time"):
+                continue
+            href = f"/caldav/{token}/{cal_name}/{eid}.ics"
+            etag = f'"{eid}-{run_id or 0}"'
+            responses.append((
+                href,
+                {
+                    "getetag": f"<D:getetag>{etag}</D:getetag>",
+                    "getcontenttype": "<D:getcontenttype>text/calendar; component=vevent</D:getcontenttype>",
+                    "resourcetype": "<D:resourcetype/>",
+                },
+                None,
+            ))
+
+    xml = _caldav_xml_multistatus(responses)
+    return Response(content=xml, media_type="application/xml; charset=utf-8", status_code=207)
+
+
+# --- CalDAV REPORT ---
+
+@app.api_route("/caldav/{token}/{cal_name}/", methods=["REPORT"])
+@app.api_route("/caldav/{token}/{cal_name}", methods=["REPORT"])
+async def caldav_report(token: str, cal_name: str, request: Request):
+    user = _caldav_auth(request)
+    if not user:
+        return _caldav_error_401()
+    if user["user_token"] != token:
+        return _caldav_error_401()
+
+    db = get_db()
+    body = await request.body()
+
+    # Parse request body to determine type: calendar-multiget or calendar-query
+    requested_hrefs = []
+    is_multiget = False
+    if body:
+        try:
+            root = ET.fromstring(body)
+            # Check if it's a calendar-multiget
+            root_tag = root.tag
+            if "calendar-multiget" in root_tag:
+                is_multiget = True
+                for elem in root.iter():
+                    if elem.tag.endswith("}href") or elem.tag == "href":
+                        if elem.text:
+                            requested_hrefs.append(elem.text.strip())
+        except ET.ParseError:
+            pass
+
+    # Find matching calendar
+    calendars = _get_subcalendars(user, db)
+    cal = None
+    for c in calendars:
+        if c["name"] == cal_name:
+            cal = c
+            break
+    if not cal:
+        return Response(content="Not Found", status_code=404)
+
+    events = _caldav_get_events_for_calendar(cal_name, user, db)
+    run = db.get_user_latest_run(user["id"])
+    run_id = run["id"] if run else None
+
+    # If multiget, filter to requested events
+    if is_multiget and requested_hrefs:
+        requested_eids = set()
+        for href in requested_hrefs:
+            # Extract event_id from href like /caldav/{token}/{cal_name}/{event_id}.ics
+            if href.endswith(".ics"):
+                parts = href.rstrip("/").split("/")
+                eid_ics = parts[-1]
+                requested_eids.add(eid_ics[:-4])  # Remove .ics
+        events = [e for e in events if e.get("event_id") in requested_eids]
+
+    # Build response with calendar-data
+    responses = []
+    for e in events[:100]:
+        eid = e.get("event_id", "")
+        if not eid or not e.get("start_time"):
+            continue
+        href = f"/caldav/{token}/{cal_name}/{eid}.ics"
+        etag = f'"{eid}-{run_id or 0}"'
+        vevent = _build_vevent(e, f"caldav-{cal_name}", token)
+        if not vevent:
+            continue
+        cal_data = f"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//recom//CalDAV//EN\r\nCALSCALE:GREGORIAN\r\n{vevent}\r\nEND:VCALENDAR"
+        # Escape XML special chars in calendar data
+        cal_data_escaped = cal_data.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        responses.append((
+            href,
+            {
+                "getetag": f"<D:getetag>{etag}</D:getetag>",
+                "calendar-data": f"<C:calendar-data>{cal_data_escaped}</C:calendar-data>",
+            },
+            None,
+        ))
+
+    xml = _caldav_xml_multistatus(responses)
+    return Response(content=xml, media_type="application/xml; charset=utf-8", status_code=207)
+
+
+# --- CalDAV GET single event ---
+
+@app.get("/caldav/{token}/{cal_name}/{event_id}.ics")
+async def caldav_get_event(token: str, cal_name: str, event_id: str, request: Request):
+    user = _caldav_auth(request)
+    if not user:
+        # Also allow token-based auth (token in URL is enough)
+        db = get_db()
+        user = db.get_user_by_token(token)
+    if not user:
+        return _caldav_error_401()
+
+    db = get_db()
+    event = _find_event(db, event_id)
+    if not event:
+        return Response(content="Not Found", status_code=404)
+
+    vevent = _build_vevent(event, f"caldav-{cal_name}", token)
+    if not vevent:
+        return Response(content="Not Found", status_code=404)
+
+    cal_str = f"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//recom//CalDAV//EN\r\nCALSCALE:GREGORIAN\r\n{vevent}\r\nEND:VCALENDAR"
+    run = db.get_user_latest_run(user["id"])
+    run_id = run["id"] if run else 0
+    etag = f'"{event_id}-{run_id}"'
+    return Response(
+        content=cal_str,
+        media_type="text/calendar; charset=utf-8",
+        headers={"ETag": etag},
+    )
+
+
+# --- CalDAV GET full calendar ---
+
+@app.get("/caldav/{token}/{cal_name}/")
+@app.get("/caldav/{token}/{cal_name}")
+async def caldav_get_calendar(token: str, cal_name: str, request: Request):
+    user = _caldav_auth(request)
+    if not user:
+        db = get_db()
+        user = db.get_user_by_token(token)
+    if not user:
+        return _caldav_error_401()
+
+    db = get_db()
+    calendars = _get_subcalendars(user, db)
+    cal = None
+    for c in calendars:
+        if c["name"] == cal_name:
+            cal = c
+            break
+    if not cal:
+        return Response(content="Not Found", status_code=404)
+
+    events = _caldav_get_events_for_calendar(cal_name, user, db)
+    cal_str = _build_vcalendar(cal_name, cal["displayname"], cal["color"], events, token)
+    return Response(content=cal_str, media_type="text/calendar; charset=utf-8")
+
+
+# --- Well-known CalDAV redirect ---
+
+@app.get("/.well-known/caldav")
+async def wellknown_caldav(request: Request):
+    """Well-known redirect for CalDAV auto-discovery.
+    Calendar apps check this first. Redirect to principal if authenticated."""
+    user = _caldav_auth(request)
+    if user:
+        return RedirectResponse(f"/caldav/{user['user_token']}/", status_code=301)
+    return _caldav_error_401()
 
 
 def run():

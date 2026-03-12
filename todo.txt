@@ -108,7 +108,7 @@
 # - Do NOT mark as partial/done-enough. All 7 acceptance criteria must pass.
 # - Do NOT punt to a future task. This is the task.
 #
-# Status: NOT STARTED
+# Status: DONE
 
 # ============================================================
 # PRIORITY 1.5 — QUICK BUG FIX, DO BEFORE P2
