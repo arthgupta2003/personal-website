@@ -276,6 +276,7 @@ def _build_user_message(
     home_lat: float = _HOME_LAT,
     home_lon: float = _HOME_LON,
     calendar_context: str | None = None,
+    rating_context: str | None = None,
 ) -> str:
     """Build the user-turn message containing the profile and event batch."""
 
@@ -315,6 +316,11 @@ def _build_user_message(
         profile_lines.append("=== USER'S UPCOMING PLANS (already confirmed) ===")
         profile_lines.append(calendar_context)
         profile_lines.append("Avoid over-recommending on days already full (2+ RSVPs). Surface good options for free slots.")
+
+    # Rating context (user's recent event feedback)
+    if rating_context:
+        profile_lines.append("")
+        profile_lines.append(rating_context)
 
     # Events section
     event_dicts: list[dict] = []
@@ -524,6 +530,7 @@ def rank_events(
     friend_rsvps: dict[str, list[str]] | None = None,
     steering: list[dict] | None = None,
     calendar_context: str | None = None,
+    rating_context: str | None = None,
 ) -> tuple[list[RankedEvent], list[CostRecord]]:
     """Rank all events against the interest profile using Claude.
 
@@ -579,7 +586,7 @@ def rank_events(
     for batch_idx, batch in enumerate(batches):
         logger.info("Ranking batch %d/%d (%d events)", batch_idx + 1, len(batches), len(batch))
 
-        user_message = _build_user_message(profile, batch, spotify_artists, taste_top, home_lat, home_lon, calendar_context)
+        user_message = _build_user_message(profile, batch, spotify_artists, taste_top, home_lat, home_lon, calendar_context, rating_context)
 
         try:
             response = client.messages.create(

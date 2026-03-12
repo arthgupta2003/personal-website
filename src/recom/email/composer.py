@@ -146,6 +146,30 @@ _DIGEST_TEMPLATE = _env.from_string(
       </td></tr>
     </table>
 
+    {# --- FEEDBACK SECTION --- #}
+    {% if feedback_items %}
+    <div style="margin:20px 0;padding:16px 20px;background:#faf5ff;border-radius:14px;border:1px solid #e9d5ff;">
+      <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#7c3aed;">Your feedback is working</p>
+      {% for fb in feedback_items %}
+      {% if fb.rating >= 4 %}
+      <p style="margin:0 0 4px;font-size:14px;color:#1e293b;">
+        You loved <strong>{{ fb.title }}</strong> {{ "&starf;" * fb.rating }}
+        {% if fb.similar_picks %}&mdash; here are {{ fb.similar_picks | length }} more like it:{% endif %}
+      </p>
+      {% if fb.similar_picks %}
+      <p style="margin:0 0 12px;font-size:13px;color:#6d28d9;">
+        {% for pick in fb.similar_picks %}{{ pick.event.title }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+      </p>
+      {% endif %}
+      {% elif fb.rating <= 2 %}
+      <p style="margin:0 0 12px;font-size:13px;color:#6b7280;">
+        {{ fb.title }} {{ "&starf;" * fb.rating }} &mdash; showing fewer of those
+      </p>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+
     {# --- TOP PICKS 2-10 --- #}
     <p style="margin:0 0 14px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#9ca3af;">More top picks</p>
     {% for r in top_recs[1:] %}
@@ -277,6 +301,8 @@ def compose_email(
     run_id: int | None = None,
     home_lat: float = 42.3736,
     home_lon: float = -71.1097,
+    recent_ratings: list[dict] | None = None,
+    user_token: str = "",
 ) -> tuple[str, str]:
     """Build the digest email.
 
@@ -360,6 +386,23 @@ def compose_email(
         if d:
             dist_labels[r.event.id] = d
 
+    # Build feedback items from recent ratings
+    feedback_items: list[dict] = []
+    if recent_ratings:
+        for rating in recent_ratings[:3]:
+            fb: dict = {"title": rating["title"], "rating": rating["rating"], "similar_picks": []}
+            if rating["rating"] >= 4:
+                # Find similar events in current run (same vibe or category)
+                r_vibe = rating.get("vibe") or ""
+                r_cat = rating.get("category") or ""
+                similar = [
+                    r for r in kept
+                    if id(r) not in top_ids
+                    and ((r_vibe and r.vibe == r_vibe) or (r_cat and r.event.category == r_cat))
+                ][:3]
+                fb["similar_picks"] = similar
+            feedback_items.append(fb)
+
     html_body = _DIGEST_TEMPLATE.render(
         subject=subject,
         week_of=week_of,
@@ -376,6 +419,8 @@ def compose_email(
         dashboard_url=dashboard_url,
         run_id=run_id,
         dist_labels=dist_labels,
+        feedback_items=feedback_items,
+        user_token=user_token,
     )
 
     logger.info(

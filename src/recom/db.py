@@ -1230,6 +1230,49 @@ class Database:
             lines.append(f"  {day}: {count_str} — {'; '.join(items[:3])}")
         return "\n".join(lines)
 
+    def get_recent_ratings(self, user_id: int, days: int = 14) -> list[dict]:
+        """Return recent event ratings for a user with event metadata."""
+        from datetime import datetime, timedelta
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        rows = self.conn.execute(
+            """SELECT a.title, a.rating, a.attended_at, a.event_id,
+                      e.category, e.location_name,
+                      rk.vibe
+               FROM attended a
+               LEFT JOIN events e ON e.event_id = a.event_id
+               LEFT JOIN rankings rk ON rk.event_id = a.event_id AND rk.run_id = e.run_id
+               WHERE a.user_id = ? AND a.rating IS NOT NULL AND a.rating > 0
+                 AND a.attended_at > ?
+               GROUP BY a.event_id
+               ORDER BY a.rating DESC, a.attended_at DESC""",
+            (user_id, cutoff),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_rating_context(self, user_id: int) -> str:
+        """Build a text summary of recent ratings for injection into ranking prompts."""
+        ratings = self.get_recent_ratings(user_id, days=30)
+        if not ratings:
+            return ""
+        lines = ["=== RECENT EVENT RATINGS (user feedback) ==="]
+        high = [r for r in ratings if r["rating"] >= 4]
+        low = [r for r in ratings if r["rating"] <= 2]
+        for r in ratings[:8]:
+            stars = r["rating"]
+            vibe = r.get("vibe") or "mixed"
+            cat = r.get("category") or ""
+            lines.append(f"  - {r['title'][:50]} -> {stars}★ (vibe: {vibe}, cat: {cat})")
+        if high:
+            vibes = [r.get("vibe") or "mixed" for r in high]
+            cats = [r.get("category") or "" for r in high if r.get("category")]
+            lines.append(f"User prefers: vibes={', '.join(set(vibes))}" + (f", categories={', '.join(set(cats))}" if cats else ""))
+        if low:
+            vibes = [r.get("vibe") or "mixed" for r in low]
+            cats = [r.get("category") or "" for r in low if r.get("category")]
+            lines.append(f"User avoids: vibes={', '.join(set(vibes))}" + (f", categories={', '.join(set(cats))}" if cats else ""))
+        lines.append("Boost events matching preferred vibes/categories. Reduce scores for avoided types.")
+        return "\n".join(lines)
+
     def clear_steering(self, user_id: int, target_type: str, target_value: str) -> None:
         self.conn.execute(
             "DELETE FROM steering WHERE user_id = ? AND target_type = ? AND target_value = ?",

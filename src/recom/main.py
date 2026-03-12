@@ -184,6 +184,11 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
         # Build calendar density context: user's upcoming RSVPs this week
         calendar_context = db.get_calendar_context(user_id)
 
+        # Build rating context from recent event feedback
+        rating_context = db.get_rating_context(user_id)
+        if rating_context:
+            logger.info("  Injecting %d recent ratings into ranking context", len(db.get_recent_ratings(user_id)))
+
         ranked, rank_costs = rank_events(
             profile, events, client, settings.claude_model,
             spotify_artists=spotify_artists,
@@ -193,6 +198,7 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
             friend_rsvps=friend_rsvps if friend_rsvps else None,
             steering=steering if steering else None,
             calendar_context=calendar_context or None,
+            rating_context=rating_context or None,
         )
         for cost in rank_costs:
             all_costs.append(cost)
@@ -229,6 +235,8 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
         week_of = datetime.now().strftime("%B %d, %Y")
         total_tokens_in = sum(c.tokens_in for c in all_costs)
         total_tokens_out = sum(c.tokens_out for c in all_costs)
+        user_recent_ratings = db.get_recent_ratings(user_id)
+        user_token = user.get("user_token", "") if user else ""
         subject, html_body = compose_email(
             recommended, profile, week_of, total_cost,
             tokens_in=total_tokens_in, tokens_out=total_tokens_out,
@@ -236,6 +244,8 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
             run_id=run_id,
             home_lat=settings.latitude,
             home_lon=settings.longitude,
+            recent_ratings=user_recent_ratings if user_recent_ratings else None,
+            user_token=user_token,
         )
 
         if settings.smtp_password:

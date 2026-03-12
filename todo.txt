@@ -354,7 +354,8 @@
 # src/recom/ranking/ranker.py — inject rating history into prompt context
 # src/recom/db.py — helper to fetch recent ratings with event metadata
 #
-# Status: NOT STARTED
+# Status: DONE
+# Completed: 2026-03-11
 
 # ============================================================
 # PRIORITY 5
