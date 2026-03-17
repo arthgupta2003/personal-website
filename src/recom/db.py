@@ -135,9 +135,25 @@ CREATE TABLE IF NOT EXISTS rsvps (
 CREATE TABLE IF NOT EXISTS groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    slug TEXT UNIQUE NOT NULL,
+    display_name TEXT,
+    slug TEXT DEFAULT '',
     created_by INTEGER NOT NULL,
     created_at TEXT NOT NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS group_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    created_by INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT,
+    location TEXT DEFAULT '',
+    url TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (group_id) REFERENCES groups(id),
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
@@ -244,6 +260,30 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS daily_picks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    event_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    score INTEGER NOT NULL DEFAULT 0,
+    vibe TEXT DEFAULT 'mixed',
+    rank_in_day INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (run_id) REFERENCES runs(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(run_id, event_id)
+);
+
+CREATE TABLE IF NOT EXISTS gcal_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    gcal_event_id TEXT NOT NULL,
+    gcal_calendar_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(event_id)
+);
+
 CREATE TABLE IF NOT EXISTS retro_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
@@ -255,6 +295,17 @@ CREATE TABLE IF NOT EXISTS retro_log (
     gap_reason TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS guest_rsvps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    event_id TEXT NOT NULL,
+    guest_name TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('going', 'maybe', 'cant')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (group_id) REFERENCES groups(id),
+    UNIQUE(group_id, event_id, guest_name)
 );
 """
 
@@ -465,6 +516,46 @@ class Database:
             self.conn.execute("ALTER TABLE user_bucket_list ADD COLUMN completed_at TEXT")
             self.conn.commit()
 
+        # groups: add display_name column, drop slug uniqueness via recreate
+        cur = self.conn.execute("PRAGMA table_info(groups)")
+        group_cols = {row["name"] for row in cur.fetchall()}
+        if "display_name" not in group_cols:
+            self.conn.execute("ALTER TABLE groups ADD COLUMN display_name TEXT")
+            self.conn.commit()
+            # Recreate groups table without UNIQUE on slug
+            self.conn.executescript("""
+                CREATE TABLE IF NOT EXISTS groups_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    display_name TEXT,
+                    slug TEXT DEFAULT '',
+                    created_by INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (created_by) REFERENCES users(id)
+                );
+                INSERT INTO groups_new SELECT id, name, display_name, slug, created_by, created_at FROM groups;
+                DROP TABLE groups;
+                ALTER TABLE groups_new RENAME TO groups;
+            """)
+            self.conn.commit()
+
+        # group_events table
+        self.conn.execute("""CREATE TABLE IF NOT EXISTS group_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id INTEGER NOT NULL,
+            created_by INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT,
+            location TEXT DEFAULT '',
+            url TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (group_id) REFERENCES groups(id),
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )""")
+        self.conn.commit()
+
     def close(self):
         self.conn.close()
 
@@ -536,6 +627,28 @@ class Database:
                 ),
             )
         self.conn.commit()
+
+    def create_user_event(self, user_id: int, title: str, start_time: str,
+                          location: str = "", url: str = "",
+                          description: str = "") -> str:
+        """Create a user-submitted event, auto-RSVP as going.
+        Returns the event_id."""
+        import hashlib
+        event_id = f"user_{user_id}_{hashlib.md5(f'{title}{start_time}'.encode()).hexdigest()[:12]}"
+        # Use the user's latest run_id (needed for event table FK)
+        run = self.get_user_latest_run(user_id)
+        run_id = run["id"] if run else 1
+        self.conn.execute(
+            """INSERT OR IGNORE INTO events
+               (run_id, event_id, source, title, description, url,
+                start_time, location_name, is_online, raw_json)
+               VALUES (?, ?, 'user', ?, ?, ?, ?, ?, 0, '{}')""",
+            (run_id, event_id, title, description, url, start_time, location),
+        )
+        # Auto-RSVP as going
+        self.set_rsvp(user_id, event_id, run_id, "going")
+        self.conn.commit()
+        return event_id
 
     def save_rankings(self, run_id: int, rankings: list[RankedEvent]):
         for r in rankings:
@@ -719,6 +832,64 @@ class Database:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def compute_daily_picks(self, run_id: int, user_id: int,
+                            min_score: int = 40, max_per_day: int = 5,
+                            max_per_vibe: int = 3) -> int:
+        """Compute curated daily picks from a run and store in daily_picks table.
+        Returns number of picks stored."""
+        from collections import defaultdict
+        # Clear old picks for this run
+        self.conn.execute("DELETE FROM daily_picks WHERE run_id = ?", (run_id,))
+
+        events = self.get_run_events(run_id)
+        kept = [e for e in events if e.get("keep") and (e.get("score") or 0) >= min_score]
+
+        # Group by day, sort by score
+        day_groups: dict[str, list] = defaultdict(list)
+        for e in sorted(kept, key=lambda x: -(x.get("score") or 0)):
+            st = e.get("start_time")
+            day = st[:10] if st else "9999-99-99"
+            day_groups[day].append(e)
+
+        total = 0
+        for day in sorted(day_groups.keys()):
+            picked = []
+            vibe_counts: dict[str, int] = defaultdict(int)
+            for e in day_groups[day]:
+                if len(picked) >= max_per_day:
+                    break
+                v = e.get("vibe", "mixed")
+                if vibe_counts[v] >= max_per_vibe:
+                    continue
+                picked.append(e)
+                vibe_counts[v] += 1
+            for rank, e in enumerate(picked, 1):
+                self.conn.execute(
+                    """INSERT OR REPLACE INTO daily_picks
+                       (run_id, user_id, event_id, day, score, vibe, rank_in_day)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (run_id, user_id, e["event_id"], day,
+                     int(e.get("score") or 0), e.get("vibe", "mixed"), rank),
+                )
+                total += 1
+        self.conn.commit()
+        return total
+
+    def get_daily_picks(self, run_id: int) -> list[dict]:
+        """Get curated daily picks for a run with full event data."""
+        rows = self.conn.execute(
+            """SELECT dp.day, dp.rank_in_day, e.*, rk.score, rk.vibe,
+                      rk.match_reason, rk.keep, rk.event_type
+               FROM daily_picks dp
+               JOIN events e ON e.event_id = dp.event_id AND e.run_id = dp.run_id
+               LEFT JOIN rankings rk ON rk.event_id = dp.event_id AND rk.run_id = dp.run_id
+               WHERE dp.run_id = ?
+               GROUP BY dp.event_id
+               ORDER BY dp.day, dp.rank_in_day""",
+            (run_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_run_costs(self, run_id: int) -> list[dict]:
         rows = self.conn.execute(
             "SELECT * FROM costs WHERE run_id = ? ORDER BY id", (run_id,)
@@ -849,15 +1020,45 @@ class Database:
             result.setdefault(eid, []).append(r)
         return result
 
-    # --- Groups ---
+    # --- Google Calendar ---
 
-    def create_group(self, name: str, slug: str, creator_id: int) -> int:
-        cur = self.conn.execute(
-            "INSERT INTO groups (name, slug, created_by, created_at) VALUES (?, ?, ?, ?)",
-            (name, slug, creator_id, datetime.now().isoformat()),
+    def set_gcal_event(self, event_id: str, gcal_event_id: str, gcal_calendar_id: str):
+        self.conn.execute(
+            """INSERT INTO gcal_events (event_id, gcal_event_id, gcal_calendar_id, created_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(event_id) DO UPDATE SET gcal_event_id = ?, gcal_calendar_id = ?""",
+            (event_id, gcal_event_id, gcal_calendar_id, datetime.now().isoformat(),
+             gcal_event_id, gcal_calendar_id),
         )
         self.conn.commit()
-        return cur.lastrowid
+
+    def get_gcal_event(self, event_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM gcal_events WHERE event_id = ?", (event_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_gcal_events(self, event_ids: list[str]) -> dict[str, dict]:
+        if not event_ids:
+            return {}
+        placeholders = ",".join("?" for _ in event_ids)
+        rows = self.conn.execute(
+            f"SELECT * FROM gcal_events WHERE event_id IN ({placeholders})",
+            event_ids,
+        ).fetchall()
+        return {r["event_id"]: dict(r) for r in rows}
+
+    # --- Groups ---
+
+    def create_group(self, creator_id: int, display_name: str = "") -> int:
+        cur = self.conn.execute(
+            "INSERT INTO groups (name, display_name, slug, created_by, created_at) VALUES (?, ?, '', ?, ?)",
+            ("", display_name or None, creator_id, datetime.now().isoformat()),
+        )
+        self.conn.commit()
+        group_id = cur.lastrowid
+        # Auto-generate name after creator is added
+        return group_id
 
     def add_group_member(self, group_id: int, user_id: int):
         self.conn.execute(
@@ -865,12 +1066,62 @@ class Database:
             (group_id, user_id, datetime.now().isoformat()),
         )
         self.conn.commit()
+        # Regenerate auto-name
+        auto = self.generate_group_auto_name(group_id)
+        self.conn.execute("UPDATE groups SET name = ? WHERE id = ?", (auto, group_id))
+        self.conn.commit()
 
-    def get_group(self, slug: str) -> dict | None:
+    def get_group_by_id(self, group_id: int) -> dict | None:
         row = self.conn.execute(
-            "SELECT * FROM groups WHERE slug = ?", (slug,)
+            "SELECT * FROM groups WHERE id = ?", (group_id,)
         ).fetchone()
         return dict(row) if row else None
+
+    def generate_group_auto_name(self, group_id: int) -> str:
+        members = self.get_group_members(group_id)
+        names = [m.get("name", "").split()[0] or m.get("email", "").split("@")[0]
+                 for m in members]
+        if len(names) <= 3:
+            return ", ".join(names)
+        return f"{', '.join(names[:2])} +{len(names) - 2}"
+
+    def update_group_display_name(self, group_id: int, display_name: str):
+        self.conn.execute(
+            "UPDATE groups SET display_name = ? WHERE id = ?", (display_name, group_id)
+        )
+        self.conn.commit()
+
+    def get_group_display_name(self, group: dict) -> str:
+        return group.get("display_name") or group.get("name") or ""
+
+    def add_group_event(self, group_id: int, user_id: int, title: str,
+                        start_time: str, end_time: str = "", location: str = "",
+                        url: str = "", notes: str = "") -> int:
+        cur = self.conn.execute(
+            """INSERT INTO group_events (group_id, created_by, title, start_time, end_time,
+               location, url, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (group_id, user_id, title, start_time, end_time or None, location, url, notes),
+        )
+        self.conn.commit()
+        return cur.lastrowid
+
+    def get_group_user_events(self, group_id: int) -> list[dict]:
+        rows = self.conn.execute(
+            """SELECT ge.*, u.name as creator_name, u.email as creator_email
+               FROM group_events ge
+               JOIN users u ON u.id = ge.created_by
+               WHERE ge.group_id = ?
+               ORDER BY ge.start_time ASC""",
+            (group_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_group_event(self, event_id: int, user_id: int):
+        self.conn.execute(
+            "DELETE FROM group_events WHERE id = ? AND created_by = ?",
+            (event_id, user_id),
+        )
+        self.conn.commit()
 
     def get_group_members(self, group_id: int) -> list[dict]:
         rows = self.conn.execute(
@@ -1039,6 +1290,50 @@ class Database:
             if eid not in seen or (d.get("score") or 0) > (seen[eid].get("score") or 0):
                 seen[eid] = d
         return sorted(seen.values(), key=lambda x: -(x.get("score") or 0))
+
+    # --- Guest RSVPs (for group planner) ---
+
+    def set_guest_rsvp(self, group_id: int, event_id: str, guest_name: str, status: str):
+        """Set or update a guest RSVP. Status '' or empty removes the RSVP."""
+        if not status:
+            self.conn.execute(
+                "DELETE FROM guest_rsvps WHERE group_id = ? AND event_id = ? AND guest_name = ?",
+                (group_id, event_id, guest_name),
+            )
+        else:
+            self.conn.execute(
+                """INSERT INTO guest_rsvps (group_id, event_id, guest_name, status, created_at)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(group_id, event_id, guest_name) DO UPDATE SET status = ?, created_at = ?""",
+                (group_id, event_id, guest_name, status, datetime.now().isoformat(),
+                 status, datetime.now().isoformat()),
+            )
+        self.conn.commit()
+
+    def get_group_guest_rsvps(self, group_id: int, event_ids: list[str]) -> dict[str, list[dict]]:
+        """Return {event_id: [{guest_name, status}]} for guest RSVPs in a group."""
+        if not event_ids:
+            return {}
+        placeholders = ",".join("?" for _ in event_ids)
+        rows = self.conn.execute(
+            f"""SELECT event_id, guest_name, status FROM guest_rsvps
+                WHERE group_id = ? AND event_id IN ({placeholders})""",
+            [group_id] + event_ids,
+        ).fetchall()
+        result: dict[str, list[dict]] = {}
+        for r in rows:
+            r = dict(r)
+            eid = r.pop("event_id")
+            result.setdefault(eid, []).append(r)
+        return result
+
+    def get_group_guests(self, group_id: int) -> list[str]:
+        """Return distinct guest names who have RSVPd in this group."""
+        rows = self.conn.execute(
+            "SELECT DISTINCT guest_name FROM guest_rsvps WHERE group_id = ?",
+            (group_id,),
+        ).fetchall()
+        return [r["guest_name"] for r in rows]
 
     # --- Taste Elo ---
 

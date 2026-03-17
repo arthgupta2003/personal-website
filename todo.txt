@@ -2562,3 +2562,270 @@
 # and time-critical. Missing them is a product failure.
 # Status: DONE
 # Completed: 2026-03-10
+
+# ============================================================
+# [2026-03-13 18:55] TASK: Debug Apple Calendar not showing CalDAV events
+# ============================================================
+# CalDAV account added to Apple Calendar but no events appear.
+# Possible causes:
+#   - REPORT/PROPFIND responses not matching Apple's expectations
+#   - Aggressive caching by Apple Calendar
+#   - Event format issues in VEVENT output
+# Debug steps:
+#   1. Hit CalDAV endpoints directly and inspect XML responses
+#   2. Compare against Apple's CalDAV spec requirements
+#   3. Try removing and re-adding the CalDAV account
+#   4. Check server logs for incoming CalDAV requests from Apple
+# Root causes found & fixed:
+#   1. /.well-known/caldav only handled GET — Apple sends PROPFIND first → 405
+#      Fix: Added PROPFIND + OPTIONS to well-known endpoint
+#   2. VEVENT DESCRIPTION double-escaped: reason/price pre-escaped then re-escaped
+#      Fix: Escape each desc part individually, join with \n after escaping
+#   3. iCal newline \n corrupted to \\n by double-escaping
+#      Fix: Same as #2 — join after escaping, not before
+# Status: DONE
+# Completed: 2026-03-13
+
+# ============================================================
+# [2026-03-13 18:55] TASK: Auto-restart services on crash (start.sh)
+# ============================================================
+# Dev machine sometimes goes down, causing dashboard errors.
+# Fix: wrapped dashboard, cloudflared, and telegram bot tmux panes
+# in while-true restart loops with 5s delay. Added caffeinate -s
+# to prevent machine sleep.
+# Status: DONE
+# Completed: 2026-03-13
+
+# ============================================================
+# [2026-03-13 19:12] TASK: Make calendar subscriptions + RSVP work for everyone
+# ============================================================
+# Core product feature — every user should be able to:
+#   - Subscribe to their recom calendar in whatever app they use
+#   - RSVP to events and have it sync to their calendar
+#   - See friends' RSVPs in their calendar
+# Currently broken/incomplete:
+#   - Apple Calendar: CalDAV added but no events showing
+#   - Google Calendar: no CalDAV support, needs .ics feeds
+#   - RSVP sync to calendar not working end-to-end
+# Must work on:
+#   - Apple Calendar / Fantastical (CalDAV or .ics)
+#   - Google Calendar (.ics subscription with auto-refresh)
+#   - Outlook (CalDAV or .ics)
+# Steps:
+#   1. Debug Apple Calendar CalDAV — why no events? (see earlier TODO)
+#   2. Test .ics feed in Google Calendar — verify refresh + events appear
+#   3. RSVP status (going/maybe) must sync into calendar entries
+#   4. Sub-calendars (recs, RSVPs, groups, friends) as separate feeds
+#   5. Simplify /cal page — detect platform, show right instructions
+#   6. One-click "Add to Calendar" (webcal:// links, deep links)
+#   7. Everyone should be able to RSVP from any surface (email, dashboard, cal)
+# Priority: HIGH — core product, not a nice-to-have
+# Fix: Built unified RSVP feed (/u/{token}/rsvps.ics) with group members' RSVPs,
+# friend names in titles, RSVP links in descriptions, ?recs=1 toggle for picks.
+# Rewrote /cal page with one-click Apple/Google subscribe. Nuked CalDAV (too complex).
+# Added daily_picks table so email and feed show identical events.
+# Group page has prominent subscribe CTA. Smooth onboarding for new users joining groups.
+# Status: DONE
+# Completed: 2026-03-13
+
+# ============================================================
+# [2026-03-13 19:10] TASK: Unify dashboard UI — redesign About/landing page
+# ============================================================
+# The About/landing page (/landing) looks completely different from the
+# rest of the dashboard — generic, AI-template aesthetic. Needs to match
+# the design language of the main app (events, search, groups, profile).
+# Steps:
+#   1. Audit /landing page styles vs main dashboard styles
+#   2. Replace generic hero/gradient/stock layout with something consistent
+#   3. Use the same nav, typography, colors, spacing as authenticated pages
+#   4. Keep it informative for new users but not corporate-template ugly
+# Fix: Rewrote landing page to use _layout() with dashboard design system.
+# Removed dark theme, gradient orbs, custom fonts. Now uses same nav, cards,
+# buttons, typography, and colors as rest of app. Same content sections kept.
+# Status: DONE
+# Completed: 2026-03-13
+
+# ============================================================
+# [2026-03-13 22:00] TASK: User-submitted events → push to group feeds
+# ============================================================
+# Users should be able to add custom events (not from the pipeline) that
+# push to everyone subscribed to the group RSVP feed. Example: "I'm going
+# to the museum on Saturday" — even if recom didn't discover that event.
+#
+# Steps:
+#   1. Add "Create event" form on dashboard (title, date/time, location, url)
+#   2. Store in events table with source="user", run_id=latest run
+#   3. Auto-RSVP the creator as "going"
+#   4. Unified RSVP feed already picks it up (aggregates all group RSVPs)
+#   5. Show user-created events on the main calendar view too
+#
+# Acceptance criteria:
+#   - User can create a custom event from the dashboard
+#   - Event appears in creator's RSVP feed immediately
+#   - Event appears in group members' unified RSVP feeds on next refresh
+#   - Event shows on the calendar view with a "user" badge
+#   - import check passes
+#
+# Priority: HIGH — makes the group feed useful without the pipeline
+# Fix: Added /add-event page + /api/add-event endpoint. Creates event with source="user",
+# auto-RSVPs creator as going. Shows in unified RSVP feed for all group members.
+# Added "+ Add" button in nav. Simplified group creation (auto-slug from name).
+# Added /api/join-group/{slug} for combined signup+join flow from group invite links.
+# Status: DONE
+# Completed: 2026-03-13
+
+# ============================================================
+# [2026-03-13 22:00] TASK: Self-service Spotify/YouTube OAuth onboarding
+# ============================================================
+# New users who join via /join can create an account and do Elo matchups,
+# but can't connect Spotify or YouTube — those require running CLI scripts
+# manually (scripts/auth_spotify.py, scripts/auth_youtube.py).
+#
+# Need self-service OAuth flows in the dashboard so any user can connect
+# their accounts after signing up.
+#
+# Steps:
+#   1. Add /connect/spotify route — starts OAuth redirect flow
+#   2. Add /connect/spotify/callback — handles OAuth callback, stores tokens
+#   3. Add /connect/youtube route + callback — same for YouTube
+#   4. Add "Connect accounts" section to /profile page with status indicators
+#   5. Add "Connect Spotify/YouTube" step to /onboarding/{token} flow
+#   6. Store per-user token files under state/tokens/{user_id}/
+#
+# Acceptance criteria:
+#   - User clicks "Connect Spotify" on profile → OAuth flow → tokens saved
+#   - User clicks "Connect YouTube" on profile → OAuth flow → tokens saved
+#   - Onboarding flow includes optional Spotify/YouTube connection
+#   - Pipeline uses the connected user's tokens for ingest
+#   - Works without any CLI scripts
+#
+# Priority: MEDIUM — needed for multi-user but current users are set up
+# Status: TODO
+
+# ============================================================
+# [2026-03-14 12:00] TASK: Google Calendar integration for group RSVP/coordination
+# ============================================================
+# Replace or augment current iCal feed with native Google Calendar integration.
+# Google Calendar API can:
+#   - Create events on a shared calendar
+#   - Send invites (attendees get native RSVP)
+#   - Read attendee responses
+#   - Manage ACLs (sharing permissions)
+#
+# Options to evaluate:
+#   1. Google Calendar API directly — full control, build RSVP/sharing ourselves
+#   2. Cal.com (open source, self-hostable) — coordination layer on top of GCal/Apple Cal
+#   3. Calendly — hosted, less control but easy
+#   4. Amie — handles coordination, integrates GCal + Apple Calendar
+#
+# Cal.com is likely the best fit: self-hostable, open source, integrates with
+# both Google and Apple Calendar natively, and gives full control.
+#
+# Steps:
+#   1. Research Google Calendar API scopes needed (events, ACLs, attendees)
+#   2. Prototype: create shared calendar + event with attendees via API
+#   3. Evaluate Cal.com self-hosted vs direct API for coordination layer
+#   4. Pick approach and integrate with existing RSVP/group system
+#   5. Replace iCal feed with two-way sync if using GCal API
+#
+# Priority: MEDIUM — improves group coordination significantly
+# Status: TODO
+
+# ============================================================
+# [2026-03-14 12:30] TASK: Security audit of the full application
+# ============================================================
+# Comprehensive security review of the recom application covering:
+#
+# Areas to audit:
+#   1. Authentication & session management
+#      - Magic link token generation and expiration
+#      - Cookie security (httponly, secure, samesite flags)
+#      - Session fixation / hijacking risks
+#   2. Input validation & injection
+#      - SQL injection in db.py (parameterized queries?)
+#      - XSS in dashboard templates (HTML escaping?)
+#      - Command injection in any subprocess/os calls
+#   3. API security
+#      - CSRF protection on state-changing endpoints
+#      - Rate limiting on auth/API endpoints
+#      - Authorization checks (can user A access user B's data?)
+#   4. Secrets management
+#      - API keys in .env not leaked in logs/responses
+#      - OAuth tokens stored securely
+#      - No secrets in git history
+#   5. Infrastructure
+#      - Cloudflare tunnel config
+#      - CORS policy
+#      - File upload/path traversal risks
+#   6. Dependencies
+#      - Known CVEs in pinned dependencies
+#      - Dependency audit (uv/pip-audit)
+#
+# Priority: HIGH — app is exposed via Cloudflare tunnel
+# Status: TODO
+# UPDATE [2026-03-14]: Send audit results as a plain email report, no UI needed.
+# Create a script: scripts/security_audit.py that runs checks and emails the report.
+
+# ============================================================
+# BUG: St Patricks Day Parade missing from recommendations
+# ============================================================
+# Added: 2026-03-15
+# Priority: HIGH — parade is tomorrow (March 16/17), time-sensitive
+# Status: TODO
+#
+# The St Patricks Day parade is not appearing in recommendations at all,
+# despite being a major limited-time event that scores high on urgency/FOMO
+# and social/fun dimensions. User is planning to attend.
+#
+# Investigate:
+#   1. Is any source discovering the parade? Check event tables for "st patrick" / "parade"
+#   2. If not discovered: which source should surface it? (Boston Calendar, Do617, Eventbrite?)
+#   3. If discovered but not ranked: is it being filtered out by the Haiku prefilter?
+#   4. If ranked but low score: check why ranking dimensions are low
+#   5. Consider: are parades/festivals a blind spot in the source coverage?
+
+# ============================================================
+# FEATURE: Make Recom more like Partiful — two core pillars
+# ============================================================
+# Added: 2026-03-15
+# Priority: HIGH — core product direction
+# Status: TODO
+#
+# Recom is essentially trying to be two things:
+#   1. Group-chat-level shared calendar — friends see each others plans,
+#      coordinate attendance, lightweight social planning (like Partiful)
+#   2. Personalized event discovery & recommendations — the AI pipeline
+#
+# Current gaps vs Partiful-like experience:
+#   - Groups page feels like a settings page, not a social feed
+#   - No quick "whos going?" visibility on the main calendar
+#   - RSVP flow is functional but not fun/social
+#   - No activity feed showing friend actions (RSVPs, ratings, new events)
+#   - Group chat / comments on events missing
+#   - No easy invite/share flow for non-users
+#   - Mobile UX needs work for on-the-go coordination
+#
+# Action items:
+#   1. Redesign groups page as a social feed with friend activity
+#   2. Show friend RSVP avatars/names on calendar events
+#   3. Add lightweight event comments/reactions
+#   4. Make RSVP feel more social (show who else is going)
+#   5. Add "invite friends" flow with magic links
+#   6. Activity feed on home page (X is going to Y, Z rated W)
+#   7. Better mobile responsiveness for all pages
+
+# ============================================================
+# GROUP-FIRST APP RESTRUCTURE
+# [2026-03-17] TASK: Restructure app around groups as primary UX
+# ============================================================
+#
+# Phase 1: DB — group_events table, drop slug uniqueness, auto-naming
+# Phase 2: Routes — slug → ID for all group routes
+# Phase 3: Group page redesign — members-first, add-event form
+# Phase 4: iCal feed — include user-added group events
+# Phase 5: Nav simplification — Groups + Profile only
+# Phase 6: Simplified join flow
+# Phase 7: Visual simplification
+# Phase 8: Auto-naming (Spotify Blend style)
+#
+# Status: IN_PROGRESS

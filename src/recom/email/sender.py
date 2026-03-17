@@ -12,7 +12,8 @@ from recom.config import Settings
 logger = logging.getLogger(__name__)
 
 
-def send_email(subject: str, html_body: str, settings: Settings, to: str | None = None) -> None:
+def send_email(subject: str, html_body: str, settings: Settings, to: str | None = None,
+               cc: list[str] | None = None) -> None:
     """Send an HTML email with a plain-text fallback.
 
     Uses SMTP with STARTTLS as configured in *settings*.
@@ -23,6 +24,8 @@ def send_email(subject: str, html_body: str, settings: Settings, to: str | None 
     msg["Subject"] = subject
     msg["From"] = settings.email_from
     msg["To"] = recipient
+    if cc:
+        msg["Cc"] = ", ".join(cc)
 
     # Plain-text fallback (very minimal -- just tells user to view HTML)
     plain_text = (
@@ -32,13 +35,15 @@ def send_email(subject: str, html_body: str, settings: Settings, to: str | None 
     msg.attach(MIMEText(plain_text, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
+    all_recipients = [recipient] + (cc or [])
+
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
             server.login(settings.smtp_user, settings.smtp_password)
-            server.sendmail(settings.email_from, recipient, msg.as_string())
+            server.sendmail(settings.email_from, all_recipients, msg.as_string())
 
         logger.info(
             "Email sent successfully to %s via %s:%d",
@@ -71,9 +76,9 @@ def send_magic_link(email: str, token: str, dashboard_url: str, settings: Settin
 
 def send_invite_email(
     email: str, token: str, group_name: str, inviter_name: str,
-    slug: str, dashboard_url: str, settings: Settings,
+    group_id: int, dashboard_url: str, settings: Settings,
 ) -> None:
-    link = f"{dashboard_url}/group/{slug}?u={token}"
+    link = f"{dashboard_url}/group/{group_id}?u={token}"
     html = f"""<div style="font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
     <h2 style="color:#1e40af;">{inviter_name} invited you to {group_name}</h2>
     <p>Join the group to see shared event picks and coordinate plans.</p>
