@@ -107,8 +107,9 @@ def send_daily_for_user(db: Database, settings: Settings, user: dict, today: dat
         except Exception:
             logger.exception("Failed to get bucket suggestions")
 
-    # Pass daily_pick event IDs so email uses same picks as calendar feed
-    pick_ids = {p["event_id"] for p in picks} if picks else None
+    # Pass only TODAY's daily_pick event IDs (picks span all days)
+    today_str = today.strftime("%Y-%m-%d")
+    pick_ids = {p["event_id"] for p in picks if p.get("day") == today_str} if picks else None
 
     result = compose_daily_email(
         ranked, today,

@@ -588,6 +588,7 @@ def compose_daily_email(
                    and r.event.start_time is not None
                    and (r.event.start_time.replace(tzinfo=None) if r.event.start_time.tzinfo else r.event.start_time).strftime("%Y-%m-%d") == target_str]
         diverse.sort(key=lambda r: r.score, reverse=True)
+        diverse = diverse[:5]
     else:
         # Fallback: filter locally (same logic as daily_picks computation)
         todays = []
