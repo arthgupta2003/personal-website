@@ -4277,17 +4277,13 @@ async def group_invite(group_id: int, request: Request):
     email = form.get("email", "").strip()
     if not email:
         return HTMLResponse("<h1>Email required</h1>", status_code=400)
-    invited = db.get_user_by_email(email)
     settings = Settings()
     group_display = db.get_group_display_name(group)
     inviter_name = user.get("name") or user.get("email", "")
-    if not invited:
-        uid = db.create_user(email)
-        invited = db.get_user(uid)
-    db.add_group_member(group["id"], invited["id"])
+    # Send invite email with plain group link — they'll join via the form on the page
     try:
         send_invite_email(
-            email, invited["user_token"], group_display, inviter_name,
+            email, "", group_display, inviter_name,
             group_id, settings.dashboard_url, settings,
         )
     except Exception:
@@ -5841,12 +5837,7 @@ async def api_join_group(group_id: int, request: Request):
     if group:
         db.add_group_member(group["id"], user_id)
 
-    settings = Settings()
-    try:
-        send_magic_link(email, token, settings.dashboard_url, settings)
-    except Exception:
-        logger.exception("Failed to send magic link to %s", email)
-
+    # No magic link email — just set cookie and redirect. Instant join.
     resp = RedirectResponse(f"/group/{group_id}?u={token}", status_code=303)
     _set_token_cookie(resp, token)
     return resp

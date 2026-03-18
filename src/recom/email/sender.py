@@ -78,12 +78,12 @@ def send_invite_email(
     email: str, token: str, group_name: str, inviter_name: str,
     group_id: int, dashboard_url: str, settings: Settings,
 ) -> None:
-    link = f"{dashboard_url}/group/{group_id}?u={token}"
+    link = f"{dashboard_url}/group/{group_id}"
     html = f"""<div style="font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
     <h2 style="color:#1e40af;">{inviter_name} invited you to {group_name}</h2>
     <p>Join the group to see shared event picks and coordinate plans.</p>
     <a href="{link}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;
-       border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0;">View Group</a>
+       border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0;">Join Group</a>
     <p style="color:#9ca3af;font-size:13px;">Powered by Recom</p>
     </div>"""
     send_email(f"{inviter_name} invited you to {group_name}", html, settings, to=email)
