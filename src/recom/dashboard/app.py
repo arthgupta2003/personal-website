@@ -4280,19 +4280,31 @@ async def group_invite(group_id: int, request: Request):
     settings = Settings()
     group_display = db.get_group_display_name(group)
     inviter_name = user.get("name") or user.get("email", "")
-    # Send invite email with plain group link — they'll join via the form on the page
+    # Send invite email with invite code link
     try:
         send_invite_email(
             email, "", group_display, inviter_name,
             group_id, settings.dashboard_url, settings,
+            invite_code=group.get("invite_code", ""),
         )
     except Exception:
         logger.exception("Failed to send invite email to %s", email)
     return RedirectResponse(f"/group/{group_id}", status_code=303)
 
 
+@app.get("/group/{group_id:int}/join/{invite_code}", response_class=HTMLResponse)
+async def group_join_page(group_id: int, invite_code: str, request: Request):
+    """Invite link landing — validates code then renders group page with join form."""
+    db = get_db()
+    group = db.get_group_by_id(group_id)
+    if not group or group.get("invite_code") != invite_code:
+        return HTMLResponse("<h1>Invalid invite link</h1>", status_code=404)
+    # Store valid invite code in query param and forward to group page
+    return await group_page(group_id, request, _valid_invite=True)
+
+
 @app.get("/group/{group_id:int}", response_class=HTMLResponse)
-async def group_page(group_id: int, request: Request):
+async def group_page(group_id: int, request: Request, _valid_invite: bool = False):
     db = get_db()
     current_user = _get_current_user(request)
     group = db.get_group_by_id(group_id)
@@ -4422,7 +4434,8 @@ async def group_page(group_id: int, request: Request):
         feed_url = f"{settings.dashboard_url}/group/{group_id}/feed.ics"
         webcal_url = feed_url.replace("https://", "webcal://").replace("http://", "webcal://")
         gcal_url = f"https://calendar.google.com/calendar/r?cid={feed_url.replace('https://', 'http://')}"
-        group_link = f"{settings.dashboard_url}/group/{group_id}"
+        invite_code = group.get("invite_code", "")
+        group_link = f"{settings.dashboard_url}/group/{group_id}/join/{invite_code}"
 
         actions_html = f'''<div class="card" style="margin-bottom:20px;">
             <h2 style="margin:0 0 12px;">Invite to Group</h2>
@@ -4453,25 +4466,27 @@ async def group_page(group_id: int, request: Request):
             </div>
         </div>'''
 
-    # --- Join CTA for non-members ---
+    # --- Join CTA for non-members (only if they arrived via valid invite link) ---
+    invite_code = group.get("invite_code", "")
     join_cta = ""
-    if not current_user:
-        join_cta = f'''<div class="card" style="margin-bottom:20px;">
-            <form action="/api/join-group/{group_id}" method="post" style="display:flex;flex-direction:column;gap:8px;">
-                <input name="name" placeholder="Your name" required
-                       style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
-                <input name="email" type="email" placeholder="you@gmail.com" required
-                       style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
-                <button type="submit" class="btn-primary">Join this group</button>
-            </form>
-        </div>'''
-    elif not is_member:
-        join_cta = f'''<div class="card" style="margin-bottom:20px;">
-            <form action="/group/{group_id}/join" method="post" style="display:flex;align-items:center;justify-content:space-between;">
-                <span style="font-size:14px;color:#374151;">Join this group to add events and see plans.</span>
-                <button type="submit" class="btn-primary" style="white-space:nowrap;">Join</button>
-            </form>
-        </div>'''
+    if _valid_invite and not is_member:
+        if not current_user:
+            join_cta = f'''<div class="card" style="margin-bottom:20px;">
+                <form action="/api/join-group/{group_id}/{invite_code}" method="post" style="display:flex;flex-direction:column;gap:8px;">
+                    <input name="name" placeholder="Your name" required
+                           style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
+                    <input name="email" type="email" placeholder="you@gmail.com" required
+                           style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
+                    <button type="submit" class="btn-primary">Join this group</button>
+                </form>
+            </div>'''
+        else:
+            join_cta = f'''<div class="card" style="margin-bottom:20px;">
+                <form action="/group/{group_id}/join" method="post" style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:14px;color:#374151;">Join this group to add events and see plans.</span>
+                    <button type="submit" class="btn-primary" style="white-space:nowrap;">Join</button>
+                </form>
+            </div>'''
 
     # --- Editable group name (inline) ---
     name_html = f'<h1>{group_name}</h1>'
@@ -5821,16 +5836,20 @@ async def group_join(group_id: int, request: Request):
     return RedirectResponse(f"/group/{group_id}", status_code=303)
 
 
-@app.post("/api/join-group/{group_id:int}")
-async def api_join_group(group_id: int, request: Request):
-    """Combined signup + join group for new users. Creates account, joins group, redirects."""
+@app.post("/api/join-group/{group_id:int}/{invite_code}")
+async def api_join_group(group_id: int, invite_code: str, request: Request):
+    """Combined signup + join group for new users. Validates invite code, creates account, joins group."""
+    db = get_db()
+    group = db.get_group_by_id(group_id)
+    if not group or group.get("invite_code") != invite_code:
+        return HTMLResponse("Invalid invite link", status_code=403)
+
     form = await request.form()
     email = (form.get("email") or "").strip()
     name = (form.get("name") or "").strip()
     if not email:
         return HTMLResponse("Email required", status_code=400)
 
-    db = get_db()
     existing = db.conn.execute("SELECT id, user_token FROM users WHERE email = ?", (email,)).fetchone()
     if existing:
         user_id = existing["id"]
@@ -5841,9 +5860,7 @@ async def api_join_group(group_id: int, request: Request):
         token = user["user_token"] if user else ""
         db.seed_taste_items(user_id)
 
-    group = db.get_group_by_id(group_id)
-    if group:
-        db.add_group_member(group["id"], user_id)
+    db.add_group_member(group["id"], user_id)
 
     # No magic link email — just set cookie and redirect. Instant join.
     resp = RedirectResponse(f"/group/{group_id}?u={token}", status_code=303)

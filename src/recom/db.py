@@ -516,9 +516,18 @@ class Database:
             self.conn.execute("ALTER TABLE user_bucket_list ADD COLUMN completed_at TEXT")
             self.conn.commit()
 
-        # groups: add display_name column, drop slug uniqueness via recreate
+        # groups: add display_name and invite_code columns
         cur = self.conn.execute("PRAGMA table_info(groups)")
         group_cols = {row["name"] for row in cur.fetchall()}
+        if "invite_code" not in group_cols:
+            self.conn.execute("ALTER TABLE groups ADD COLUMN invite_code TEXT")
+            self.conn.commit()
+            # Backfill existing groups with invite codes
+            import secrets as _secrets
+            for row in self.conn.execute("SELECT id FROM groups WHERE invite_code IS NULL").fetchall():
+                self.conn.execute("UPDATE groups SET invite_code = ? WHERE id = ?",
+                                  (_secrets.token_hex(3), row["id"]))
+            self.conn.commit()
         if "display_name" not in group_cols:
             self.conn.execute("ALTER TABLE groups ADD COLUMN display_name TEXT")
             self.conn.commit()
@@ -1051,9 +1060,10 @@ class Database:
     # --- Groups ---
 
     def create_group(self, creator_id: int, display_name: str = "") -> int:
+        import secrets as _secrets
         cur = self.conn.execute(
-            "INSERT INTO groups (name, display_name, slug, created_by, created_at) VALUES (?, ?, '', ?, ?)",
-            ("", display_name or None, creator_id, datetime.now().isoformat()),
+            "INSERT INTO groups (name, display_name, slug, created_by, created_at, invite_code) VALUES (?, ?, '', ?, ?, ?)",
+            ("", display_name or None, creator_id, datetime.now().isoformat(), _secrets.token_hex(3)),
         )
         self.conn.commit()
         group_id = cur.lastrowid
