@@ -4396,22 +4396,22 @@ async def group_page(group_id: int, request: Request):
     # --- Add event form (members only) ---
     add_event_html = ""
     if is_member:
+        from datetime import datetime as _dt
+        default_date = _dt.now().strftime("%Y-%m-%d")
         add_event_html = f'''<div class="card" style="margin-bottom:20px;">
             <h2 style="margin:0 0 12px;">Add an Event</h2>
             <form action="/api/group/{group_id}/add-event" method="post">
+                <input name="title" placeholder="What are you doing?" required
+                       style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;margin-bottom:8px;box-sizing:border-box;">
                 <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
-                    <input name="title" placeholder="What are you doing?" required
-                           style="flex:2;min-width:180px;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
-                    <input name="date" type="date" required
-                           style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
+                    <input name="date" type="date" value="{default_date}" required
+                           style="flex:1;min-width:130px;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
                     <input name="time" type="time" value="19:00"
-                           style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
-                </div>
-                <div style="display:flex;gap:8px;">
+                           style="flex:1;min-width:100px;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
                     <input name="location" placeholder="Where? (optional)"
-                           style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
-                    <button type="submit" class="btn-primary" style="white-space:nowrap;">Add</button>
+                           style="flex:1;min-width:130px;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
                 </div>
+                <button type="submit" class="btn-primary" style="width:100%;">Add Event</button>
             </form>
         </div>'''
 
@@ -4425,15 +4425,16 @@ async def group_page(group_id: int, request: Request):
         group_link = f"{settings.dashboard_url}/group/{group_id}"
 
         actions_html = f'''<div class="card" style="margin-bottom:20px;">
-            <h2 style="margin:0 0 12px;">Share</h2>
-            <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <h2 style="margin:0 0 12px;">Invite to Group</h2>
+            <p style="margin:0 0 10px;font-size:13px;color:#6b7280;">Send this link to friends so they can join.</p>
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
                 <input type="text" value="{group_link}" readonly id="group-link"
                        style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;background:#f8fafc;color:#374151;">
                 <button onclick="navigator.clipboard.writeText(&apos;{group_link}&apos;);this.textContent=&apos;Copied!&apos;;setTimeout(()=>this.textContent=&apos;Copy&apos;,1500)"
                         class="btn-primary" style="padding:10px 18px;font-size:14px;white-space:nowrap;">Copy</button>
             </div>
-            {f'<button onclick="navigator.share({{title:&apos;{group_name}&apos;,url:&apos;{group_link}&apos;}}).catch(()=>{{}})" class="btn-secondary" style="font-size:13px;padding:8px 16px;margin-bottom:12px;width:100%;">Share via...</button>' if True else ''}
-            <details style="margin-top:4px;">
+            <button onclick="navigator.share({{title:&apos;Join {group_name} on Recom&apos;,text:&apos;Join our group to coordinate plans&apos;,url:&apos;{group_link}&apos;}}).catch(()=>{{}})" class="btn-secondary" style="font-size:13px;padding:8px 16px;width:100%;">Share invite link...</button>
+            <details style="margin-top:10px;">
                 <summary style="font-size:13px;color:#6b7280;cursor:pointer;">Or invite by email</summary>
                 <form action="/group/{group_id}/invite" method="post" style="display:flex;gap:8px;align-items:center;margin-top:8px;">
                     <input name="email" type="email" placeholder="friend@email.com" required
@@ -5800,11 +5801,10 @@ async def groups_page(request: Request):
 
     return HTMLResponse(_layout("Groups", f"""
     <h1 style="display:flex;align-items:center;gap:10px;">Groups</h1>
+    {create_btn}
+    {cards_html if cards_html else '<div class="card"><p style="color:#9ca3af;">No groups yet. Create one and invite friends!</p></div>'}
     {friend_activity_html}
     {upcoming_events_html}
-    {create_btn}
-    <h3 style="font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Your Groups</h3>
-    {cards_html if cards_html else '<div class="card"><p style="color:#9ca3af;">No groups yet. Create one and invite friends!</p></div>'}
     """, user=current_user))
 
 
