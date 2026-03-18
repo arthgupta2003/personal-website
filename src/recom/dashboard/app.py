@@ -4425,14 +4425,22 @@ async def group_page(group_id: int, request: Request):
         group_link = f"{settings.dashboard_url}/group/{group_id}"
 
         actions_html = f'''<div class="card" style="margin-bottom:20px;">
-            <h2 style="margin:0 0 12px;">Invite</h2>
-            <form action="/group/{group_id}/invite" method="post" style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
-                <input name="email" type="email" placeholder="friend@email.com" required
-                       style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
-                <button type="submit" class="btn-primary" style="padding:10px 18px;font-size:14px;">Invite</button>
-            </form>
-            <button onclick="navigator.clipboard.writeText(&apos;{group_link}&apos;);this.textContent=&apos;Copied!&apos;;setTimeout(()=>this.textContent=&apos;Copy invite link&apos;,1500)"
-                    class="btn-secondary" style="font-size:13px;padding:8px 16px;">Copy invite link</button>
+            <h2 style="margin:0 0 12px;">Share</h2>
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+                <input type="text" value="{group_link}" readonly id="group-link"
+                       style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;background:#f8fafc;color:#374151;">
+                <button onclick="navigator.clipboard.writeText(&apos;{group_link}&apos;);this.textContent=&apos;Copied!&apos;;setTimeout(()=>this.textContent=&apos;Copy&apos;,1500)"
+                        class="btn-primary" style="padding:10px 18px;font-size:14px;white-space:nowrap;">Copy</button>
+            </div>
+            {f'<button onclick="navigator.share({{title:&apos;{group_name}&apos;,url:&apos;{group_link}&apos;}}).catch(()=>{{}})" class="btn-secondary" style="font-size:13px;padding:8px 16px;margin-bottom:12px;width:100%;">Share via...</button>' if True else ''}
+            <details style="margin-top:4px;">
+                <summary style="font-size:13px;color:#6b7280;cursor:pointer;">Or invite by email</summary>
+                <form action="/group/{group_id}/invite" method="post" style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                    <input name="email" type="email" placeholder="friend@email.com" required
+                           style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
+                    <button type="submit" class="btn-secondary" style="padding:10px 18px;font-size:14px;">Send</button>
+                </form>
+            </details>
         </div>
         <div class="card" style="margin-bottom:20px;">
             <h2 style="margin:0 0 12px;">Subscribe to Calendar</h2>
