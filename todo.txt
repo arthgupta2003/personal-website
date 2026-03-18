@@ -2828,4 +2828,28 @@
 # Phase 7: Visual simplification
 # Phase 8: Auto-naming (Spotify Blend style)
 #
-# Status: IN_PROGRESS
+# Status: DONE
+
+# ============================================================
+# USER STORY GAPS — Audit 2026-03-18
+# ============================================================
+#
+# HIGH PRIORITY
+#
+# [x] Leave group — POST /api/group/{id}/leave + button on group page (2026-03-18)
+# [ ] Delete group — creator-only, with confirmation
+# [ ] Remove member — group creator can kick members
+# [x] Events/calendar tab back in nav (2026-03-18)
+# [x] Profile: human-readable address instead of raw lat/lon (2026-03-18)
+# [x] Profile: Spotify/YouTube/Gmail connect buttons (2026-03-18)
+# [ ] Confirm dialog before deleting group events
+# [ ] Notify group members when new event added
+# [ ] Onboarding guidance after joining a group via invite
+#
+# MEDIUM PRIORITY
+#
+# [ ] Merge group events into personal calendar view
+# [ ] Group filter toggles on calendar page
+# [ ] Search: category/date/price filters
+# [ ] Notify on RSVP status changes (not just "going")
+# [ ] Prompt to fill profile if incomplete after group join

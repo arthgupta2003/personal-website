@@ -1081,6 +1081,17 @@ class Database:
         self.conn.execute("UPDATE groups SET name = ? WHERE id = ?", (auto, group_id))
         self.conn.commit()
 
+    def leave_group(self, group_id: int, user_id: int):
+        self.conn.execute(
+            "DELETE FROM group_members WHERE group_id = ? AND user_id = ?",
+            (group_id, user_id),
+        )
+        self.conn.commit()
+        # Regenerate auto-name
+        auto = self.generate_group_auto_name(group_id)
+        self.conn.execute("UPDATE groups SET name = ? WHERE id = ?", (auto, group_id))
+        self.conn.commit()
+
     def get_group_by_id(self, group_id: int) -> dict | None:
         row = self.conn.execute(
             "SELECT * FROM groups WHERE id = ?", (group_id,)

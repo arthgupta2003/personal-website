@@ -71,6 +71,7 @@ def render_nav(user: dict | None = None) -> str:
         return f"""<nav class="app-nav"><div class="app-nav-inner">
           <a href="/" class="app-logo">recom</a>
           <a href="/groups" class="nav-link">Groups</a>
+          <a href="/calendar" class="nav-link">Calendar</a>
           <a href="/profile" class="nav-link">Profile</a>
           {overflow_html}
           <div class="nav-divider"></div>
@@ -79,6 +80,7 @@ def render_nav(user: dict | None = None) -> str:
     return """<nav class="app-nav"><div class="app-nav-inner">
       <a href="/" class="app-logo">recom</a>
       <a href="/groups" class="nav-link">Groups</a>
+      <a href="/calendar" class="nav-link">Calendar</a>
       <a href="/login" class="nav-link">Log in</a>
     </div></nav>"""
 
@@ -1322,6 +1324,7 @@ async def profile_page(request: Request, response: Response):
     settings = Settings()
     home_lat = float(current_user["home_lat"]) if current_user.get("home_lat") else settings.latitude
     home_lon = float(current_user["home_lon"]) if current_user.get("home_lon") else settings.longitude
+    location_query = current_user.get("location_query") or settings.location_query or ""
     name = current_user.get("name") or ""
     email = current_user.get("email") or ""
     user_id = current_user["id"]
@@ -1374,8 +1377,6 @@ async def profile_page(request: Request, response: Response):
 .save-btn:hover{{background:#4338ca}}
 .map-hint{{font-size:12px;color:#9ca3af;margin-top:6px}}
 .save-success{{display:none;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:12px}}
-.locate-btn{{background:white;border:1.5px solid #e5e7eb;color:#374151;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:12px;display:flex;align-items:center;gap:6px}}
-.locate-btn:hover{{border-color:#4f46e5;color:#4f46e5}}
 .profile-tabs{{display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:24px}}
 .profile-tab{{padding:10px 20px;font-size:14px;font-weight:600;color:#6b7280;cursor:pointer;border:none;background:none;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}}
 .profile-tab:hover{{color:#374151}}
@@ -1403,17 +1404,33 @@ async def profile_page(request: Request, response: Response):
 
     <div class="card">
       <h2>Home Location</h2>
-      <p style="font-size:13px;color:#64748b;margin-bottom:16px;">Your home coordinates are used to calculate event distances and improve recommendations.</p>
-      <button class="locate-btn" onclick="useGPS()">Use my current location</button>
-      <div class="row">
-        <div class="field"><label>Latitude</label><input id="home_lat" type="number" step="0.0001" value="{home_lat}"></div>
-        <div class="field"><label>Longitude</label><input id="home_lon" type="number" step="0.0001" value="{home_lon}"></div>
-      </div>
-      <p class="map-hint">Tip: You can get coordinates from <a href="https://maps.google.com" target="_blank" style="color:#4f46e5">Google Maps</a> by right-clicking your location.</p>
+      <p style="font-size:13px;color:#64748b;margin-bottom:16px;">Used to calculate event distances and improve recommendations.</p>
+      <div class="field"><label>Location</label><input id="location" value="{location_query}" placeholder="e.g. Cambridge, MA"></div>
+      <p class="map-hint">Enter a city or address. Coordinates are set automatically when the pipeline runs.</p>
     </div>
 
     <button class="save-btn" onclick="save()">Save changes</button>
     <div class="save-success" id="success">Saved!</div>
+
+    <div class="card" style="margin-top:24px;">
+      <h2>Connected Services</h2>
+      <p style="font-size:13px;color:#64748b;margin-bottom:16px;">Connect your accounts to improve recommendations based on your listening and viewing history.</p>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <div><span style="font-weight:700;font-size:14px;color:#1e293b;">Spotify</span><br><span style="font-size:12px;color:#6b7280;">Listening history and top artists</span></div>
+          <a href="/auth/spotify" style="padding:6px 14px;background:#1DB954;color:white;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;">Connect</a>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <div><span style="font-weight:700;font-size:14px;color:#1e293b;">YouTube</span><br><span style="font-size:12px;color:#6b7280;">Watch history and subscriptions</span></div>
+          <span style="padding:6px 14px;background:#f3f4f6;color:#6b7280;border-radius:6px;font-size:11px;font-weight:600;" title="Run: uv run python scripts/auth_youtube.py">CLI only</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <div><span style="font-weight:700;font-size:14px;color:#1e293b;">Gmail</span><br><span style="font-size:12px;color:#6b7280;">Newsletter event scanning</span></div>
+          <span style="padding:6px 14px;background:#f3f4f6;color:#6b7280;border-radius:6px;font-size:11px;font-weight:600;" title="Run: uv run python scripts/auth_gmail.py">CLI only</span>
+        </div>
+      </div>
+      <p class="map-hint" style="margin-top:12px;">YouTube and Gmail require CLI setup. Run <code style="background:#f1f5f9;padding:2px 4px;border-radius:3px;font-size:11px;">uv run python scripts/auth_youtube.py</code> or <code style="background:#f1f5f9;padding:2px 4px;border-radius:3px;font-size:11px;">uv run python scripts/auth_gmail.py</code> on the server.</p>
+    </div>
 
     <div class="card" style="margin-top:24px;">
       <h2>Your Taste Profile</h2>
@@ -1514,19 +1531,10 @@ function switchTab(tab) {{
   }}
 }})();
 
-function useGPS() {{
-  if (!navigator.geolocation) {{ alert('Geolocation not supported'); return; }}
-  navigator.geolocation.getCurrentPosition(pos => {{
-    document.getElementById('home_lat').value = pos.coords.latitude.toFixed(5);
-    document.getElementById('home_lon').value = pos.coords.longitude.toFixed(5);
-  }}, () => alert('Could not get location'));
-}}
-
 function save() {{
   const payload = {{
     name: document.getElementById('name').value.trim(),
-    home_lat: parseFloat(document.getElementById('home_lat').value) || null,
-    home_lon: parseFloat(document.getElementById('home_lon').value) || null,
+    location: document.getElementById('location').value.trim(),
   }};
   fetch('/api/profile/update', {{
     method: 'POST',
@@ -1623,6 +1631,21 @@ async def profile_update(request: Request):
     if "name" in body:
         updates.append("name = ?")
         params.append(body["name"])
+    if "location" in body and body["location"]:
+        location_text = body["location"].strip()
+        updates.append("location_query = ?")
+        params.append(location_text)
+        # Try to geocode the location to set lat/lon automatically
+        try:
+            from recom.events.geocoder import _geocode_query
+            coords = _geocode_query(location_text)
+            if coords:
+                updates.append("home_lat = ?")
+                params.append(coords[0])
+                updates.append("home_lon = ?")
+                params.append(coords[1])
+        except Exception:
+            pass  # Geocoding is best-effort; pipeline will retry later
     if "home_lat" in body and body["home_lat"] is not None:
         updates.append("home_lat = ?")
         params.append(body["home_lat"])
@@ -4525,6 +4548,16 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         }}
         </script>'''
 
+    # --- Leave group button (members who are NOT the creator) ---
+    leave_html = ""
+    if is_member and current_user and group.get("created_by") != current_user["id"]:
+        leave_html = f'''<div style="text-align:center;margin-top:32px;margin-bottom:16px;">
+            <form action="/api/group/{group_id}/leave" method="post" style="margin:0;">
+                <button type="submit" onclick="return confirm(&apos;Leave this group?&apos;)"
+                        style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:13px;padding:8px 16px;font-family:inherit;">Leave group</button>
+            </form>
+        </div>'''
+
     resp = HTMLResponse(_layout(group_name, f"""
     {name_html}
     <div class="card" style="margin-bottom:20px;">
@@ -4536,6 +4569,7 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     <h2>Upcoming</h2>
     {upcoming_html}
     {actions_html}
+    {leave_html}
     """, user=current_user))
     return _maybe_set_cookie(request, resp, current_user)
 
@@ -4963,6 +4997,23 @@ async def api_group_rename(group_id: int, request: Request):
     if name:
         db.update_group_display_name(group_id, name)
     return {"ok": True}
+
+
+@app.post("/api/group/{group_id:int}/leave")
+async def api_group_leave(group_id: int, request: Request):
+    user = _get_current_user(request)
+    db = get_db()
+    if not user:
+        return HTMLResponse("<h1>Unauthorized</h1>", status_code=401)
+    group = db.get_group_by_id(group_id)
+    if not group:
+        return HTMLResponse("<h1>Group not found</h1>", status_code=404)
+    if group["created_by"] == user["id"]:
+        return HTMLResponse("<h1>Group creator cannot leave — delete the group instead</h1>", status_code=403)
+    if not db.is_group_member(group_id, user["id"]):
+        return HTMLResponse("<h1>Not a member</h1>", status_code=403)
+    db.leave_group(group_id, user["id"])
+    return RedirectResponse("/groups", status_code=303)
 
 
 @app.post("/api/group/{group_id:int}/rsvp", response_class=JSONResponse)
