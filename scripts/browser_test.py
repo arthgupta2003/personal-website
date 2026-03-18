@@ -58,40 +58,21 @@ def get_token(email: str) -> str:
 def test_unauthenticated(page: Page, base: str):
     print("\n-- Unauthenticated --")
 
-    # Home page loads and has event cards OR empty state message
-    # Use commit (HTML received) since page is large and slow to fully parse
-    page.goto(base + "/", wait_until="commit", timeout=120000)
+    # Root redirects (to /groups or /landing depending on auth state)
+    resp = page.goto(base + "/", wait_until="domcontentloaded", timeout=120000)
     page.wait_for_timeout(2000)
+    check("/ redirects (unauth)", "/groups" in page.url or "/landing" in page.url, f"ended at {page.url}")
 
-    # Nav exists
-    check("/ has nav", page.locator("nav").count() > 0)
+    # Groups page has nav
+    check("/groups has nav", page.locator("nav").count() > 0)
 
-    # Check list view has content
-    page.wait_for_function("typeof switchView === 'function'", timeout=30000)
-    page.evaluate("switchView('list')")
-    page.wait_for_timeout(500)
-    list_html = page.locator("#list-view").inner_html()
-    has_events = "day-group" in list_html or "event-card" in list_html
-    has_empty = "No events to display" in list_html or "No runs yet" in list_html
-    check("/ list view has events or empty state", has_events or has_empty,
-          f"list-view content: {list_html[:200]!r}")
-
-    if has_events:
-        # Count visible event cards
-        count = page.locator("#list-view .evt-card").count()
-        check("/ shows >0 event cards", count > 0, f"got {count} cards")
-
-    # Score slider default — should be 0 (show all)
-    score_val = page.evaluate("document.getElementById('score-slider')?.value")
-    check("score slider defaults to 0", str(score_val) == "0", f"got {score_val!r}")
-
-    # Dist slider default — should be 50 (any distance)
-    dist_val = page.evaluate("document.getElementById('dist-slider')?.value")
-    check("dist slider defaults to 50", str(dist_val) == "50", f"got {dist_val!r}")
+    # Groups page has content
+    content = page.content()
+    has_groups = "group" in content.lower()
+    check("/groups has group content", has_groups, f"content snippet: {content[:300]!r}")
 
     # Other pages load without errors
-    for path, label in [("/taste", "/taste"), ("/groups", "/groups"),
-                        ("/attended", "/attended"), ("/login", "/login")]:
+    for path, label in [("/groups", "/groups"), ("/attended", "/attended"), ("/login", "/login")]:
         page.goto(base + path, wait_until="domcontentloaded")
         page.wait_for_timeout(1000)
         check(f"{label} loads (no 5xx)", "500" not in page.title() and "error" not in page.title().lower())
@@ -117,27 +98,19 @@ def test_authenticated(page: Page, base: str, token: str):
         "path": "/",
     }])
 
-    # Home page (slow — large page, use commit + generous wait)
-    page.goto(base + "/", wait_until="commit", timeout=120000)
-    page.wait_for_function("typeof switchView === 'function'", timeout=60000)
-    page.evaluate("switchView('list')")
-    page.wait_for_timeout(800)
+    # Root redirects to /groups even when authed
+    page.goto(base + "/", wait_until="domcontentloaded", timeout=120000)
+    page.wait_for_timeout(2000)
+    check("/ (authed) redirects to /groups", "/groups" in page.url, f"ended at {page.url}")
 
-    list_html = page.locator("#list-view").inner_html()
-    has_events = "day-group" in list_html or "event-card" in list_html
-    check("/ (authed) shows events", has_events, f"list-view: {list_html[:300]!r}")
+    # Groups page loads
+    content = page.content()
+    check("/groups (authed) no 500", "500" not in page.title() and "Internal Server Error" not in content)
+    check("/groups (authed) has nav", page.locator("nav").count() > 0)
 
-    if has_events:
-        count = page.locator("#list-view .evt-card").count()
-        check("/ (authed) >0 visible cards", count > 0, f"got {count}")
-
-    # Score slider still 0
-    score_val = page.evaluate("document.getElementById('score-slider')?.value")
-    check("/ (authed) score slider is 0", str(score_val) == "0", f"got {score_val!r}")
-
-    # All nav links present
+    # Nav has core links (Groups + Profile always visible; Search/Venues only on those pages)
     nav_html = page.locator("nav").inner_html()
-    for link in ["Search", "Venues", "Taste"]:
+    for link in ["Groups", "Profile"]:
         check(f"nav has {link}", link in nav_html, f"nav: {nav_html[:300]!r}")
 
     # Auth pages load without errors AND have consistent nav
@@ -145,7 +118,6 @@ def test_authenticated(page: Page, base: str, token: str):
         ("/venues", "/venues"),
         ("/search", "/search"),
         ("/profile", "/profile"),
-        ("/taste", "/taste"),
     ]:
         page.goto(base + path, wait_until="domcontentloaded")
         page.wait_for_timeout(1000)
@@ -159,16 +131,10 @@ def test_authenticated(page: Page, base: str, token: str):
         check(f"{label} nav is dark (not unstyled)", nav_bg not in ("rgba(0, 0, 0, 0)", ""),
               f"nav bg={nav_bg!r}")
 
-    # RSVP buttons visible on home
-    page.goto(base + "/", wait_until="domcontentloaded")
-    page.wait_for_timeout(1000)
-    page.wait_for_function("typeof switchView === 'function'", timeout=30000)
-    page.evaluate("switchView('list')")
-    page.wait_for_timeout(800)
 
-
-def test_filters(page: Page, base: str, token: str):
-    print("\n-- Filter behavior --")
+def test_group_page(page: Page, base: str, token: str):
+    """Test group pages including the new share/join flow."""
+    print("\n-- Group pages --")
 
     page.context.add_cookies([{
         "name": "recom_token",
@@ -177,47 +143,28 @@ def test_filters(page: Page, base: str, token: str):
         "path": "/",
     }])
 
-    page.goto(base + "/", wait_until="domcontentloaded")
+    # /groups loads
+    page.goto(base + "/groups", wait_until="domcontentloaded")
     page.wait_for_timeout(1000)
-    page.wait_for_function("typeof switchView === 'function'", timeout=30000)
-    page.evaluate("switchView('list')")
-    page.wait_for_timeout(800)
+    content = page.content()
+    check("/groups loads (no 500)", "500" not in page.title() and "Internal Server Error" not in content)
 
-    # Count events at score=0 (all)
-    count_all = page.evaluate("""() => {
-        const sl = document.getElementById('score-slider');
-        if (sl) sl.value = 0;
-        if (typeof applyFilters === 'function') applyFilters();
-        else if (typeof buildListView === 'function') buildListView();
-        return document.querySelectorAll('#list-view .day-group').length;
-    }""")
-    check("score=0 shows day groups", count_all > 0, f"got {count_all} day groups")
+    # Try to load group/1 (may or may not exist)
+    page.goto(base + "/group/1", wait_until="domcontentloaded")
+    page.wait_for_timeout(1000)
+    title = page.title()
+    status = page.evaluate("document.querySelector('h1')?.textContent || ''")
 
-    # Score filter at 90 should show fewer
-    count_high = page.evaluate("""() => {
-        const sl = document.getElementById('score-slider');
-        if (sl) { sl.value = 90; sl.dispatchEvent(new Event('input')); }
-        if (typeof buildListView === 'function') buildListView();
-        return document.querySelectorAll('#list-view .day-group').length;
-    }""")
-    check("score=90 shows ≤ score=0 results", count_high <= count_all,
-          f"high={count_high} vs all={count_all}")
-
-    # Reset slider
-    page.evaluate("""() => {
-        const sl = document.getElementById('score-slider');
-        if (sl) { sl.value = 0; sl.dispatchEvent(new Event('input')); }
-        if (typeof buildListView === 'function') buildListView();
-    }""")
-
-    # All views render without throwing
-    for view in ["list", "timeline", "heat", "calendar"]:
-        try:
-            page.evaluate(f"switchView('{view}')")
-            page.wait_for_timeout(300)
-            ok(f"switchView('{view}') no crash")
-        except Exception as e:
-            fail(f"switchView('{view}')", str(e))
+    if "not found" in status.lower() or "404" in title:
+        ok("/group/1 returns 404 (no group)")
+    else:
+        content = page.content()
+        check("/group/1 loads (no 500)", "Internal Server Error" not in content)
+        # Check share section exists for members
+        has_share = "Share" in content or "Copy" in content or "group-link" in content
+        check("/group/1 has share section", has_share, f"content snippet: {content[:500]!r}")
+        # Check join form exists for non-members viewing unauthenticated
+        # (We're authenticated so we may or may not see join form)
 
 
 def test_new_features(page: Page, base: str, token: str):
@@ -274,14 +221,6 @@ def test_new_features(page: Page, base: str, token: str):
     check("/v/calendar/magazine has events or empty state", has_events or has_empty,
           f"content snippet: {content[:300]!r}")
 
-    # /taste loads and has Elo-related content
-    page.goto(base + "/taste", wait_until="domcontentloaded")
-    page.wait_for_timeout(1000)
-    content = page.content().lower()
-    check("/taste has Elo-related content",
-          "elo" in content or "matchup" in content or "vote" in content or "taste" in content,
-          f"content snippet: {content[:300]!r}")
-
     # Admin pages load without 500
     for path in ["/admin/sources", "/admin/email-preview", "/admin/pipeline",
                  "/admin/backtest", "/admin/cal-preview", "/admin/ml"]:
@@ -318,7 +257,7 @@ def main():
         try:
             test_unauthenticated(page, base)
             test_authenticated(page, base, token)
-            test_filters(page, base, token)
+            test_group_page(page, base, token)
             test_new_features(page, base, token)
         except Exception:
             fail("test runner crashed", traceback.format_exc())
