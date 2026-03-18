@@ -1,0 +1,47 @@
+KNOWN BUGS & WORKAROUNDS
+=========================
+
+## node-pty spawn-helper missing execute permission
+Status: WORKAROUND (auto-fixed in start.sh)
+Date: 2025-03-10
+
+Symptom: claude-code-web fails to start Claude sessions with "posix_spawnp failed"
+Cause: npm installs node-pty's spawn-helper binary without +x permission (-rw-r--r--)
+Fix: chmod +x ~/.nvm/versions/node/v22.22.1/lib/node_modules/claude-code-web/node_modules/node-pty/prebuilds/darwin-*/spawn-helper
+Recurs: Every time claude-code-web is reinstalled (npm install -g claude-code-web)
+Note: start.sh runs the chmod automatically on every launch as a safety net
+
+
+## claude-code-web spawns fail with "nested session" error
+Status: WORKAROUND (patched claude-bridge.js)
+Date: 2025-03-10
+
+Symptom: Sessions start but immediately exit with code [object Object]. Claude CLI says
+  "Claude Code cannot be launched inside another Claude Code session"
+Cause: When claude-code-web is launched from within a Claude Code session (e.g. this one),
+  the CLAUDECODE env var leaks into spawned sessions via {...process.env}
+Fix: In claude-bridge.js (~line 74), add `CLAUDECODE: undefined` to the env object:
+  env: { ...process.env, CLAUDECODE: undefined, TERM: 'xterm-256color', ... }
+File: ~/.nvm/versions/node/v22.22.1/lib/node_modules/claude-code-web/src/claude-bridge.js
+Recurs: Every time claude-code-web is reinstalled (npm install -g claude-code-web)
+
+
+## Daily email crashes on user-added events with empty raw_json
+Status: FIXED
+Date: 2026-03-17
+
+Symptom: Daily email not sent. Traceback: Event.model_validate({}) fails with missing required fields.
+Cause: db.add_user_event() stores raw_json='{}' for user-added events. When _reconstruct_ranked()
+  parses these, Pydantic can't construct an Event from an empty dict.
+Fix: Skip events with empty/invalid raw_json in _reconstruct_ranked() instead of crashing.
+
+
+## Daily email empty when all event scores are low
+Status: FIXED
+Date: 2026-03-17
+
+Symptom: No email sent on days when all time-based events score below 40.
+Cause: Daily email requires score >= 40 and start_time != None, with no fallback.
+  Recurring events (clubs/classes) and always-available activities were excluded entirely.
+Fix: When daily picks are thin (< 3 events), backfill with top-scoring clubs/classes and
+  always-available activities from the same run, up to 5 total.

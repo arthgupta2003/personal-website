@@ -506,8 +506,31 @@ _DAILY_TEMPLATE = _env.from_string(
     </table>
     {% endfor %}
 
-    {% if not events %}
+    {% if not events and not backfill %}
     <p style="color:#9ca3af;font-style:italic;font-size:14px;text-align:center;padding:20px 0;">Nothing great on the calendar today. Check the <a href="{{ dashboard_url }}" style="color:#4f46e5;">full calendar</a>.</p>
+    {% endif %}
+
+    {% if backfill %}
+    <div style="margin-top:20px;padding:16px;background:#f5f3ff;border-radius:12px;border:1px solid #ddd6fe;">
+      <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:1.5px;color:#7c3aed;text-transform:uppercase;">{% if events %}Also worth checking out{% else %}No standout events today &mdash; try these instead{% endif %}</p>
+      {% for r in backfill %}
+      {% set type_label = "Club" if r.event_type == "club" else ("Class" if r.event_type == "class" else "Anytime") %}
+      {% set type_bg = "#e0e7ff" if r.event_type == "club" else ("#fce7f3" if r.event_type == "class" else "#ecfdf5") %}
+      {% set type_color = "#3730a3" if r.event_type == "club" else ("#9d174d" if r.event_type == "class" else "#065f46") %}
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+        <tr><td style="padding:10px 12px;background:white;border-radius:8px;">
+          <p style="margin:0 0 3px;font-size:14px;font-weight:700;">
+            {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#111827;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
+            <span style="display:inline-block;background:{{ type_bg }};color:{{ type_color }};font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;margin-left:4px;">{{ type_label }}</span>
+          </p>
+          <p style="margin:0;font-size:12px;color:#6b7280;">
+            {% if r.event.location_name %}{{ r.event.location_name }}{% endif %}{% if r.event.price %} · {{ r.event.price }}{% endif %}
+          </p>
+          {% if r.match_reason %}<p style="margin:4px 0 0;font-size:12px;color:#6d28d9;">{{ r.match_reason }}</p>{% endif %}
+        </td></tr>
+      </table>
+      {% endfor %}
+    </div>
     {% endif %}
 
     {% if bucket_suggestions %}
@@ -546,42 +569,69 @@ def compose_daily_email(
     dashboard_url: str = "https://recom.arthgupta.dev",
     user_token: str = "",
     friend_rsvps: dict[str, list[dict]] | None = None,
+    daily_pick_ids: set[str] | None = None,
 ) -> tuple[str, str] | None:
     """Build a daily digest for a specific date.
+
+    If daily_pick_ids is provided, use those (from daily_picks table) instead
+    of applying filtering logic here. This keeps email and calendar feed in sync.
 
     Returns (subject, html_body) or None if no events for that day.
     """
     target_str = target_date.strftime("%Y-%m-%d")
     day_label = target_date.strftime("%A, %B %-d")
 
-    # Filter to events on this day with score >= 40
-    todays = []
-    for r in ranked_events:
-        if not r.keep or r.score < 40:
-            continue
-        if r.event.start_time is None:
-            continue
-        st = r.event.start_time
-        event_date = st.replace(tzinfo=None) if st.tzinfo else st
-        if event_date.strftime("%Y-%m-%d") == target_str:
-            todays.append(r)
+    if daily_pick_ids:
+        # Use pre-computed picks from daily_picks table
+        diverse = [r for r in ranked_events
+                   if r.event.id in daily_pick_ids
+                   and r.event.start_time is not None
+                   and (r.event.start_time.replace(tzinfo=None) if r.event.start_time.tzinfo else r.event.start_time).strftime("%Y-%m-%d") == target_str]
+        diverse.sort(key=lambda r: r.score, reverse=True)
+    else:
+        # Fallback: filter locally (same logic as daily_picks computation)
+        todays = []
+        for r in ranked_events:
+            if not r.keep or r.score < 40:
+                continue
+            if r.event.start_time is None:
+                continue
+            st = r.event.start_time
+            event_date = st.replace(tzinfo=None) if st.tzinfo else st
+            if event_date.strftime("%Y-%m-%d") == target_str:
+                todays.append(r)
 
-    # Sort by score, pick top 5 with vibe diversity
-    todays.sort(key=lambda r: r.score, reverse=True)
-    diverse: list[RankedEvent] = []
-    vibe_counts: dict[str, int] = defaultdict(int)
-    for r in todays:
-        if len(diverse) >= 5:
-            break
-        if vibe_counts[r.vibe] >= 3:
-            continue
-        diverse.append(r)
-        vibe_counts[r.vibe] += 1
+        todays.sort(key=lambda r: r.score, reverse=True)
+        diverse: list[RankedEvent] = []
+        vibe_counts: dict[str, int] = defaultdict(int)
+        for r in todays:
+            if len(diverse) >= 5:
+                break
+            if vibe_counts[r.vibe] >= 3:
+                continue
+            diverse.append(r)
+            vibe_counts[r.vibe] += 1
 
-    if not diverse:
+    # Backfill with recurring events (clubs/classes) and always-available activities
+    # when time-based picks are thin
+    backfill: list[RankedEvent] = []
+    if len(diverse) < 3:
+        seen_ids = {r.event.id for r in diverse}
+        # Clubs, classes, and dateless activities — sorted by score
+        candidates = [
+            r for r in ranked_events
+            if r.keep and r.event.id not in seen_ids
+            and (r.event_type in ("club", "class") or r.event.start_time is None)
+            and r.score >= 25
+        ]
+        candidates.sort(key=lambda r: r.score, reverse=True)
+        backfill = candidates[: 5 - len(diverse)]
+
+    if not diverse and not backfill:
         return None
 
-    n = len(diverse)
+    all_picks = diverse + backfill
+    n = len(all_picks)
     subject = f"{n} thing{'s' if n != 1 else ''} to do today" if n > 1 else "1 thing to do today"
 
     html_body = _DAILY_TEMPLATE.render(
@@ -589,6 +639,7 @@ def compose_daily_email(
         day_label=day_label,
         event_count=len(diverse),
         events=diverse,
+        backfill=backfill,
         bucket_suggestions=bucket_suggestions or [],
         dashboard_url=dashboard_url,
         user_token=user_token,

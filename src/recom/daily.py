@@ -24,7 +24,27 @@ def _reconstruct_ranked(events_data: list[dict]) -> list[RankedEvent]:
     """Reconstruct RankedEvent list from DB rows."""
     ranked = []
     for ed in events_data:
-        raw = json.loads(ed["raw_json"])
+        raw = json.loads(ed["raw_json"]) if ed.get("raw_json") else {}
+        if not raw or "id" not in raw:
+            # User-added events store raw_json='{}' — reconstruct from DB columns
+            source = ed.get("source", "eventbrite")
+            if source == "user":
+                source = "eventbrite"  # placeholder — Event.source is an enum
+            raw = {
+                "id": ed["event_id"],
+                "source": source,
+                "title": ed.get("title") or "",
+                "description": ed.get("description") or "",
+                "url": ed.get("url") or "",
+                "start_time": ed.get("start_time"),
+                "end_time": ed.get("end_time"),
+                "location_name": ed.get("location_name") or "",
+                "location_address": ed.get("location_address") or "",
+                "is_online": bool(ed.get("is_online", False)),
+                "price": ed.get("price"),
+                "category": ed.get("category"),
+                "image_url": ed.get("image_url"),
+            }
         event = Event.model_validate(raw)
         ranked.append(RankedEvent(
             event=event,
@@ -61,6 +81,12 @@ def send_daily_for_user(db: Database, settings: Settings, user: dict, today: dat
         return
     run_id = row["id"]
 
+    # Ensure daily_picks are computed for this run
+    picks = db.get_daily_picks(run_id)
+    if not picks:
+        db.compute_daily_picks(run_id, user_id)
+        picks = db.get_daily_picks(run_id)
+
     events_data = db.get_run_events(run_id)
     ranked = _reconstruct_ranked(events_data)
 
@@ -81,11 +107,15 @@ def send_daily_for_user(db: Database, settings: Settings, user: dict, today: dat
         except Exception:
             logger.exception("Failed to get bucket suggestions")
 
+    # Pass daily_pick event IDs so email uses same picks as calendar feed
+    pick_ids = {p["event_id"] for p in picks} if picks else None
+
     result = compose_daily_email(
         ranked, today,
         bucket_suggestions=bucket_suggestions,
         user_token=user_token,
         friend_rsvps=friend_rsvps,
+        daily_pick_ids=pick_ids,
     )
     if result is None:
         logger.info(f"No events for {user_label} today — skipping")
@@ -101,6 +131,67 @@ def send_daily_for_user(db: Database, settings: Settings, user: dict, today: dat
         path = Path(settings.state_dir) / f"daily_{user_label}_{today.strftime('%Y-%m-%d')}.html"
         path.write_text(html_body)
         logger.info(f"SMTP not configured — saved to {path}")
+
+
+def send_group_digests(db: Database, settings: Settings, today: datetime):
+    """Send group digest emails — one per group, CC'd to all members."""
+    from recom.email.composer import compose_daily_email
+
+    groups = db.conn.execute("SELECT id, name, slug FROM groups").fetchall()
+    target_str = today.strftime("%Y-%m-%d")
+
+    for group in groups:
+        members = db.get_group_members(group["id"])
+        if len(members) < 2:
+            continue
+
+        # Use the first member's run to get group events
+        # (group events blend all members' latest runs)
+        events_data = db.get_group_events(group["id"])
+        if not events_data:
+            continue
+
+        ranked = _reconstruct_ranked(events_data)
+
+        # Get all RSVPs from group members for context
+        event_ids = [r.event.id for r in ranked if r.keep]
+        friend_rsvps = db.get_rsvps_for_events(event_ids)
+
+        # Filter to today's events, apply same curation
+        todays = [r for r in ranked if r.keep and r.score >= 40
+                  and r.event.start_time is not None
+                  and r.event.start_time.strftime("%Y-%m-%d") == target_str]
+        if not todays:
+            continue
+
+        # Use first member's token for RSVP links
+        first_token = members[0].get("user_token", "")
+
+        result = compose_daily_email(
+            ranked, today,
+            user_token=first_token,
+            friend_rsvps=friend_rsvps,
+        )
+        if result is None:
+            continue
+
+        subject, html_body = result
+        group_name = group["name"] or group["slug"]
+        subject = f"[{group_name}] {subject}"
+
+        member_emails = [m["email"] for m in members if m.get("email")]
+        if not member_emails:
+            continue
+
+        # Send to first member, CC rest
+        to = member_emails[0]
+        cc = member_emails[1:] if len(member_emails) > 1 else None
+
+        if settings.smtp_password:
+            send_email(subject, html_body, settings, to=to, cc=cc)
+            logger.info(f"Group digest sent for '{group_name}' to {len(member_emails)} members")
+        else:
+            logger.info(f"SMTP not configured — skipping group digest for '{group_name}'")
 
 
 def main():
@@ -122,6 +213,11 @@ def main():
                 send_daily_for_user(db, settings, user, today)
             except Exception:
                 logger.exception(f"Failed for user {user['email']}")
+        # Send group digests after individual emails
+        try:
+            send_group_digests(db, settings, today)
+        except Exception:
+            logger.exception("Failed sending group digests")
     else:
         user_id = args.user or 1
         user = db.get_user(user_id)
