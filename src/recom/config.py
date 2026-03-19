@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
 
+    # Google Calendar
+    gcal_token_file: str = "state/tokens/gcal_token.json"
+    gcal_calendar_id: str = ""  # set after first run creates the shared calendar
+
     # Paths
     db_path: str = "recom.db"
     state_dir: str = "state"
@@ -50,7 +54,7 @@ class Settings(BaseSettings):
     # Dashboard
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8000
-    dashboard_url: str = "https://recom.arthgupta.dev"
+    dashboard_url: str = "https://calyx.arthgupta.dev"
 
     model_config = {"env_file": ".env", "env_prefix": "RECOM_", "extra": "ignore"}
 

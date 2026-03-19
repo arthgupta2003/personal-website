@@ -6,6 +6,15 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 
 SESSION="recom"
+LOG="$DIR/state/startup.log"
+
+# Wait for network on boot (launchd may fire before WiFi/Ethernet is up)
+if [ "${1:-start}" = "start" ]; then
+  for i in $(seq 1 30); do
+    curl -sf --max-time 2 https://www.google.com >/dev/null 2>&1 && break
+    sleep 2
+  done
+fi
 
 case "${1:-start}" in
   stop)
@@ -30,7 +39,10 @@ case "${1:-start}" in
     sleep 1
     exec $0 start
     ;;
-  start) ;;
+  start)
+    # Keep machine awake while script runs
+    caffeinate -s &
+    ;;
   *)
     echo "Usage: $0 [start|stop|status|logs|restart]"
     exit 1
@@ -54,23 +66,30 @@ uv sync --no-dev 2>&1 | tail -3
 
 # Create tmux session with dashboard pane
 tmux new-session -d -s "$SESSION" -n main
-tmux send-keys -t "$SESSION" "cd $DIR && uv run recom-dashboard" Enter
+tmux send-keys -t "$SESSION" "while true; do cd $DIR && uv run recom-dashboard; echo 'Dashboard crashed, restarting in 5s...'; sleep 5; done" Enter
 
 # Cloudflare tunnel pane
 tmux split-window -t "$SESSION" -v
-tmux send-keys -t "$SESSION" "cloudflared tunnel run" Enter
+tmux send-keys -t "$SESSION" "while true; do cloudflared tunnel run; echo 'Cloudflared crashed, restarting in 5s...'; sleep 5; done" Enter
 
-# Claude Code Web pane (needs node 22)
+# Telegram bot pane
 tmux split-window -t "$SESSION" -v
-tmux send-keys -t "$SESSION" "cd $DIR && ~/.nvm/versions/node/v22.22.1/bin/cc-web --port 32352" Enter
+tmux send-keys -t "$SESSION" "while true; do cd $DIR && set -a && source .env && set +a && uv run python scripts/telegram_bot.py; echo 'Telegram bot crashed, restarting in 5s...'; sleep 5; done" Enter
 
-# Even layout
+# Even layout for main window
 tmux select-layout -t "$SESSION" even-vertical
+
+# Claude agent in its own window (SSH in and select this window to talk directly)
+tmux new-window -t "$SESSION" -n claude
+tmux send-keys -t "$SESSION:claude" "cd $DIR && claude --dangerously-skip-permissions" Enter
+
+# Switch back to main window
+tmux select-window -t "$SESSION:main"
 
 echo ""
 echo "=== Recom running (bare metal) ==="
-echo "  Dashboard:  http://localhost:8000  → recom.arthgupta.dev"
-echo "  Code Web:   http://localhost:32352 → code.arthgupta.dev"
+echo "  Dashboard:  http://localhost:8000  → calyx.arthgupta.dev"
+echo "  Telegram:   @ArthRecomBot"
 echo ""
 echo "Commands:"
 echo "  ./start.sh logs      — attach to tmux"

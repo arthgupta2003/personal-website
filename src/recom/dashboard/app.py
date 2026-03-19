@@ -88,7 +88,7 @@ def render_nav(user: dict | None = None) -> str:
 
 def _layout(title: str, body: str, user: dict | None = None, og: dict | None = None) -> str:
     nav = render_nav(user)
-    base_url = "https://recom.arthgupta.dev"
+    base_url = "https://calyx.arthgupta.dev"
     og_title = (og or {}).get("title", title)
     og_desc = (og or {}).get("description", "Find events and make plans with friends")
     og_image = (og or {}).get("image", f"{base_url}/static/og-image.png")
@@ -2330,7 +2330,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
               </div>
             </details>'''
 
-    _default_og = '<meta property="og:site_name" content="Calyx"><meta property="og:type" content="website"><meta property="og:title" content="This Week in Cambridge"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://recom.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
+    _default_og = '<meta property="og:site_name" content="Calyx"><meta property="og:type" content="website"><meta property="og:title" content="This Week in Cambridge"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://calyx.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
     page_html = LAYOUT_STYLE.replace("__TITLE__", "This Week in Cambridge").replace("__OG_TAGS__", _default_og) + render_nav(current_user) + '<div class="app-content">' + f"""
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
     <style>
@@ -5745,7 +5745,7 @@ async def join_page(success: str = ""):
 
     settings = Settings()
 
-    _default_og = '<meta property="og:site_name" content="Calyx"><meta property="og:type" content="website"><meta property="og:title" content="Join Calyx"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://recom.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
+    _default_og = '<meta property="og:site_name" content="Calyx"><meta property="og:type" content="website"><meta property="og:title" content="Join Calyx"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://calyx.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
     return HTMLResponse(LAYOUT_STYLE.replace("__TITLE__", "Join Calyx").replace("__OG_TAGS__", _default_og) + render_nav(None) + f"""
     <div class="app-content" style="max-width:560px;">
 
