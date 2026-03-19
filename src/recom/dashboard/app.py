@@ -72,6 +72,7 @@ def render_nav(user: dict | None = None) -> str:
           <a href="/" class="app-logo">recom</a>
           <a href="/groups" class="nav-link">Groups</a>
           <a href="/calendar" class="nav-link">Events</a>
+          <a href="/rsvps" class="nav-link">RSVPs</a>
           <a href="/profile" class="nav-link">Profile</a>
           {overflow_html}
           <div class="nav-divider"></div>
@@ -210,6 +211,29 @@ document.addEventListener('click', function(e) {
     menu.classList.remove('open');
   }
 });
+</script>
+<div id="toast" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);opacity:0;padding:12px 24px;border-radius:12px;font-size:14px;font-weight:600;font-family:inherit;color:white;z-index:9999;pointer-events:none;transition:transform .3s ease,opacity .3s ease;box-shadow:0 4px 16px rgba(0,0,0,.2);"></div>
+<script>
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.style.background = type === 'info' ? '#3b82f6' : '#16a34a';
+  t.style.opacity = '1';
+  t.style.transform = 'translateX(-50%) translateY(0)';
+  clearTimeout(t._tid);
+  t._tid = setTimeout(function() {
+    t.style.opacity = '0';
+    t.style.transform = 'translateX(-50%) translateY(100px)';
+  }, 3000);
+}
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  const s = p.get('success');
+  const i = p.get('info');
+  if (s) showToast(s, 'success');
+  else if (i) showToast(i, 'info');
+})();
 </script>
 </div><!-- .app-content -->
 </body></html>"""
@@ -3827,6 +3851,208 @@ async def api_bucket_status(request: Request):
     return JSONResponse({"ok": True})
 
 
+@app.get("/rsvps", response_class=HTMLResponse)
+async def rsvps_page(request: Request, response: Response):
+    """My RSVPs page — user's own RSVPs + friend RSVPs they haven't responded to."""
+    db = get_db()
+    current_user = _get_current_user(request)
+    if not current_user:
+        return RedirectResponse("/login")
+    user_id = current_user["id"]
+    user_token = current_user.get("user_token", "")
+    run = db.get_user_latest_run(user_id)
+    run_id = run["id"] if run else 0
+
+    # 1. User's own RSVPs (future events only)
+    my_rsvps = db.conn.execute(
+        """SELECT r.event_id, r.status, r.run_id,
+                  e.title, e.start_time, e.location_name, e.url, e.image_url,
+                  rk.score, rk.match_reason
+           FROM rsvps r
+           JOIN events e ON e.event_id = r.event_id
+           LEFT JOIN rankings rk ON rk.event_id = r.event_id AND rk.run_id = e.run_id
+           WHERE r.user_id = ?
+             AND r.status IN ('going', 'maybe')
+             AND e.start_time > datetime('now')
+           ORDER BY e.start_time ASC""",
+        (user_id,),
+    ).fetchall()
+
+    # 2. Friend RSVPs user hasn't responded to (future events from groupmates)
+    friend_rsvps = db.conn.execute(
+        """SELECT r.event_id, r.run_id, r.status as friend_status,
+                  u.name as friend_name, u.id as friend_id,
+                  e.title, e.start_time, e.location_name, e.url, e.image_url,
+                  rk.score, rk.match_reason
+           FROM rsvps r
+           JOIN users u ON u.id = r.user_id
+           JOIN events e ON e.event_id = r.event_id
+           LEFT JOIN rankings rk ON rk.event_id = r.event_id AND rk.run_id = e.run_id
+           WHERE r.user_id != ?
+             AND r.status IN ('going', 'maybe')
+             AND e.start_time > datetime('now')
+             AND r.user_id IN (
+                 SELECT gm2.user_id FROM group_members gm
+                 JOIN group_members gm2 ON gm2.group_id = gm.group_id
+                 WHERE gm.user_id = ? AND gm2.user_id != ?
+             )
+             AND r.event_id NOT IN (
+                 SELECT event_id FROM rsvps WHERE user_id = ?
+             )
+           ORDER BY e.start_time ASC""",
+        (user_id, user_id, user_id, user_id),
+    ).fetchall()
+
+    # Group friend RSVPs by event
+    friend_events: dict[str, dict] = {}
+    for row in friend_rsvps:
+        row = dict(row)
+        eid = row["event_id"]
+        if eid not in friend_events:
+            friend_events[eid] = {
+                "event_id": eid, "run_id": row["run_id"],
+                "title": row["title"], "start_time": row["start_time"],
+                "location_name": row["location_name"], "url": row["url"],
+                "image_url": row["image_url"], "score": row["score"],
+                "match_reason": row["match_reason"], "friends": [],
+            }
+        friend_events[eid]["friends"].append({
+            "name": row["friend_name"],
+            "status": row["friend_status"],
+        })
+
+    # Render user's RSVPs
+    my_cards = ""
+    for r in my_rsvps:
+        r = dict(r)
+        status = r["status"]
+        badge_cls = "badge-green" if status == "going" else "badge-yellow"
+        badge_label = "Going" if status == "going" else "Maybe"
+        title = (r.get("title") or r.get("event_id", ""))
+        title_esc = title.replace("'", "&apos;").replace('"', "&quot;")
+        dt = ""
+        if r.get("start_time"):
+            try:
+                dt = datetime.fromisoformat(r["start_time"]).strftime("%a %b %-d, %-I:%M %p")
+            except Exception:
+                dt = r["start_time"][:16]
+        loc = r.get("location_name") or ""
+        score = r.get("score")
+        score_html = f'<span style="font-weight:700;color:#4f46e5;">{score:.0f}</span>' if score else ""
+        reason = (r.get("match_reason") or "")[:120]
+        url = r.get("url") or "#"
+        eid = r["event_id"]
+        rid = r["run_id"]
+
+        my_cards += f"""<div class="card" style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:start;">
+            <div>
+              <a href="{url}" target="_blank" style="font-weight:700;font-size:15px;">{title_esc}</a>
+              <div style="font-size:13px;color:#6b7280;margin-top:2px;">{dt}</div>
+              {f'<div style="font-size:13px;color:#9ca3af;">{loc}</div>' if loc else ''}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              {score_html}
+              <span class="badge {badge_cls}">{badge_label}</span>
+            </div>
+          </div>
+          {f'<div style="font-size:13px;color:#6b7280;">{reason}</div>' if reason else ''}
+          <div class="rsvp-btns" style="display:flex;gap:8px;margin-top:4px;">
+            <button class="rsvp-btn going{' active' if status == 'going' else ''}" onclick="setRsvp(&apos;{eid}&apos;, {rid}, &apos;going&apos;, this)">Going</button>
+            <button class="rsvp-btn maybe{' active' if status == 'maybe' else ''}" onclick="setRsvp(&apos;{eid}&apos;, {rid}, &apos;maybe&apos;, this)">Maybe</button>
+            <button class="rsvp-btn cant" onclick="setRsvp(&apos;{eid}&apos;, {rid}, &apos;cant&apos;, this)">Can&apos;t go</button>
+          </div>
+        </div>"""
+
+    if not my_cards:
+        my_cards = '<div class="card" style="color:#9ca3af;text-align:center;">No upcoming RSVPs yet. Browse <a href="/calendar">Events</a> to find something!</div>'
+
+    # Render friend RSVPs
+    friend_cards = ""
+    for fe in friend_events.values():
+        title = fe.get("title") or ""
+        title_esc = title.replace("'", "&apos;").replace('"', "&quot;")
+        dt = ""
+        if fe.get("start_time"):
+            try:
+                dt = datetime.fromisoformat(fe["start_time"]).strftime("%a %b %-d, %-I:%M %p")
+            except Exception:
+                dt = fe["start_time"][:16]
+        loc = fe.get("location_name") or ""
+        score = fe.get("score")
+        score_html = f'<span style="font-weight:700;color:#4f46e5;">{score:.0f}</span>' if score else ""
+        reason = (fe.get("match_reason") or "")[:120]
+        url = fe.get("url") or "#"
+        eid = fe["event_id"]
+        rid = fe["run_id"]
+
+        friends_html = ""
+        for f in fe["friends"]:
+            fname = f["name"] or "Friend"
+            fname_esc = fname.replace("'", "&apos;").replace('"', "&quot;")
+            fstatus = f["status"]
+            initial = fname[0].upper() if fname else "?"
+            status_color = "#166534" if fstatus == "going" else "#92400e"
+            friends_html += f'<div style="display:flex;align-items:center;gap:6px;"><span style="width:28px;height:28px;border-radius:50%;background:#ede9fe;color:#5b21b6;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">{initial}</span><span style="font-size:13px;"><strong>{fname_esc}</strong> <span style="color:{status_color};">{fstatus}</span></span></div>'
+
+        friend_cards += f"""<div class="card" style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:start;">
+            <div>
+              <a href="{url}" target="_blank" style="font-weight:700;font-size:15px;">{title_esc}</a>
+              <div style="font-size:13px;color:#6b7280;margin-top:2px;">{dt}</div>
+              {f'<div style="font-size:13px;color:#9ca3af;">{loc}</div>' if loc else ''}
+            </div>
+            {score_html}
+          </div>
+          {f'<div style="font-size:13px;color:#6b7280;">{reason}</div>' if reason else ''}
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin:4px 0;">{friends_html}</div>
+          <div class="rsvp-btns" style="display:flex;gap:8px;margin-top:4px;">
+            <button class="rsvp-btn going" onclick="setRsvp(&apos;{eid}&apos;, {rid}, &apos;going&apos;, this)">Going</button>
+            <button class="rsvp-btn maybe" onclick="setRsvp(&apos;{eid}&apos;, {rid}, &apos;maybe&apos;, this)">Maybe</button>
+            <button class="rsvp-btn cant" onclick="setRsvp(&apos;{eid}&apos;, {rid}, &apos;cant&apos;, this)">Skip</button>
+          </div>
+        </div>"""
+
+    if not friend_cards:
+        friend_cards = '<div class="card" style="color:#9ca3af;text-align:center;">No friend RSVPs to show. Join a <a href="/groups">Group</a> to see what your friends are up to!</div>'
+
+    body = f"""
+    <h1>My RSVPs</h1>
+    <h2>Going / Maybe</h2>
+    {my_cards}
+    <h2>Friends are going &mdash; RSVP?</h2>
+    {friend_cards}
+    <script>
+    const USER_TOKEN = '{user_token}';
+    function setRsvp(eventId, runId, status, btn) {{
+      fetch('/api/rsvp', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{event_id: eventId, run_id: runId, status: status, user_token: USER_TOKEN}})
+      }}).then(r => r.json()).then(data => {{
+        if (data.ok) {{
+          const btns = btn.parentElement.querySelectorAll('.rsvp-btn');
+          btns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          btn.style.transform = 'scale(1.05)';
+          setTimeout(() => btn.style.transform = '', 200);
+          if (status === 'cant') {{
+            const card = btn.closest('.card');
+            if (card) {{
+              card.style.transition = 'opacity .3s';
+              card.style.opacity = '0.4';
+            }}
+          }}
+        }}
+      }});
+    }}
+    </script>
+    """
+
+    resp = HTMLResponse(_layout("My RSVPs", body, current_user))
+    return _maybe_set_cookie(request, resp, current_user)
+
+
 @app.get("/attended", response_class=HTMLResponse)
 async def attended_page(request: Request, response: Response):
     db = get_db()
@@ -4434,7 +4660,11 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     # Pipeline events where members RSVPd
     pipeline_events = db.get_group_events(group["id"])
     event_ids = [e.get("event_id", "") for e in pipeline_events if e.get("event_id")]
-    rsvps_map = db.get_rsvps_for_events(event_ids) if event_ids else {}
+    # Also fetch RSVPs for user-added events (keyed as "grp_evt_{id}")
+    user_evt_ids = [f"grp_evt_{e['id']}" for e in upcoming_user]
+    all_rsvp_ids = event_ids + user_evt_ids
+    rsvps_map = db.get_rsvps_for_events(all_rsvp_ids) if all_rsvp_ids else {}
+    user_token = current_user.get("user_token", "") if current_user else ""
     # Only show pipeline events someone RSVPd to
     rsvpd_events = []
     for e in pipeline_events:
@@ -4444,6 +4674,30 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         if going_or_maybe and (e.get("start_time") or "") >= now_str:
             e["_rsvps"] = going_or_maybe
             rsvpd_events.append(e)
+
+    # Helper: render RSVP avatar circles + summary text
+    def _rsvp_avatars(rsvp_list: list[dict]) -> str:
+        going = [r for r in rsvp_list if r["status"] == "going"]
+        maybe = [r for r in rsvp_list if r["status"] == "maybe"]
+        if not going and not maybe:
+            return ""
+        avatars = ""
+        all_r = (going + maybe)[:5]
+        for i, r in enumerate(all_r):
+            bg = "#dcfce7" if r["status"] == "going" else "#fef3c7"
+            fg = "#166534" if r["status"] == "going" else "#92400e"
+            bd = "#86efac" if r["status"] == "going" else "#fde68a"
+            initial = ((r.get("user_name") or "?")[0]).upper()
+            ml = "-6px" if i > 0 else "0"
+            avatars += f'<div title="{r.get("user_name", "")} ({r["status"]})" style="width:22px;height:22px;border-radius:50%;background:{bg};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:{fg};border:2px solid {bd};margin-left:{ml};position:relative;z-index:{5-i};flex-shrink:0;">{initial}</div>'
+        summary = ""
+        if going:
+            summary += f'<span style="color:#166534;font-weight:600;">{len(going)} going</span>'
+        if going and maybe:
+            summary += " &middot; "
+        if maybe:
+            summary += f'<span style="color:#92400e;">{len(maybe)} maybe</span>'
+        return f'<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">{avatars}<span style="font-size:11px;color:#6b7280;">{summary}</span></div>'
 
     # Build unified upcoming list
     upcoming_html = ""
@@ -4463,12 +4717,33 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         is_group_creator = current_user and group.get("created_by") == current_user["id"]
         if is_event_creator or is_group_creator:
             delete_btn = f'<form action="/api/group/{group_id}/delete-event" method="post" style="margin:0;" onsubmit="return confirm(&apos;Remove this event?&apos;)"><input type="hidden" name="event_id" value="{e["id"]}"><button type="submit" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px;padding:4px 8px;">remove</button></form>'
+        ue_eid = f"grp_evt_{e['id']}"
+        ue_rsvps = rsvps_map.get(ue_eid, [])
+        ue_avatars = _rsvp_avatars(ue_rsvps)
+        my_ue_rsvp = ""
+        if current_user:
+            for r in ue_rsvps:
+                if r.get("user_id") == current_user["id"]:
+                    my_ue_rsvp = r["status"]
+        rsvp_btns = ""
+        nudge_btn = ""
+        if is_member and current_user:
+            going_cls = " active" if my_ue_rsvp == "going" else ""
+            maybe_cls = " active" if my_ue_rsvp == "maybe" else ""
+            rsvp_btns = f'''<div style="display:flex;gap:6px;margin-top:8px;">
+                <button onclick="rsvpGroupEvent({group_id}, &apos;{ue_eid}&apos;, &apos;going&apos;, this)" class="grp-rsvp-btn going{going_cls}">Going</button>
+                <button onclick="rsvpGroupEvent({group_id}, &apos;{ue_eid}&apos;, &apos;maybe&apos;, this)" class="grp-rsvp-btn maybe{maybe_cls}">Maybe</button>
+            </div>'''
+            nudge_btn = f'<a href="/api/ping-group?event_id={ue_eid}&amp;u={user_token}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-top:6px;display:inline-block;" onmouseover="this.style.color=&apos;#4f46e5&apos;" onmouseout="this.style.color=&apos;#6b7280&apos;">Nudge group</a>'
         upcoming_html += f'''<div class="card" style="padding:14px 16px;margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;align-items:start;">
                 <div style="flex:1;min-width:0;">
                     {title_link}
                     <div style="font-size:13px;color:#6b7280;margin-top:2px;">{time_str}{" · " + loc if loc else ""}</div>
                     <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Added by {creator}</div>
+                    {ue_avatars}
+                    {rsvp_btns}
+                    {nudge_btn}
                 </div>
                 {delete_btn}
             </div>
@@ -4485,14 +4760,17 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         url = e.get("url", "#")
         loc = (e.get("location_name") or "")[:35]
         rsvp_list = e.get("_rsvps", [])
-        who = ", ".join(r["user_name"] for r in rsvp_list[:3])
-        if len(rsvp_list) > 3:
-            who += f" +{len(rsvp_list) - 3}"
+        pe_avatars = _rsvp_avatars(rsvp_list)
+        pe_nudge = ""
+        pe_eid = e.get("event_id", "")
+        if is_member and current_user and pe_eid:
+            pe_nudge = f'<a href="/api/ping-group?event_id={pe_eid}&amp;u={user_token}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-top:6px;display:inline-block;" onmouseover="this.style.color=&apos;#4f46e5&apos;" onmouseout="this.style.color=&apos;#6b7280&apos;">Nudge group</a>'
         upcoming_html += f'''<div class="card" style="padding:14px 16px;margin-bottom:8px;">
             <div style="flex:1;min-width:0;">
                 <a href="{url}" target="_blank" style="font-weight:700;font-size:15px;color:#1e293b;text-decoration:none;">{title}</a>
                 <div style="font-size:13px;color:#6b7280;margin-top:2px;">{time_str}{" · " + loc if loc else ""}</div>
-                <div style="font-size:12px;color:#166534;margin-top:2px;">{who}</div>
+                {pe_avatars}
+                {pe_nudge}
             </div>
         </div>'''
 
@@ -4636,6 +4914,35 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
             </form>
         </div>'''
 
+    # Group RSVP button CSS + JS
+    group_rsvp_extras = f"""
+    <style>
+    .grp-rsvp-btn {{ font-size:12px; padding:4px 14px; border:1.5px solid #e5e7eb; border-radius:20px; background:white; cursor:pointer; color:#6b7280; font-weight:600; transition:all .15s; font-family:inherit; }}
+    .grp-rsvp-btn:hover, .grp-rsvp-btn.active {{ font-weight:700; }}
+    .grp-rsvp-btn.going:hover, .grp-rsvp-btn.going.active {{ background:#dcfce7; color:#166534; border-color:#86efac; }}
+    .grp-rsvp-btn.maybe:hover, .grp-rsvp-btn.maybe.active {{ background:#fef3c7; color:#92400e; border-color:#fde68a; }}
+    </style>
+    <script>
+    async function rsvpGroupEvent(groupId, eventId, status, btn) {{
+        const container = btn.parentElement;
+        const buttons = container.querySelectorAll('.grp-rsvp-btn');
+        const wasActive = btn.classList.contains('active');
+        buttons.forEach(b => b.classList.remove('active'));
+        const newStatus = wasActive ? '' : status;
+        if (!wasActive) btn.classList.add('active');
+        try {{
+            await fetch('/api/group/' + groupId + '/rsvp', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{event_id: eventId, status: newStatus, user_token: '{user_token}'}})
+            }});
+            if (!wasActive) setTimeout(() => location.reload(), 300);
+            else setTimeout(() => location.reload(), 300);
+        }} catch(e) {{ console.error(e); }}
+    }}
+    </script>
+    """
+
     resp = HTMLResponse(_layout(group_name, f"""
     {name_html}
     <div class="card" style="margin-bottom:20px;">
@@ -4648,6 +4955,7 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     {upcoming_html}
     {actions_html}
     {leave_html}
+    {group_rsvp_extras}
     """, user=current_user))
     return _maybe_set_cookie(request, resp, current_user)
 
@@ -5065,7 +5373,7 @@ async def api_group_add_event(group_id: int, request: Request):
             )
     except Exception:
         logger.exception("Failed to send group event notification for group %d", group_id)
-    return RedirectResponse(f"/group/{group_id}", status_code=303)
+    return RedirectResponse(f"/group/{group_id}?success=Event+added", status_code=303)
 
 
 @app.post("/api/group/{group_id:int}/delete-event")
@@ -5078,7 +5386,7 @@ async def api_group_delete_event(group_id: int, request: Request):
     event_id = int(form.get("event_id") or 0)
     if event_id:
         db.delete_group_event(event_id, user["id"])
-    return RedirectResponse(f"/group/{group_id}", status_code=303)
+    return RedirectResponse(f"/group/{group_id}?success=Event+removed", status_code=303)
 
 
 @app.post("/api/group/{group_id:int}/rename", response_class=JSONResponse)
@@ -5110,7 +5418,7 @@ async def api_group_leave(group_id: int, request: Request):
     if not db.is_group_member(group_id, user["id"]):
         return HTMLResponse("<h1>Not a member</h1>", status_code=403)
     db.leave_group(group_id, user["id"])
-    return RedirectResponse("/groups", status_code=303)
+    return RedirectResponse("/groups?success=Left+group", status_code=303)
 
 
 @app.post("/api/group/{group_id:int}/delete")
@@ -6034,7 +6342,7 @@ async def api_join_group(group_id: int, invite_code: str, request: Request):
     db.add_group_member(group["id"], user_id)
 
     # No magic link email — just set cookie and redirect. Instant join.
-    resp = RedirectResponse(f"/group/{group_id}?u={token}", status_code=303)
+    resp = RedirectResponse(f"/group/{group_id}?u={token}&success=Welcome+to+the+group!", status_code=303)
     _set_token_cookie(resp, token)
     return resp
 
