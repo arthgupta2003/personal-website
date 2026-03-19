@@ -86,9 +86,23 @@ def render_nav(user: dict | None = None) -> str:
     </div></nav>"""
 
 
-def _layout(title: str, body: str, user: dict | None = None) -> str:
+def _layout(title: str, body: str, user: dict | None = None, og: dict | None = None) -> str:
     nav = render_nav(user)
-    return LAYOUT_STYLE.replace("__TITLE__", title) + nav + '<div class="app-content">' + body + LAYOUT_FOOT
+    base_url = "https://recom.arthgupta.dev"
+    og_title = (og or {}).get("title", title)
+    og_desc = (og or {}).get("description", "Find events and make plans with friends")
+    og_image = (og or {}).get("image", f"{base_url}/static/og-image.png")
+    og_url = (og or {}).get("url", "")
+    og_tags = f'''<meta property="og:site_name" content="Recom">
+<meta property="og:type" content="website">
+<meta property="og:title" content="{og_title}">
+<meta property="og:description" content="{og_desc}">
+<meta property="og:image" content="{og_image}">'''
+    if og_url:
+        og_tags += f'\n<meta property="og:url" content="{og_url}">'
+    og_tags += '\n<meta name="twitter:card" content="summary_large_image">'
+    html = LAYOUT_STYLE.replace("__TITLE__", title).replace("__OG_TAGS__", og_tags)
+    return html + nav + '<div class="app-content">' + body + LAYOUT_FOOT
 
 
 LAYOUT_STYLE = """<!DOCTYPE html>
@@ -98,6 +112,7 @@ LAYOUT_STYLE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
+__OG_TAGS__
 <title>Recom — __TITLE__</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2318,7 +2333,8 @@ async def calendar_view(request: Request, run_id: int | None = None):
               </div>
             </details>'''
 
-    page_html = LAYOUT_STYLE.replace("__TITLE__", "This Week in Cambridge") + render_nav(current_user) + '<div class="app-content">' + f"""
+    _default_og = '<meta property="og:site_name" content="Recom"><meta property="og:type" content="website"><meta property="og:title" content="This Week in Cambridge"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://recom.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
+    page_html = LAYOUT_STYLE.replace("__TITLE__", "This Week in Cambridge").replace("__OG_TAGS__", _default_og) + render_nav(current_user) + '<div class="app-content">' + f"""
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
     <style>
       /* --- Top bar --- */
@@ -4617,12 +4633,16 @@ async def group_join_page(group_id: int, invite_code: str, request: Request):
     group = db.get_group_by_id(group_id)
     if not group or group.get("invite_code") != invite_code:
         return HTMLResponse("<h1>Invalid invite link</h1>", status_code=404)
-    # Store valid invite code in query param and forward to group page
-    return await group_page(group_id, request, _valid_invite=True)
+    group_name = db.get_group_display_name(group)
+    og = {
+        "title": f"{group_name} on Recom",
+        "description": "Join the group to coordinate plans together",
+    }
+    return await group_page(group_id, request, _valid_invite=True, _og_override=og)
 
 
 @app.get("/group/{group_id:int}", response_class=HTMLResponse)
-async def group_page(group_id: int, request: Request, _valid_invite: bool = False):
+async def group_page(group_id: int, request: Request, _valid_invite: bool = False, _og_override: dict | None = None):
     db = get_db()
     current_user = _get_current_user(request)
     group = db.get_group_by_id(group_id)
@@ -4943,6 +4963,12 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     </script>
     """
 
+    member_count = len(members)
+    og = _og_override or {
+        "title": group_name,
+        "description": f"{member_count} members \u00b7 Upcoming events",
+    }
+
     resp = HTMLResponse(_layout(group_name, f"""
     {name_html}
     <div class="card" style="margin-bottom:20px;">
@@ -4956,7 +4982,7 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     {actions_html}
     {leave_html}
     {group_rsvp_extras}
-    """, user=current_user))
+    """, user=current_user, og=og))
     return _maybe_set_cookie(request, resp, current_user)
 
 
@@ -5722,7 +5748,8 @@ async def join_page(success: str = ""):
 
     settings = Settings()
 
-    return HTMLResponse(LAYOUT_STYLE.replace("__TITLE__", "Join Recom") + render_nav(None) + f"""
+    _default_og = '<meta property="og:site_name" content="Recom"><meta property="og:type" content="website"><meta property="og:title" content="Join Recom"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://recom.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
+    return HTMLResponse(LAYOUT_STYLE.replace("__TITLE__", "Join Recom").replace("__OG_TAGS__", _default_og) + render_nav(None) + f"""
     <div class="app-content" style="max-width:560px;">
 
     {success_banner}
