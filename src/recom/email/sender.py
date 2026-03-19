@@ -140,6 +140,29 @@ def send_group_ping(
     send_email(subject, html, settings, to=to_email)
 
 
+def send_group_event_notification(
+    to_emails: list[str], adder_name: str, event_title: str,
+    event_date: str, group_name: str, group_id: int,
+    dashboard_url: str, settings: Settings,
+) -> None:
+    """Notify group members when someone adds an event to a group."""
+    group_link = f"{dashboard_url}/group/{group_id}"
+    subject = f"{adder_name} added '{event_title}' to {group_name}"
+    html = f"""<div style="font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+    <h2 style="color:#1e40af;">New event in {group_name}</h2>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin:16px 0;">
+      <p style="margin:0 0 4px;font-size:17px;font-weight:700;color:#1e293b;">{event_title}</p>
+      <p style="margin:0;font-size:14px;color:#6b7280;">{event_date}</p>
+    </div>
+    <p style="color:#374151;font-size:14px;">Added by <strong>{adder_name}</strong></p>
+    <a href="{group_link}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;
+       border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0;">View Group</a>
+    <p style="color:#9ca3af;font-size:13px;">Powered by Recom</p>
+    </div>"""
+    for email in to_emails:
+        send_email(subject, html, settings, to=email)
+
+
 def send_rsvp_notify(
     to_email: str, to_token: str, rsvper_name: str,
     event_title: str, event_url: str, dashboard_url: str, settings: Settings,

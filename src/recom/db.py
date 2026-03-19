@@ -1092,6 +1092,19 @@ class Database:
         self.conn.execute("UPDATE groups SET name = ? WHERE id = ?", (auto, group_id))
         self.conn.commit()
 
+    def delete_group(self, group_id: int, user_id: int) -> bool:
+        """Delete a group. Only the creator can delete it."""
+        row = self.conn.execute(
+            "SELECT created_by FROM groups WHERE id = ?", (group_id,)
+        ).fetchone()
+        if not row or row["created_by"] != user_id:
+            return False
+        self.conn.execute("DELETE FROM group_members WHERE group_id = ?", (group_id,))
+        self.conn.execute("DELETE FROM group_events WHERE group_id = ?", (group_id,))
+        self.conn.execute("DELETE FROM groups WHERE id = ?", (group_id,))
+        self.conn.commit()
+        return True
+
     def get_group_by_id(self, group_id: int) -> dict | None:
         row = self.conn.execute(
             "SELECT * FROM groups WHERE id = ?", (group_id,)
@@ -1138,9 +1151,14 @@ class Database:
         return [dict(r) for r in rows]
 
     def delete_group_event(self, event_id: int, user_id: int):
+        # Allow deletion if user created the event OR created the group
         self.conn.execute(
-            "DELETE FROM group_events WHERE id = ? AND created_by = ?",
-            (event_id, user_id),
+            """DELETE FROM group_events WHERE id = ? AND (
+                created_by = ? OR group_id IN (
+                    SELECT id FROM groups WHERE created_by = ?
+                )
+            )""",
+            (event_id, user_id, user_id),
         )
         self.conn.commit()
 

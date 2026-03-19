@@ -11,7 +11,7 @@ from starlette.responses import RedirectResponse
 
 from recom.config import Settings
 from recom.db import Database
-from recom.email.sender import send_magic_link, send_invite_email, send_rsvp_notify, send_group_ping
+from recom.email.sender import send_magic_link, send_invite_email, send_rsvp_notify, send_group_ping, send_group_event_notification
 from recom.gcal import get_or_create_calendar, push_event as gcal_push_event, update_attendees as gcal_update_attendees, sync_rsvps_to_db as gcal_sync_rsvps
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ def render_nav(user: dict | None = None) -> str:
         return f"""<nav class="app-nav"><div class="app-nav-inner">
           <a href="/" class="app-logo">recom</a>
           <a href="/groups" class="nav-link">Groups</a>
-          <a href="/calendar" class="nav-link">Calendar</a>
+          <a href="/calendar" class="nav-link">Events</a>
           <a href="/profile" class="nav-link">Profile</a>
           {overflow_html}
           <div class="nav-divider"></div>
@@ -80,7 +80,7 @@ def render_nav(user: dict | None = None) -> str:
     return """<nav class="app-nav"><div class="app-nav-inner">
       <a href="/" class="app-logo">recom</a>
       <a href="/groups" class="nav-link">Groups</a>
-      <a href="/calendar" class="nav-link">Calendar</a>
+      <a href="/calendar" class="nav-link">Events</a>
       <a href="/login" class="nav-link">Log in</a>
     </div></nav>"""
 
@@ -1405,8 +1405,12 @@ async def profile_page(request: Request, response: Response):
     <div class="card">
       <h2>Home Location</h2>
       <p style="font-size:13px;color:#64748b;margin-bottom:16px;">Used to calculate event distances and improve recommendations.</p>
-      <div class="field"><label>Location</label><input id="location" value="{location_query}" placeholder="e.g. Cambridge, MA"></div>
-      <p class="map-hint">Enter a city or address. Coordinates are set automatically when the pipeline runs.</p>
+      <div class="field"><label>Location</label>
+        <div style="display:flex;gap:8px;">
+          <input id="location" value="{location_query}" placeholder="e.g. Cambridge, MA" style="flex:1;">
+          <button type="button" onclick="useMyLocation()" style="padding:8px 14px;background:white;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;color:#374151;font-family:inherit;" id="locate-btn">Use my location</button>
+        </div>
+      </div>
     </div>
 
     <button class="save-btn" onclick="save()">Save changes</button>
@@ -1420,16 +1424,28 @@ async def profile_page(request: Request, response: Response):
           <div><span style="font-weight:700;font-size:14px;color:#1e293b;">Spotify</span><br><span style="font-size:12px;color:#6b7280;">Listening history and top artists</span></div>
           <a href="/auth/spotify" style="padding:6px 14px;background:#1DB954;color:white;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;">Connect</a>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
-          <div><span style="font-weight:700;font-size:14px;color:#1e293b;">YouTube</span><br><span style="font-size:12px;color:#6b7280;">Watch history and subscriptions</span></div>
-          <span style="padding:6px 14px;background:#f3f4f6;color:#6b7280;border-radius:6px;font-size:11px;font-weight:600;" title="Run: uv run python scripts/auth_youtube.py">CLI only</span>
+        <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+            <div><span style="font-weight:700;font-size:14px;color:#1e293b;">YouTube</span><br><span style="font-size:12px;color:#6b7280;">Watch history helps us learn your interests</span></div>
+          </div>
+          <details>
+            <summary style="font-size:12px;color:#4f46e5;cursor:pointer;font-weight:600;">Upload Google Takeout</summary>
+            <form action="/api/profile/upload-youtube" method="post" enctype="multipart/form-data" style="margin-top:8px;">
+              <p style="font-size:12px;color:#6b7280;margin:0 0 8px;">Go to <a href="https://takeout.google.com" target="_blank" style="color:#4f46e5;">takeout.google.com</a>, export YouTube &rarr; history, then upload the <code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;font-size:11px;">watch-history.json</code> file.</p>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input type="file" name="file" accept=".json" required style="font-size:12px;flex:1;">
+                <button type="submit" style="padding:6px 14px;background:#4f46e5;color:white;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">Upload</button>
+              </div>
+            </form>
+          </details>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
-          <div><span style="font-weight:700;font-size:14px;color:#1e293b;">Gmail</span><br><span style="font-size:12px;color:#6b7280;">Newsletter event scanning</span></div>
-          <span style="padding:6px 14px;background:#f3f4f6;color:#6b7280;border-radius:6px;font-size:11px;font-weight:600;" title="Run: uv run python scripts/auth_gmail.py">CLI only</span>
+        <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div><span style="font-weight:700;font-size:14px;color:#1e293b;">Gmail</span><br><span style="font-size:12px;color:#6b7280;">Newsletter scanning for event links</span></div>
+          </div>
+          <p style="font-size:12px;color:#6b7280;margin:6px 0 0;">Forward event newsletters to <strong style="color:#1e293b;">{email}</strong> and they&apos;ll be picked up on the next run.</p>
         </div>
       </div>
-      <p class="map-hint" style="margin-top:12px;">YouTube and Gmail require CLI setup. Run <code style="background:#f1f5f9;padding:2px 4px;border-radius:3px;font-size:11px;">uv run python scripts/auth_youtube.py</code> or <code style="background:#f1f5f9;padding:2px 4px;border-radius:3px;font-size:11px;">uv run python scripts/auth_gmail.py</code> on the server.</p>
     </div>
 
     <div class="card" style="margin-top:24px;">
@@ -1530,6 +1546,36 @@ function switchTab(tab) {{
     }});
   }}
 }})();
+
+function useMyLocation() {{
+  const btn = document.getElementById('locate-btn');
+  if (!navigator.geolocation) {{ alert('Geolocation not supported by your browser'); return; }}
+  btn.textContent = 'Locating...';
+  btn.disabled = true;
+  navigator.geolocation.getCurrentPosition(pos => {{
+    // Reverse geocode via Nominatim
+    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${{pos.coords.latitude}}&lon=${{pos.coords.longitude}}&format=json`)
+      .then(r => r.json())
+      .then(data => {{
+        const addr = data.address || {{}};
+        const city = addr.city || addr.town || addr.village || '';
+        const state = addr.state || '';
+        const loc = city && state ? `${{city}}, ${{state}}` : data.display_name?.split(',').slice(0,2).join(',') || '';
+        document.getElementById('location').value = loc;
+        btn.textContent = 'Located!';
+        setTimeout(() => {{ btn.textContent = 'Use my location'; btn.disabled = false; }}, 2000);
+      }})
+      .catch(() => {{
+        document.getElementById('location').value = `${{pos.coords.latitude.toFixed(4)}}, ${{pos.coords.longitude.toFixed(4)}}`;
+        btn.textContent = 'Use my location';
+        btn.disabled = false;
+      }});
+  }}, () => {{
+    alert('Could not get your location. Check browser permissions.');
+    btn.textContent = 'Use my location';
+    btn.disabled = false;
+  }});
+}}
 
 function save() {{
   const payload = {{
@@ -1658,6 +1704,32 @@ async def profile_update(request: Request):
         db.conn.commit()
     return {"ok": True}
 
+
+@app.post("/api/profile/upload-youtube")
+async def upload_youtube_takeout(request: Request):
+    """Accept a YouTube Takeout watch-history.json and save for ingest."""
+    current_user = _get_current_user(request)
+    if not current_user:
+        return RedirectResponse("/login", status_code=307)
+    form = await request.form()
+    upload = form.get("file")
+    if not upload or not hasattr(upload, "read"):
+        return HTMLResponse("No file uploaded", status_code=400)
+    import json as _json
+    from pathlib import Path
+    content = await upload.read()
+    try:
+        data = _json.loads(content)
+    except _json.JSONDecodeError:
+        return HTMLResponse("Invalid JSON file", status_code=400)
+    # Save to state/takeout/ for the ingest pipeline to pick up
+    takeout_dir = Path("state/takeout")
+    takeout_dir.mkdir(parents=True, exist_ok=True)
+    out_path = takeout_dir / f"youtube_user{current_user['id']}.json"
+    out_path.write_bytes(content)
+    logger.info("YouTube takeout saved for user %s: %d items, %s",
+                current_user["id"], len(data) if isinstance(data, list) else 1, out_path)
+    return RedirectResponse("/profile?success=YouTube+history+uploaded", status_code=303)
 
 
 def _radar_svg(axes: list[str], values: list[float], colors: list[str] | None = None,
@@ -2385,7 +2457,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
 
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
       <div>
-        <h1 style="font-size:22px;margin:0;">Your Week</h1>
+        <h1 style="font-size:22px;margin:0;">Event Recs</h1>
         <div style="font-size:13px;color:#9ca3af;">{top_picks} picks for Cambridge &amp; Boston</div>
       </div>
       <div class="view-toggle">
@@ -2395,9 +2467,6 @@ async def calendar_view(request: Request, run_id: int | None = None):
         <button id="btn-cal" onclick="switchView('calendar')">Grid</button>
       </div>
     </div>
-    {taste_nudge_html}
-    {groups_html}
-    {friend_activity_html}
 
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
       <button id="show-all-btn" onclick="showAllEvents=!showAllEvents;this.textContent=showAllEvents?'Top picks':'All events';applyFilters();" style="font-size:12px;padding:5px 12px;border:1.5px solid #e5e7eb;border-radius:8px;background:white;cursor:pointer;color:#6b7280;">All events</button>
@@ -4390,8 +4459,10 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         url = e.get("url") or ""
         title_link = f'<a href="{url}" target="_blank" style="font-weight:700;font-size:15px;color:#1e293b;text-decoration:none;">{e["title"][:55]}</a>' if url else f'<span style="font-weight:700;font-size:15px;color:#1e293b;">{e["title"][:55]}</span>'
         delete_btn = ""
-        if current_user and e.get("created_by") == current_user["id"]:
-            delete_btn = f'<form action="/api/group/{group_id}/delete-event" method="post" style="margin:0;"><input type="hidden" name="event_id" value="{e["id"]}"><button type="submit" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px;padding:4px 8px;">remove</button></form>'
+        is_event_creator = current_user and e.get("created_by") == current_user["id"]
+        is_group_creator = current_user and group.get("created_by") == current_user["id"]
+        if is_event_creator or is_group_creator:
+            delete_btn = f'<form action="/api/group/{group_id}/delete-event" method="post" style="margin:0;" onsubmit="return confirm(&apos;Remove this event?&apos;)"><input type="hidden" name="event_id" value="{e["id"]}"><button type="submit" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px;padding:4px 8px;">remove</button></form>'
         upcoming_html += f'''<div class="card" style="padding:14px 16px;margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;align-items:start;">
                 <div style="flex:1;min-width:0;">
@@ -4548,9 +4619,16 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         }}
         </script>'''
 
-    # --- Leave group button (members who are NOT the creator) ---
+    # --- Leave / Delete group button ---
     leave_html = ""
-    if is_member and current_user and group.get("created_by") != current_user["id"]:
+    if is_member and current_user and group.get("created_by") == current_user["id"]:
+        leave_html = f'''<div style="text-align:center;margin-top:32px;margin-bottom:16px;">
+            <form action="/api/group/{group_id}/delete" method="post" style="margin:0;">
+                <button type="submit" onclick="return confirm(&apos;Delete this group and all its events? This cannot be undone.&apos;)"
+                        style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:13px;padding:8px 16px;font-family:inherit;">Delete group</button>
+            </form>
+        </div>'''
+    elif is_member and current_user and group.get("created_by") != current_user["id"]:
         leave_html = f'''<div style="text-align:center;margin-top:32px;margin-bottom:16px;">
             <form action="/api/group/{group_id}/leave" method="post" style="margin:0;">
                 <button type="submit" onclick="return confirm(&apos;Leave this group?&apos;)"
@@ -4968,6 +5046,25 @@ async def api_group_add_event(group_id: int, request: Request):
         return HTMLResponse("<h1>Title and date required</h1>", status_code=400)
     start_time = f"{date}T{time}:00"
     db.add_group_event(group_id, user["id"], title, start_time, location=location)
+    # Notify other group members
+    try:
+        members = db.get_group_members(group_id)
+        other_emails = [m["email"] for m in members if m["id"] != user["id"] and m.get("email")]
+        if other_emails:
+            adder_name = user.get("name") or user.get("email", "Someone")
+            event_date = f"{date} {time}"
+            send_group_event_notification(
+                to_emails=other_emails,
+                adder_name=adder_name,
+                event_title=title,
+                event_date=event_date,
+                group_name=group["name"],
+                group_id=group_id,
+                dashboard_url=settings.dashboard_url,
+                settings=settings,
+            )
+    except Exception:
+        logger.exception("Failed to send group event notification for group %d", group_id)
     return RedirectResponse(f"/group/{group_id}", status_code=303)
 
 
@@ -5013,6 +5110,20 @@ async def api_group_leave(group_id: int, request: Request):
     if not db.is_group_member(group_id, user["id"]):
         return HTMLResponse("<h1>Not a member</h1>", status_code=403)
     db.leave_group(group_id, user["id"])
+    return RedirectResponse("/groups", status_code=303)
+
+
+@app.post("/api/group/{group_id:int}/delete")
+async def api_group_delete(group_id: int, request: Request):
+    user = _get_current_user(request)
+    db = get_db()
+    if not user:
+        return HTMLResponse("<h1>Unauthorized</h1>", status_code=401)
+    group = db.get_group_by_id(group_id)
+    if not group:
+        return HTMLResponse("<h1>Group not found</h1>", status_code=404)
+    if not db.delete_group(group_id, user["id"]):
+        return HTMLResponse("<h1>Only the group creator can delete it</h1>", status_code=403)
     return RedirectResponse("/groups", status_code=303)
 
 
@@ -5602,31 +5713,37 @@ function copyFeed() {{
 
 
 @app.get("/auth/spotify")
-async def spotify_auth_start():
+async def spotify_auth_start(request: Request):
     """Redirect user to Spotify OAuth."""
+    current_user = _get_current_user(request)
+    if not current_user:
+        return RedirectResponse("/login", status_code=307)
     settings = Settings()
     if not settings.spotify_client_id:
         return HTMLResponse("<h1>Spotify not configured</h1><p>Set RECOM_SPOTIFY_CLIENT_ID in .env</p>")
 
     import urllib.parse
     scopes = "user-read-recently-played user-top-read user-library-read"
+    redirect_uri = f"{settings.dashboard_url}/callback"
     params = urllib.parse.urlencode({
         "client_id": settings.spotify_client_id,
         "response_type": "code",
-        "redirect_uri": settings.spotify_redirect_uri,
+        "redirect_uri": redirect_uri,
         "scope": scopes,
         "show_dialog": "true",
+        "state": current_user["user_token"],
     })
     return RedirectResponse(f"https://accounts.spotify.com/authorize?{params}")
 
 
 @app.get("/callback")
-async def spotify_callback(code: str = "", error: str = ""):
+async def spotify_callback(code: str = "", error: str = "", state: str = ""):
     """Handle Spotify OAuth callback."""
     if error or not code:
         return HTMLResponse(f"<h1>Spotify auth failed</h1><p>{error}</p>")
 
     settings = Settings()
+    redirect_uri = f"{settings.dashboard_url}/callback"
     import httpx
     # Exchange code for token
     async with httpx.AsyncClient() as client:
@@ -5635,7 +5752,7 @@ async def spotify_callback(code: str = "", error: str = ""):
             data={
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": settings.spotify_redirect_uri,
+                "redirect_uri": redirect_uri,
                 "client_id": settings.spotify_client_id,
                 "client_secret": settings.spotify_client_secret,
             },
@@ -5644,15 +5761,18 @@ async def spotify_callback(code: str = "", error: str = ""):
             return HTMLResponse(f"<h1>Token exchange failed</h1><pre>{resp.text}</pre>")
         token_data = resp.json()
 
-    # Save token — for now save to default path
-    # TODO: per-user token files
+    # Save token
     import json as _json
     from pathlib import Path
     token_path = Path(settings.spotify_token_file)
     token_path.parent.mkdir(parents=True, exist_ok=True)
     token_path.write_text(_json.dumps(token_data))
 
-    return RedirectResponse("/join?success=Spotify+connected+successfully!", status_code=303)
+    # Redirect back to profile with success message
+    resp = RedirectResponse("/profile?success=Spotify+connected", status_code=303)
+    if state:
+        _set_token_cookie(resp, state)
+    return resp
 
 
 @app.get("/login", response_class=HTMLResponse)
