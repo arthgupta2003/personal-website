@@ -16,7 +16,7 @@ from recom.gcal import get_or_create_calendar, push_event as gcal_push_event, up
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Recom Dashboard")
+app = FastAPI(title="Calyx Dashboard")
 
 _db: Database | None = None
 
@@ -69,7 +69,7 @@ def render_nav(user: dict | None = None) -> str:
             </div>
           </div>"""
         return f"""<nav class="app-nav"><div class="app-nav-inner">
-          <a href="/" class="app-logo">recom</a>
+          <a href="/" class="app-logo">calyx</a>
           <a href="/groups" class="nav-link">Groups</a>
           <a href="/calendar" class="nav-link">Events</a>
           <a href="/rsvps" class="nav-link">RSVPs</a>
@@ -79,7 +79,7 @@ def render_nav(user: dict | None = None) -> str:
           <span style="font-size:13px;color:rgba(255,255,255,.7);font-weight:500;">{name}</span>
         </div></nav>"""
     return """<nav class="app-nav"><div class="app-nav-inner">
-      <a href="/" class="app-logo">recom</a>
+      <a href="/" class="app-logo">calyx</a>
       <a href="/groups" class="nav-link">Groups</a>
       <a href="/calendar" class="nav-link">Events</a>
       <a href="/login" class="nav-link">Log in</a>
@@ -93,7 +93,7 @@ def _layout(title: str, body: str, user: dict | None = None, og: dict | None = N
     og_desc = (og or {}).get("description", "Find events and make plans with friends")
     og_image = (og or {}).get("image", f"{base_url}/static/og-image.png")
     og_url = (og or {}).get("url", "")
-    og_tags = f'''<meta property="og:site_name" content="Recom">
+    og_tags = f'''<meta property="og:site_name" content="Calyx">
 <meta property="og:type" content="website">
 <meta property="og:title" content="{og_title}">
 <meta property="og:description" content="{og_desc}">
@@ -113,7 +113,7 @@ LAYOUT_STYLE = """<!DOCTYPE html>
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 __OG_TAGS__
-<title>Recom — __TITLE__</title>
+<title>Calyx — __TITLE__</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1869,7 +1869,7 @@ async def taste_radar(request: Request):
 
 @app.get("/landing", response_class=HTMLResponse)
 async def landing_page(request: Request):
-    """Marketing / about page for recom — uses dashboard design language."""
+    """Marketing / about page for Calyx — uses dashboard design language."""
     current_user = _get_current_user(request)
     body = """
 <style>
@@ -1922,12 +1922,12 @@ async def landing_page(request: Request):
 
 <!-- Hero -->
 <div class="landing-hero">
-  <div class="landing-eyebrow">Boston &amp; Cambridge</div>
-  <h1>Discover Weekly<br>for your <span class="accent">real life</span></h1>
-  <p class="sub">Every week, recom studies what you listen to, watch, and read &mdash; then surfaces the Boston events you&apos;d actually want to go to.</p>
+  <div class="landing-eyebrow">Where plans come together</div>
+  <h1>Drop an event.<br>Your crew <span class="accent">taps in</span>.</h1>
+  <p class="sub">Calyx is a group calendar that makes organizing plans with your people effortless and fun. Think Partiful meets Google Calendar &mdash; without the back-and-forth.</p>
   <div class="cta-row">
-    <a href="/join" class="btn-primary btn-pill" style="padding:12px 28px;font-size:15px;">Get your first digest</a>
-    <a href="/" class="btn-secondary btn-pill" style="padding:12px 28px;font-size:15px;">View the calendar</a>
+    <a href="/join" class="btn-primary btn-pill" style="padding:12px 28px;font-size:15px;">Create your group &rarr;</a>
+    <a href="/" class="btn-secondary btn-pill" style="padding:12px 28px;font-size:15px;">See what&apos;s happening</a>
   </div>
 </div>
 
@@ -1935,87 +1935,84 @@ async def landing_page(request: Request):
 <h2>How it works</h2>
 <div class="steps-grid">
   <div class="step-card">
-    <div class="step-num">01 &middot; Ingest</div>
-    <h3>Read your taste signals</h3>
-    <p>Connects to Spotify, YouTube, and your newsletters to understand what you&apos;re actually into.</p>
+    <div class="step-num">01 &middot; Drop</div>
+    <h3>Share an event or browse recs</h3>
+    <p>Add something you found, or let Calyx surface what&apos;s happening from 13+ sources across Boston &amp; Cambridge.</p>
   </div>
   <div class="step-card">
-    <div class="step-num">02 &middot; Rank</div>
-    <h3>Score 1,000+ events</h3>
-    <p>Claude AI scores every upcoming event on 7 dimensions: interest match, social factor, logistics, discovery potential, and more.</p>
+    <div class="step-num">02 &middot; Tap in</div>
+    <h3>Your crew RSVPs in real time</h3>
+    <p>Headcounts build instantly. See who&apos;s going, who&apos;s maybe, who needs a nudge. No group chat chaos.</p>
   </div>
   <div class="step-card">
-    <div class="step-num">03 &middot; Deliver</div>
-    <h3>Weekly digest + live calendar</h3>
-    <p>An email with your top picks, plus a web calendar with RSVP, iCal sync, and group sharing.</p>
+    <div class="step-num">03 &middot; Show up</div>
+    <h3>Everyone&apos;s synced</h3>
+    <p>Calendar feeds, daily digests, and nudge notifications keep the whole crew on the same page.</p>
   </div>
 </div>
 
 <!-- Features -->
 <div class="card">
-  <h2 style="margin-top:0;">What you get</h2>
+  <h2 style="margin-top:0;">Everything your group chat wishes it could do</h2>
   <div class="features-grid">
     <div class="feat-item">
-      <div class="feat-icon">&#x1F4C5;</div>
-      <div><h4>Smart calendar</h4><p>Week view with filters, RSVP with one click, heatmap of your week.</p></div>
-    </div>
-    <div class="feat-item">
-      <div class="feat-icon">&#x1F4EC;</div>
-      <div><h4>Weekly email digest</h4><p>Your Spotify Wrapped, but for events. Scannable in 60 seconds.</p></div>
-    </div>
-    <div class="feat-item">
       <div class="feat-icon">&#x1F465;</div>
-      <div><h4>Group coordination</h4><p>Create a group, invite friends, see who&apos;s going where.</p></div>
+      <div><h4>Group calendar</h4><p>Shared events, live headcounts, one link to invite everyone.</p></div>
+    </div>
+    <div class="feat-item">
+      <div class="feat-icon">&#x1F44B;</div>
+      <div><h4>One-tap RSVP</h4><p>Going, maybe, or can&apos;t &mdash; your friends see instantly.</p></div>
+    </div>
+    <div class="feat-item">
+      <div class="feat-icon">&#x1F514;</div>
+      <div><h4>Nudge &amp; notify</h4><p>Poke your crew about events. Get notified when friends RSVP.</p></div>
     </div>
     <div class="feat-item">
       <div class="feat-icon">&#x1F4E1;</div>
-      <div><h4>iCal &amp; CalDAV</h4><p>Subscribe in Apple Calendar, Google Calendar, or any CalDAV client.</p></div>
+      <div><h4>Calendar sync</h4><p>Subscribe in Apple Calendar, Google Calendar, or any app.</p></div>
     </div>
     <div class="feat-item">
-      <div class="feat-icon">&#x1F50D;</div>
-      <div><h4>13+ event sources</h4><p>Eventbrite, Meetup, Luma, Ticketmaster, MIT, Harvard, and more &mdash; deduplicated.</p></div>
+      <div class="feat-icon">&#x2728;</div>
+      <div><h4>Smart recommendations</h4><p>AI surfaces events matched to your taste from Spotify, YouTube, and newsletters.</p></div>
     </div>
     <div class="feat-item">
-      <div class="feat-icon">&#x1F3AF;</div>
-      <div><h4>Taste profile</h4><p>See exactly what the AI thinks you&apos;re into &mdash; interests, confidence, data sources.</p></div>
+      <div class="feat-icon">&#x1F4EC;</div>
+      <div><h4>Daily picks email</h4><p>A short digest of today&apos;s best events, sent every morning.</p></div>
     </div>
   </div>
 </div>
 
-<!-- Vibe system -->
-<h2>The vibe system</h2>
-<p style="font-size:14px;color:#6b7280;margin-bottom:4px;">Not just &quot;what&apos;s nearby&quot; &mdash; events ranked by how they feel.</p>
+<!-- The Calyx difference -->
+<h2>Named after what holds it together</h2>
+<p style="font-size:14px;color:#6b7280;margin-bottom:16px;max-width:520px;">A calyx is the part of a flower that holds all the petals together. This app is the connective layer between your friend groups, your events, and your RSVPs.</p>
 <div class="vibe-cards">
   <div class="vibe-card social">
-    <div class="vibe-label">Social</div>
-    <h4>Comedy night at The Rockwell</h4>
-    <p>High friend-bringability, great for groups, easy logistics.</p>
-    <span class="vibe-score">84</span>
+    <div class="vibe-label">Not a to-do list</div>
+    <h4>Less scheduling, more showing up</h4>
+    <p>Plans shouldn&apos;t feel like work. Drop an event, friends tap in, done.</p>
   </div>
   <div class="vibe-card intellectual">
-    <div class="vibe-label">Brainy</div>
-    <h4>MIT Media Lab open house</h4>
-    <p>Strong interest match for AI + design. Discovery potential off the charts.</p>
-    <span class="vibe-score">91</span>
+    <div class="vibe-label">Not another group chat</div>
+    <h4>Signal without noise</h4>
+    <p>No &quot;who&apos;s free Saturday?&quot; threads. Just events, RSVPs, and a headcount.</p>
   </div>
   <div class="vibe-card mixed">
-    <div class="vibe-label">Mixed</div>
-    <h4>Softcult @ Paradise Rock Club</h4>
-    <p>Artist you follow on Spotify. Saturday night, walking distance, $18.</p>
-    <span class="vibe-score">77</span>
+    <div class="vibe-label">Not just your calendar</div>
+    <h4>Your crew&apos;s calendar</h4>
+    <p>See what friends are going to. Get nudged about things you&apos;d love.</p>
   </div>
 </div>
 
 <!-- CTA -->
 <div class="landing-cta">
-  <h2>Your week is full of things worth showing up for.</h2>
-  <p>You just have to know where to look.</p>
-  <a href="/join" class="btn-primary" style="padding:12px 32px;font-size:15px;border-radius:20px;">Start discovering &rarr;</a>
-  <p class="note">Free. No credit card. Boston &amp; Cambridge area.</p>
+  <h2>Where plans actually come together.</h2>
+  <p>Create a group, invite your people, start showing up.</p>
+  <a href="/join" class="btn-primary" style="padding:12px 32px;font-size:15px;border-radius:20px;">Get started &rarr;</a>
+  <p class="note">Free. No credit card. Boston &amp; Cambridge.</p>
 </div>
 
 <div class="landing-footer">
-  <p>Built with Claude &middot; &copy; 2026 recom</p>
+  <p>&copy; 2026 Calyx</p>
 </div>
 """
     return HTMLResponse(_layout("About", body, current_user))
@@ -2333,7 +2330,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
               </div>
             </details>'''
 
-    _default_og = '<meta property="og:site_name" content="Recom"><meta property="og:type" content="website"><meta property="og:title" content="This Week in Cambridge"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://recom.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
+    _default_og = '<meta property="og:site_name" content="Calyx"><meta property="og:type" content="website"><meta property="og:title" content="This Week in Cambridge"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://recom.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
     page_html = LAYOUT_STYLE.replace("__TITLE__", "This Week in Cambridge").replace("__OG_TAGS__", _default_og) + render_nav(current_user) + '<div class="app-content">' + f"""
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
     <style>
@@ -4167,7 +4164,7 @@ async def add_event_page(request: Request):
     return HTMLResponse(_layout("Add Event", """
     <h1>Add an Event</h1>
     <p style="color:#6b7280;margin-bottom:16px;font-size:14px;">
-        Add something to your calendar that recom didn&apos;t find. Your group members will see it too.
+        Add something to your calendar that Calyx didn&apos;t find. Your group members will see it too.
     </p>
     <div class="card" style="max-width:560px;">
         <form action="/api/add-event" method="post" style="display:flex;flex-direction:column;gap:12px;">
@@ -4635,7 +4632,7 @@ async def group_join_page(group_id: int, invite_code: str, request: Request):
         return HTMLResponse("<h1>Invalid invite link</h1>", status_code=404)
     group_name = db.get_group_display_name(group)
     og = {
-        "title": f"{group_name} on Recom",
+        "title": f"{group_name} on Calyx",
         "description": "Join the group to coordinate plans together",
     }
     return await group_page(group_id, request, _valid_invite=True, _og_override=og)
@@ -4838,7 +4835,7 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                 <button onclick="navigator.clipboard.writeText(&apos;{group_link}&apos;);this.textContent=&apos;Copied!&apos;;setTimeout(()=>this.textContent=&apos;Copy&apos;,1500)"
                         class="btn-primary" style="padding:10px 18px;font-size:14px;white-space:nowrap;">Copy</button>
             </div>
-            <button onclick="navigator.share({{title:&apos;Join {group_name} on Recom&apos;,text:&apos;Join our group to coordinate plans&apos;,url:&apos;{group_link}&apos;}}).catch(()=>{{}})" class="btn-secondary" style="font-size:13px;padding:8px 16px;width:100%;">Share invite link...</button>
+            <button onclick="navigator.share({{title:&apos;Join {group_name} on Calyx&apos;,text:&apos;Join our group to coordinate plans&apos;,url:&apos;{group_link}&apos;}}).catch(()=>{{}})" class="btn-secondary" style="font-size:13px;padding:8px 16px;width:100%;">Share invite link...</button>
             <details style="margin-top:10px;">
                 <summary style="font-size:13px;color:#6b7280;cursor:pointer;">Or invite by email</summary>
                 <form action="/group/{group_id}/invite" method="post" style="display:flex;gap:8px;align-items:center;margin-top:8px;">
@@ -5015,7 +5012,7 @@ async def group_ical_feed(group_id: int, min_score: int = 40):
         f"PRODID:-//recom//Group {_ical_escape(group['name'])}//EN",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
-        f"X-WR-CALNAME:Recom - {_ical_escape(group['name'])}",
+        f"X-WR-CALNAME:Calyx - {_ical_escape(group['name'])}",
         "X-APPLE-CALENDAR-COLOR:#f59e0b",
         "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     ]
@@ -5606,7 +5603,7 @@ async def ical_feed(min_score: int = 55):
         "PRODID:-//recom//Event Recommender//EN",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
-        "X-WR-CALNAME:Recom Events",
+        "X-WR-CALNAME:Calyx Events",
         "X-WR-CALDESC:Personalized event recommendations for Boston/Cambridge",
         "X-APPLE-CALENDAR-COLOR:#4f46e5",
         "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
@@ -5748,14 +5745,14 @@ async def join_page(success: str = ""):
 
     settings = Settings()
 
-    _default_og = '<meta property="og:site_name" content="Recom"><meta property="og:type" content="website"><meta property="og:title" content="Join Recom"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://recom.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
-    return HTMLResponse(LAYOUT_STYLE.replace("__TITLE__", "Join Recom").replace("__OG_TAGS__", _default_og) + render_nav(None) + f"""
+    _default_og = '<meta property="og:site_name" content="Calyx"><meta property="og:type" content="website"><meta property="og:title" content="Join Calyx"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://recom.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
+    return HTMLResponse(LAYOUT_STYLE.replace("__TITLE__", "Join Calyx").replace("__OG_TAGS__", _default_og) + render_nav(None) + f"""
     <div class="app-content" style="max-width:560px;">
 
     {success_banner}
 
     <div style="text-align:center;padding:32px 0 24px;">
-      <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#818cf8;text-transform:uppercase;margin-bottom:12px;">◉ RECOM</div>
+      <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#818cf8;text-transform:uppercase;margin-bottom:12px;">◉ CALYX</div>
       <h1 style="font-size:30px;font-weight:800;letter-spacing:-.5px;margin-bottom:10px;">Get your Discover Weekly<br>for real life</h1>
       <p style="color:#6b7280;font-size:15px;line-height:1.6;">AI-curated Boston events every week, based on what you actually listen to and watch.</p>
     </div>
@@ -5839,7 +5836,7 @@ async def onboarding_page(token: str):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Set up your taste — recom</title>
+<title>Set up your taste — Calyx</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -5894,7 +5891,7 @@ body {{ font-family: 'Inter', sans-serif; background: #0f0f1a; color: #e2e8f0; m
 </style>
 </head>
 <body>
-<div class="logo">◉ recom</div>
+<div class="logo">◉ calyx</div>
 
 <div class="progress-wrap">
   <div class="progress-bar"><div class="progress-fill" id="prog" style="width:0%"></div></div>
@@ -6122,7 +6119,7 @@ async def login_page():
             <button type="submit" style="padding:10px 20px;background:#4f46e5;color:white;border:none;
                     border-radius:8px;font-size:15px;cursor:pointer;font-weight:600;">Send me my link</button>
         </form>
-        <p style="margin-top:16px;font-size:13px;color:#9ca3af;">New here? <a href="/join">Join Recom</a></p>
+        <p style="margin-top:16px;font-size:13px;color:#9ca3af;">New here? <a href="/join">Join Calyx</a></p>
     </div>
     """))
 
@@ -6560,7 +6557,7 @@ async def user_ical_feed(token: str, min_score: int = 40):
     """Per-user shareable iCal feed. The token in the URL IS the auth."""
     db = get_db()
     user = db.get_user_by_token(token)
-    _empty_cal = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//recom//Event Recommender//EN\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Recom Events\r\nEND:VCALENDAR"
+    _empty_cal = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//recom//Event Recommender//EN\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Calyx Events\r\nEND:VCALENDAR"
     if not user:
         return Response(content=_empty_cal, media_type="text/calendar")
 
@@ -6647,7 +6644,7 @@ async def user_ical_feed(token: str, min_score: int = 40):
         f"PRODID:-//recom//User {_ical_escape(user_name)}//EN",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
-        f"X-WR-CALNAME:Recom — {_ical_escape(user_name)}'s Picks",
+        f"X-WR-CALNAME:Calyx — {_ical_escape(user_name)}'s Picks",
         "X-APPLE-CALENDAR-COLOR:#818cf8",
         "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     ]
@@ -6810,7 +6807,7 @@ async def user_rsvps_ical(token: str, recs: int = 0):
         "VERSION:2.0",
         f"PRODID:-//recom//Plans {_esc(user_name)}//EN",
         "CALSCALE:GREGORIAN",
-        f"X-WR-CALNAME:Recom — Plans",
+        f"X-WR-CALNAME:Calyx — Plans",
         "X-APPLE-CALENDAR-COLOR:#22c55e",
         "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     ]

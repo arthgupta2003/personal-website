@@ -96,7 +96,7 @@ _DIGEST_TEMPLATE = _env.from_string(
 
   <!-- HERO HEADER — Spotify-Wrapped energy -->
   <tr><td style="background:linear-gradient(160deg,#312e81 0%,#1e1b4b 40%,#0f172a 100%);border-radius:20px 20px 0 0;padding:40px 32px 32px;text-align:center;">
-    <p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#818cf8;">◉ RECOM</p>
+    <p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#818cf8;">◉ CALYX</p>
     <h1 style="margin:0 0 8px;font-size:38px;font-weight:800;color:white;line-height:1.1;letter-spacing:-1px;">Your Week<br><span style="color:#818cf8;">in Events</span></h1>
     <p style="margin:0;font-size:15px;color:rgba(255,255,255,.6);">{{ week_of }}</p>
     {% if top_recs %}
@@ -272,7 +272,7 @@ _DIGEST_TEMPLATE = _env.from_string(
   <tr><td style="padding:24px 16px;text-align:center;">
     <a href="{{ dashboard_url }}" style="display:inline-block;margin-bottom:12px;color:#818cf8;text-decoration:none;font-size:14px;font-weight:600;">Open full calendar &rarr;</a><br>
     <a href="{{ dashboard_url }}/feed.ics" style="color:#6b7280;text-decoration:none;font-size:12px;">Subscribe to iCal feed</a>
-    <p style="margin:12px 0 0;font-size:11px;color:#4b5563;">Curated by <strong style="color:#818cf8;">recom</strong> &middot; AI cost: ${{ "%.4f" | format(total_cost) }}</p>
+    <p style="margin:12px 0 0;font-size:11px;color:#4b5563;">Curated by <strong style="color:#818cf8;">Calyx</strong> &middot; AI cost: ${{ "%.4f" | format(total_cost) }}</p>
   </td></tr>
 
 </table>
@@ -458,7 +458,7 @@ _DAILY_TEMPLATE = _env.from_string(
 
   <!-- Header -->
   <tr><td style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px 16px 0 0;padding:28px 28px 24px;text-align:center;">
-    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">◉ RECOM · Daily</p>
+    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">◉ CALYX · Daily</p>
     <h1 style="margin:0;font-size:28px;font-weight:800;color:white;letter-spacing:-.5px;">
       <a href="{{ dashboard_url }}" style="color:white;text-decoration:none;">{{ day_label }}</a>
     </h1>
@@ -671,7 +671,7 @@ _WEEKEND_TEMPLATE = _env.from_string(
 
   <!-- Header -->
   <tr><td style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px 16px 0 0;padding:28px 28px 24px;text-align:center;">
-    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">&loz; RECOM &middot; Weekend</p>
+    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">&loz; CALYX &middot; Weekend</p>
     <h1 style="margin:0;font-size:26px;font-weight:800;color:white;letter-spacing:-.5px;">
       <a href="{{ dashboard_url }}" style="color:white;text-decoration:none;">Your Weekend</a>
     </h1>
@@ -722,7 +722,7 @@ _WEEKEND_TEMPLATE = _env.from_string(
   <!-- Footer -->
   <tr><td style="padding:16px 24px;text-align:center;">
     <p style="margin:0;font-size:12px;color:#9ca3af;">
-      Powered by <a href="{{ dashboard_url }}" style="color:#6366f1;text-decoration:none;">Recom</a> &middot; Discover Weekly for your real life
+      Powered by <a href="{{ dashboard_url }}" style="color:#6366f1;text-decoration:none;">Calyx</a> &middot; Discover Weekly for your real life
     </p>
   </td></tr>
 
@@ -813,7 +813,7 @@ _WELCOME_TEMPLATE = _env.from_string(
 
   <!-- Header -->
   <tr><td style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px 16px 0 0;padding:32px 28px;text-align:center;">
-    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">&loz; RECOM</p>
+    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">&loz; CALYX</p>
     <h1 style="margin:0;font-size:26px;font-weight:800;color:white;letter-spacing:-.5px;">Your event calendar is ready</h1>
     <p style="margin:8px 0 0;font-size:15px;color:rgba(255,255,255,.7);">We found {{ event_count }} events this week that match your interests.</p>
   </td></tr>
@@ -888,7 +888,7 @@ _WELCOME_TEMPLATE = _env.from_string(
   <!-- Footer -->
   <tr><td style="background:white;border-radius:0 0 16px 16px;border-top:1px solid #f3f4f6;padding:16px 24px;text-align:center;">
     <p style="margin:0;font-size:12px;color:#9ca3af;">
-      Powered by <a href="{{ dashboard_url }}" style="color:#6366f1;text-decoration:none;">Recom</a> &middot; Discover Weekly for your real life
+      Powered by <a href="{{ dashboard_url }}" style="color:#6366f1;text-decoration:none;">Calyx</a> &middot; Discover Weekly for your real life
     </p>
   </td></tr>
 

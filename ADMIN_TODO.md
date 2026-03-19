@@ -13,11 +13,13 @@ Things only you (Arth) can do. Not code changes — account/config/external stuf
 
 ## Soon (for public alpha)
 
-- [ ] **Domain/branding** — If renaming from "Recom", update:
-  - `dashboard_url` in `.env`
-  - Cloudflare tunnel config
-  - Email templates (sender name, footer text)
-  - CLAUDE.md references
+- [ ] **Domain for Calyx** — Register calyx.app or similar, then:
+  - Update `dashboard_url` in `.env` to new domain
+  - Update Cloudflare tunnel to point to new domain
+  - Update Spotify redirect URI to new domain
+  - Code rebrand is done (UI, emails, OG tags all say "Calyx")
+
+- [ ] **OG image** — Create a 1200x630px `og-image.png` with Calyx branding, host at `/static/og-image.png`
 
 - [ ] **Invite a few friends to test** — Create a group, share the invite link, see if the join flow works end-to-end on their devices (especially mobile Safari)
 
