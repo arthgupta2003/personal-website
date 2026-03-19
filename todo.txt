@@ -2848,6 +2848,17 @@
 #
 # MEDIUM PRIORITY
 #
+# [ ] Music genre tags — extract genre from Spotify API for music events
+#     (Songkick/Bandsintown/Ticketmaster have artist names → Spotify search → genres)
+#     Show as colored pills on event cards (e.g. "indie rock", "jazz", "electronic")
+#     Could also use Spotify as an event source (artist touring near you)
+# [ ] Event detail pages — dedicated shareable URL per event (Partiful-style)
+# [ ] Shareable event links — non-users can view + RSVP without account
+# [ ] Group availability poll — "who's free this weekend?" When2Meet-style
+# [ ] Notification preferences — per-group email frequency control
+# [ ] Recurring events in groups — "Every Tuesday at 7pm"
+# [ ] Mobile PWA — manifest.json + service worker for add-to-homescreen
+#
 # [ ] Merge group events into personal calendar view
 # [ ] Group filter toggles on calendar page
 # [ ] Search: category/date/price filters
