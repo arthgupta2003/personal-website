@@ -1922,9 +1922,9 @@ async def landing_page(request: Request):
 
 <!-- Hero -->
 <div class="landing-hero">
-  <div class="landing-eyebrow">Where plans come together</div>
+  <div class="landing-eyebrow">The plans that keep them close</div>
   <h1>Drop an event.<br>Your crew <span class="accent">taps in</span>.</h1>
-  <p class="sub">Calyx is a group calendar that makes organizing plans with your people effortless and fun. Think Partiful meets Google Calendar &mdash; without the back-and-forth.</p>
+  <p class="sub">Every friend group has a rhythm: the dinners, the weekend plans, the spontaneous &quot;who&apos;s free tonight.&quot; Calyx is the shared calendar that quietly holds your people together &mdash; without the back-and-forth.</p>
   <div class="cta-row">
     <a href="/join" class="btn-primary btn-pill" style="padding:12px 28px;font-size:15px;">Create your group &rarr;</a>
     <a href="/" class="btn-secondary btn-pill" style="padding:12px 28px;font-size:15px;">See what&apos;s happening</a>
@@ -1984,7 +1984,7 @@ async def landing_page(request: Request):
 
 <!-- The Calyx difference -->
 <h2>Named after what holds it together</h2>
-<p style="font-size:14px;color:#6b7280;margin-bottom:16px;max-width:520px;">A calyx is the part of a flower that holds all the petals together. This app is the connective layer between your friend groups, your events, and your RSVPs.</p>
+<p style="font-size:14px;color:#6b7280;margin-bottom:16px;max-width:520px;">A calyx is the part of a flower that holds all the petals together. That rhythm of dinners, weekend plans, and spontaneous nights out? It lives scattered across texts and half-made plans. Calyx is the structure underneath.</p>
 <div class="vibe-cards">
   <div class="vibe-card social">
     <div class="vibe-label">Not a to-do list</div>
@@ -2005,8 +2005,8 @@ async def landing_page(request: Request):
 
 <!-- CTA -->
 <div class="landing-cta">
-  <h2>Where plans actually come together.</h2>
-  <p>Create a group, invite your people, start showing up.</p>
+  <h2>Because the best friendships aren&apos;t just people.</h2>
+  <p>They&apos;re the plans that keep them close.</p>
   <a href="/join" class="btn-primary" style="padding:12px 32px;font-size:15px;border-radius:20px;">Get started &rarr;</a>
   <p class="note">Free. No credit card. Boston &amp; Cambridge.</p>
 </div>
