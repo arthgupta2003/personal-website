@@ -1,5 +1,5 @@
-.env
-state/
+calyx/.env
+calyx/state/
 __pycache__/
 *.pyc
 .venv/

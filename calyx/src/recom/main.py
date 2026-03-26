@@ -212,6 +212,11 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
         step_timings["ranking"] = _time.monotonic() - _t0
         logger.info("  No events to rank")
 
+    # === Step 4.5a: Compute daily picks (shared by email + calendar feed) ===
+    if ranked:
+        n_picks = db.compute_daily_picks(run_id, user_id)
+        logger.info(f"  Computed {n_picks} daily picks")
+
     # === Step 4.5: Bucket list suggestions ===
     # Prefer DB-backed bucket list; fall back to flat file
     bucket_items = db.get_bucket_list_activities(user_id) or load_bucket_list(settings.bucket_list_file)

@@ -1,0 +1,204 @@
+FROM node:22-bookworm
+
+# Build tools for node-pty + system deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-venv git curl build-essential gosu \
+    # Browser/Playwright dependencies for JS-rendered scrapers
+    libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+    libgbm1 libasound2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# Install cloudflared
+RUN curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb \
+    && dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb
+
+# Install Claude CLI + claude-code-web
+RUN npm install -g @anthropic-ai/claude-code claude-code-web
+
+# Always use --dangerously-skip-permissions (container is the sandbox)
+RUN sed -i "s/const args = dangerouslySkipPermissions ? \['--dangerously-skip-permissions'\] : \[\]/const args = ['--dangerously-skip-permissions']/" /usr/local/lib/node_modules/claude-code-web/src/claude-bridge.js
+
+# Pre-install Python deps (layer cache — runtime uv sync is fast if lockfile unchanged)
+COPY pyproject.toml uv.lock /tmp/deps/
+RUN cd /tmp/deps && uv sync --no-dev --no-install-project 2>/dev/null || true && rm -rf /tmp/deps
+
+# PID directory for service management
+RUN mkdir -p /run/recom
+
+# Create non-root user
+RUN useradd -m -s /bin/bash claude && \
+    mkdir -p /home/claude/.claude && \
+    echo '{"hasCompletedOnboarding": true}' > /home/claude/.claude/settings.json && \
+    cp -r /root/.local /home/claude/.local && \
+    chown -R claude:claude /home/claude /run/recom
+
+# Ensure uv is on PATH for all users (gosu doesn't inherit ENV)
+ENV PATH="/home/claude/.local/bin:/root/.local/bin:$PATH"
+
+# --- recom-ctl: service control script (callable by Claude Code) ---
+COPY <<'SCRIPT' /usr/local/bin/recom-ctl
+#!/bin/bash
+# Service controller for recom — used by Claude Code to manage services
+# Usage: recom-ctl [status|restart-dashboard|restart-web|restart-all|logs]
+
+PIDDIR="/run/recom"
+LOGDIR="/run/recom/logs"
+
+_pid_alive() { [ -f "$PIDDIR/$1.pid" ] && kill -0 "$(cat "$PIDDIR/$1.pid")" 2>/dev/null; }
+
+case "${1:-status}" in
+  status)
+    for svc in dashboard tunnel code-web; do
+      if _pid_alive "$svc"; then
+        echo "$svc: running (PID $(cat $PIDDIR/$svc.pid))"
+      else
+        echo "$svc: stopped"
+      fi
+    done
+    ;;
+  restart-dashboard)
+    echo "Restarting dashboard..."
+    [ -f "$PIDDIR/dashboard.pid" ] && kill "$(cat $PIDDIR/dashboard.pid)" 2>/dev/null
+    sleep 1
+    cd /workspace && uv run recom-dashboard >> "$LOGDIR/dashboard.log" 2>&1 &
+    echo $! > "$PIDDIR/dashboard.pid"
+    echo "Dashboard restarted (PID $!)"
+    ;;
+  restart-web)
+    echo "Restarting claude-code-web..."
+    [ -f "$PIDDIR/code-web.pid" ] && kill "$(cat $PIDDIR/code-web.pid)" 2>/dev/null
+    sleep 1
+    node /usr/local/lib/node_modules/claude-code-web/bin/cc-web.js --port 32352 --no-open >> "$LOGDIR/code-web.log" 2>&1 &
+    echo $! > "$PIDDIR/code-web.pid"
+    echo "Code-web restarted (PID $!)"
+    ;;
+  restart-all)
+    $0 restart-dashboard
+    $0 restart-web
+    echo "All services restarted (tunnel untouched)"
+    ;;
+  logs)
+    tail -f "$LOGDIR"/*.log
+    ;;
+  logs-dashboard)
+    tail -f "$LOGDIR/dashboard.log"
+    ;;
+  *)
+    echo "Usage: recom-ctl [status|restart-dashboard|restart-web|restart-all|logs|logs-dashboard]"
+    exit 1
+    ;;
+esac
+SCRIPT
+RUN chmod +x /usr/local/bin/recom-ctl
+
+# --- Entrypoint: inject creds, setup tunnel, launch services ---
+COPY <<'SCRIPT' /entrypoint.sh
+#!/bin/bash
+set -e
+
+# Inject Claude credentials
+if [ -n "$CLAUDE_CREDENTIALS" ]; then
+  mkdir -p /home/claude/.claude
+  echo "$CLAUDE_CREDENTIALS" > /home/claude/.claude/.credentials.json
+  chmod 600 /home/claude/.claude/.credentials.json
+  chown claude:claude /home/claude/.claude/.credentials.json
+fi
+
+# Set up cloudflared config
+if [ -n "${CLOUDFLARE_TUNNEL_ID:-}" ] && [ -n "${CLOUDFLARE_TUNNEL_CREDENTIALS:-}" ]; then
+  mkdir -p /home/claude/.cloudflared
+  echo "$CLOUDFLARE_TUNNEL_CREDENTIALS" > "/home/claude/.cloudflared/${CLOUDFLARE_TUNNEL_ID}.json"
+  cat > /home/claude/.cloudflared/config.yml <<EOF
+tunnel: ${CLOUDFLARE_TUNNEL_ID}
+credentials-file: /home/claude/.cloudflared/${CLOUDFLARE_TUNNEL_ID}.json
+
+ingress:
+  - hostname: recom.arthgupta.dev
+    service: http://localhost:8000
+  - hostname: code.arthgupta.dev
+    service: http://localhost:32352
+  - service: http_status:404
+EOF
+  chown -R claude:claude /home/claude/.cloudflared
+fi
+
+exec gosu claude /run-services.sh
+SCRIPT
+RUN chmod +x /entrypoint.sh
+
+# --- Service runner ---
+COPY <<'SCRIPT' /run-services.sh
+#!/bin/bash
+set -e
+
+PIDDIR="/run/recom"
+LOGDIR="/run/recom/logs"
+mkdir -p "$LOGDIR"
+
+cd /workspace
+
+# Ensure Python deps are synced (host volume may differ from build cache)
+echo "Syncing Python deps..."
+uv sync --no-dev 2>&1 | tail -3
+
+echo ""
+echo "=== Starting recom services ==="
+echo ""
+
+# 1. Dashboard
+echo "[1/3] Dashboard on :8000"
+uv run recom-dashboard >> "$LOGDIR/dashboard.log" 2>&1 &
+echo $! > "$PIDDIR/dashboard.pid"
+
+# 2. Cloudflared tunnel
+if [ -f "$HOME/.cloudflared/config.yml" ]; then
+  sleep 2
+  echo "[2/3] Cloudflared tunnel"
+  cloudflared tunnel run >> "$LOGDIR/tunnel.log" 2>&1 &
+  echo $! > "$PIDDIR/tunnel.pid"
+else
+  echo "[2/3] Tunnel skipped (no credentials)"
+fi
+
+# 3. Claude Code Web
+sleep 1
+echo "[3/3] Claude Code Web on :32352"
+node /usr/local/lib/node_modules/claude-code-web/bin/cc-web.js --port 32352 --no-open >> "$LOGDIR/code-web.log" 2>&1 &
+echo $! > "$PIDDIR/code-web.pid"
+
+echo ""
+echo "=== All services running ==="
+echo "  Dashboard:  http://localhost:8000"
+echo "  Code Web:   http://localhost:32352"
+echo "  Tunnel:     recom.arthgupta.dev / code.arthgupta.dev"
+echo ""
+echo "  Manage: recom-ctl [status|restart-dashboard|restart-web|restart-all|logs]"
+echo ""
+
+# Monitor — restart crashed services (except tunnel)
+while true; do
+  sleep 10
+  # Restart dashboard if it died
+  if ! kill -0 "$(cat $PIDDIR/dashboard.pid 2>/dev/null)" 2>/dev/null; then
+    echo "[$(date)] Dashboard died, restarting..."
+    cd /workspace && uv run recom-dashboard >> "$LOGDIR/dashboard.log" 2>&1 &
+    echo $! > "$PIDDIR/dashboard.pid"
+  fi
+  # Restart code-web if it died
+  if ! kill -0 "$(cat $PIDDIR/code-web.pid 2>/dev/null)" 2>/dev/null; then
+    echo "[$(date)] Code-web died, restarting..."
+    node /usr/local/lib/node_modules/claude-code-web/bin/cc-web.js --port 32352 --no-open >> "$LOGDIR/code-web.log" 2>&1 &
+    echo $! > "$PIDDIR/code-web.pid"
+  fi
+done
+SCRIPT
+RUN chmod +x /run-services.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+WORKDIR /workspace
+EXPOSE 8000 32352

@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Repo structure
+
+This is a **monorepo** with two main areas:
+- `calyx/` — the Calyx app (Python, FastAPI, SQLite). All commands below should be run from within `calyx/`.
+- `site/` — static landing page for arthgupta.dev
+
+## Project status
+
+**This project is in beta.** There are no external users yet — only the developer and a few friends. This means:
+- No backwards compatibility required. Break old routes, rename endpoints, change DB schemas freely.
+- No migration scripts needed. Blow away old artifacts, delete unused code, restructure tables.
+- Move fast. Don't add deprecation warnings or keep dead code around "just in case."
+
 ## Commands
 
 ```bash

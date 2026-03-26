@@ -1,0 +1,25 @@
+services:
+  claude:
+    build:
+      context: .
+      dockerfile: Dockerfile.claude
+    ports:
+      - "32352:32352"
+      - "8000:8000"
+    volumes:
+      - .:/workspace
+    env_file:
+      - .env
+    environment:
+      - CLAUDE_CREDENTIALS=${CLAUDE_CREDENTIALS}
+      - CLOUDFLARE_TUNNEL_ID=${CLOUDFLARE_TUNNEL_ID}
+      - CLOUDFLARE_TUNNEL_CREDENTIALS=${CLOUDFLARE_TUNNEL_CREDENTIALS}
+    # Resource constraints
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: 2.0
+    # Security
+    security_opt:
+      - no-new-privileges:true
+    # Auto-restart on crash (but not on manual stop)
+    restart: unless-stopped

@@ -40,8 +40,8 @@ case "${1:-start}" in
     exec $0 start
     ;;
   start)
-    # Keep machine awake while script runs
-    caffeinate -s &
+    # Keep machine awake permanently — prevent idle, display, disk, and system sleep
+    # Run caffeinate as a proper child of the tmux session (see below)
     ;;
   *)
     echo "Usage: $0 [start|stop|status|logs|restart]"
@@ -75,6 +75,10 @@ tmux send-keys -t "$SESSION" "while true; do cloudflared tunnel run; echo 'Cloud
 # Telegram bot pane
 tmux split-window -t "$SESSION" -v
 tmux send-keys -t "$SESSION" "while true; do cd $DIR && set -a && source .env && set +a && uv run python scripts/telegram_bot.py; echo 'Telegram bot crashed, restarting in 5s...'; sleep 5; done" Enter
+
+# Caffeinate pane — keeps machine awake as long as tmux is alive
+tmux split-window -t "$SESSION" -v
+tmux send-keys -t "$SESSION" "caffeinate -dims" Enter
 
 # Even layout for main window
 tmux select-layout -t "$SESSION" even-vertical
