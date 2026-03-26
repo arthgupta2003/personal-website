@@ -3,10 +3,11 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
+CALYX="$DIR/calyx"
 cd "$DIR"
 
 SESSION="recom"
-LOG="$DIR/state/startup.log"
+LOG="$CALYX/state/startup.log"
 
 # Wait for network on boot (launchd may fire before WiFi/Ethernet is up)
 if [ "${1:-start}" = "start" ]; then
@@ -61,25 +62,24 @@ nvm use 22 >/dev/null 2>&1 || true
 chmod +x ~/.nvm/versions/node/v22.22.1/lib/node_modules/claude-code-web/node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true
 
 # Sync Python deps
-cd "$DIR"
+cd "$CALYX"
 uv sync --no-dev 2>&1 | tail -3
 
 # Create tmux session with dashboard pane
 tmux new-session -d -s "$SESSION" -n main
-tmux send-keys -t "$SESSION" "while true; do cd $DIR && uv run recom-dashboard; echo 'Dashboard crashed, restarting in 5s...'; sleep 5; done" Enter
+tmux send-keys -t "$SESSION" "while true; do cd $CALYX && uv run recom-dashboard; echo 'Dashboard crashed, restarting in 5s...'; sleep 5; done" Enter
 
 # Cloudflare tunnel pane
 tmux split-window -t "$SESSION" -v
 tmux send-keys -t "$SESSION" "while true; do cloudflared tunnel run; echo 'Cloudflared crashed, restarting in 5s...'; sleep 5; done" Enter
 
 # Static site pane (arthgupta.dev)
-SITE_DIR="$(dirname "$DIR")/site"
 tmux split-window -t "$SESSION" -v
-tmux send-keys -t "$SESSION" "cd $SITE_DIR && python3 -m http.server 8001" Enter
+tmux send-keys -t "$SESSION" "cd $DIR/site && python3 -m http.server 8001" Enter
 
 # Telegram bot pane
 tmux split-window -t "$SESSION" -v
-tmux send-keys -t "$SESSION" "while true; do cd $DIR && set -a && source .env && set +a && uv run python scripts/telegram_bot.py; echo 'Telegram bot crashed, restarting in 5s...'; sleep 5; done" Enter
+tmux send-keys -t "$SESSION" "while true; do cd $CALYX && set -a && source .env && set +a && uv run python scripts/telegram_bot.py; echo 'Telegram bot crashed, restarting in 5s...'; sleep 5; done" Enter
 
 # Caffeinate pane — keeps machine awake as long as tmux is alive
 tmux split-window -t "$SESSION" -v
@@ -90,7 +90,7 @@ tmux select-layout -t "$SESSION" even-vertical
 
 # Claude agent in its own window (SSH in and select this window to talk directly)
 tmux new-window -t "$SESSION" -n claude
-tmux send-keys -t "$SESSION:claude" "cd $DIR && claude --dangerously-skip-permissions" Enter
+tmux send-keys -t "$SESSION:claude" "cd $CALYX && claude --dangerously-skip-permissions" Enter
 
 # Switch back to main window
 tmux select-window -t "$SESSION:main"
@@ -110,7 +110,7 @@ echo ""
 echo "  tmux attach -t recom — view all panes"
 echo ""
 echo "Cron jobs (run separately):"
-echo "  bash scripts/install_cron.sh   — installs 5 cron jobs"
+echo "  bash calyx/scripts/install_cron.sh   — installs 5 cron jobs"
 echo "  crontab -l                     — verify installed"
 echo ""
-echo "Logs: state/{cron,daily,taste,tonight,ratings}.log"
+echo "Logs: calyx/state/{cron,daily,taste,tonight,ratings}.log"
