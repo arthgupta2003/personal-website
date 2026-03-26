@@ -72,6 +72,11 @@ tmux send-keys -t "$SESSION" "while true; do cd $DIR && uv run recom-dashboard; 
 tmux split-window -t "$SESSION" -v
 tmux send-keys -t "$SESSION" "while true; do cloudflared tunnel run; echo 'Cloudflared crashed, restarting in 5s...'; sleep 5; done" Enter
 
+# Static site pane (arthgupta.dev)
+SITE_DIR="$(dirname "$DIR")/site"
+tmux split-window -t "$SESSION" -v
+tmux send-keys -t "$SESSION" "cd $SITE_DIR && python3 -m http.server 8001" Enter
+
 # Telegram bot pane
 tmux split-window -t "$SESSION" -v
 tmux send-keys -t "$SESSION" "while true; do cd $DIR && set -a && source .env && set +a && uv run python scripts/telegram_bot.py; echo 'Telegram bot crashed, restarting in 5s...'; sleep 5; done" Enter
@@ -93,6 +98,7 @@ tmux select-window -t "$SESSION:main"
 echo ""
 echo "=== Recom running (bare metal) ==="
 echo "  Dashboard:  http://localhost:8000  → calyx.arthgupta.dev"
+echo "  Landing:    http://localhost:8001  → arthgupta.dev"
 echo "  Telegram:   @ArthRecomBot"
 echo ""
 echo "Commands:"
