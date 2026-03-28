@@ -2797,15 +2797,20 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         default_date = _dt.now().strftime("%Y-%m-%d")
         add_event_html = f'''<div style="border:1px solid #e0e0e0;padding:20px;margin-bottom:28px;">
             <h2 style="margin:0 0 12px;">Add Event</h2>
-            <form action="/api/group/{group_id}/add-event" method="post">
-                <input name="title" placeholder="What are you doing?" required
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <input id="url-paste-{group_id}" type="url" placeholder="Paste event URL to autofill..."
+                       style="flex:1;padding:10px 12px;border:1px solid #ccc;font-size:13px;font-family:inherit;color:#555;box-sizing:border-box;">
+                <button type="button" onclick="autofillFromUrl({group_id})" style="padding:8px 14px;background:#4a6741;color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Fill</button>
+            </div>
+            <form action="/api/group/{group_id}/add-event" method="post" id="add-event-form-{group_id}">
+                <input name="title" id="ae-title-{group_id}" placeholder="What are you doing?" required
                        style="width:100%;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;margin-bottom:8px;box-sizing:border-box;">
                 <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-                    <input name="date" type="date" value="{default_date}" required
+                    <input name="date" id="ae-date-{group_id}" type="date" value="{default_date}" required
                            style="flex:1;min-width:130px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;">
-                    <input name="time" type="time" value="19:00"
+                    <input name="time" id="ae-time-{group_id}" type="time" value="19:00"
                            style="flex:1;min-width:100px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;">
-                    <input name="location" placeholder="Where? (optional)"
+                    <input name="location" id="ae-loc-{group_id}" placeholder="Where? (optional)"
                            style="flex:1;min-width:130px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;">
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
@@ -2943,6 +2948,30 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     .grp-rsvp-btn.maybe:hover, .grp-rsvp-btn.maybe.active {{ background:#f5f5f5; color:#000; border-color:#000; }}
     </style>
     <script>
+    async function autofillFromUrl(groupId) {{
+        const urlInput = document.getElementById('url-paste-' + groupId);
+        const url = urlInput.value.trim();
+        if (!url) return;
+        urlInput.disabled = true;
+        urlInput.style.opacity = '.5';
+        try {{
+            const resp = await fetch('/api/extract-event-url', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{url}})
+            }});
+            const d = await resp.json();
+            if (d.ok) {{
+                if (d.title) document.getElementById('ae-title-' + groupId).value = d.title;
+                if (d.date) document.getElementById('ae-date-' + groupId).value = d.date;
+                if (d.time) document.getElementById('ae-time-' + groupId).value = d.time;
+                if (d.location) document.getElementById('ae-loc-' + groupId).value = d.location;
+            }}
+        }} catch(e) {{}}
+        urlInput.disabled = false;
+        urlInput.style.opacity = '1';
+    }}
+
     async function kickMember(groupId, userId, btn) {{
         if (!confirm('Remove this member from the group?')) return;
         const resp = await fetch('/api/group/' + groupId + '/kick', {{
@@ -3487,6 +3516,51 @@ async def group_planner(group_id: int, request: Request):
 
     resp = HTMLResponse(_layout(f"{group['name']} Plan", body, user=current_user))
     return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.post("/api/extract-event-url")
+async def extract_event_from_url(request: Request):
+    """Fetch a URL and use Claude to extract event details."""
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"ok": False}, status_code=401)
+    body = await request.json()
+    url = (body.get("url") or "").strip()
+    if not url:
+        return JSONResponse({"ok": False, "error": "No URL"})
+
+    settings = Settings()
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            if resp.status_code != 200:
+                return JSONResponse({"ok": False, "error": f"Could not fetch URL ({resp.status_code})"})
+            html = resp.text[:15000]  # Truncate to avoid huge prompts
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)})
+
+    # Use Claude to extract event details
+    import anthropic
+    try:
+        ac = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        result = ac.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{"role": "user", "content":
+                f"Extract event details from this webpage HTML. Return ONLY JSON: "
+                f"{{\"title\":\"\",\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\",\"location\":\"\"}}\n\n{html}"}],
+        )
+        import json as _json, re as _re
+        text = result.content[0].text
+        match = _re.search(r'\{.*\}', text, _re.DOTALL)
+        if match:
+            data = _json.loads(match.group())
+            return JSONResponse({"ok": True, **data})
+    except Exception:
+        pass
+
+    return JSONResponse({"ok": False, "error": "Could not extract event details"})
 
 
 @app.post("/api/group/{group_id:int}/add-event")
