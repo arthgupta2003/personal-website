@@ -4173,3 +4173,9 @@ async def user_rsvps_ical(token: str, recs: int = 0):
     )
 
 
+
+
+def run():
+    """Entry point for recom-dashboard command."""
+    import uvicorn
+    uvicorn.run("recom.dashboard.app:app", host="0.0.0.0", port=8000, reload=False)
