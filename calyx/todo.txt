@@ -2,49 +2,39 @@
 # grep "TODO:" to see active items. grep "DONE:" for history.
 
 # ============================================================
-# ACTIVE — in progress or next up
+# ACTIVE — in progress
 # ============================================================
 
 # TODO: Map view on Discover (in progress)
-#   Leaflet map centered on Cambridge, events as pins, click for details.
-#   Third tab: List | Week | Map. Already started, needs buildMapView JS.
+#   Leaflet map, event pins colored by score. Button added, needs JS.
 
-# TODO: Ingest web search results into DB
-#   When web search finds events, save them to DB so they become
-#   RSVPable and show up in future searches. Enrich if needed.
+# ============================================================
+# ACTIVE — broken sources to fix
+# ============================================================
 
-# TODO: Fix auto-retro writing malformed todo entries
-#   Currently appends multi-line garbage. Should be clean one-liners.
+# TODO: Fix Luma — API endpoint returns 404, scrape redirects (301)
+# TODO: Fix Bandsintown — API now requires auth token (403)
+# TODO: Fix Dice.fm — API v2 endpoint returns 404
+# TODO: Fix Songkick — needs API key (RECOM_SONGKICK_API_KEY in .env)
+# TODO: Fix Harvard Art Museums — returns 0 events
+# TODO: Improve ICA, MFA, Museum of Science — only 1-2 events each
 
 # ============================================================
 # ACTIVE — product features
 # ============================================================
 
 # TODO: Location-adaptive event sources
-#   New user from NYC → pipeline detects city → adds NYC scrapers.
-
 # TODO: Auto-spawn Claude Code to fix retro-detected gaps
-#   When retro finds missing sources, trigger Claude Code to write the scraper.
-
 # TODO: Add pottery/ceramics, climbing, cooking class sources
-#   Detected via search retro — users search for these, DB has nothing.
-
 # TODO: Add outdoor recreation sources (AllTrails, AMC, DCR)
 # TODO: Add niche music venue/promoter sources (hyperpop, indie)
 
 # ============================================================
-# ACTIVE — UI/UX polish
+# ACTIVE — UI/UX
 # ============================================================
 
-# TODO: Make event description show on Discover cards (not match_reason)
-#   Currently shows scoring justification, should show what the event IS.
-
 # TODO: Web search results should be saveable/RSVPable
-#   "Add to my calendar" button on web results that ingests into DB.
-
-# TODO: Improve search speed further
-#   Currently ~6s. Consider caching, Google Custom Search API, or
-#   pre-fetching popular queries.
+# TODO: Improve search speed (currently ~6s, consider caching)
 
 # ============================================================
 # BACKLOG
@@ -56,29 +46,19 @@
 # TODO: Incremental runs / event caching between pipeline runs
 
 # ============================================================
-# DONE — 2026-03-28 session (today)
+# DONE — 2026-03-28 session
 # ============================================================
 
-# DONE: Simplified to 3 features: Groups, Discover, You
-# DONE: Deleted 5000+ lines of dead code
-# DONE: Botanical design — sage green + terracotta, leaf logo, decorative SVGs
-# DONE: Nav: Groups | Discover | You (sharp, green accent)
-# DONE: Tabbed You page (Taste | Settings), paste-to-profile box
-# DONE: Live Spotify artists + YouTube subs on taste profile
-# DONE: YouTube web OAuth + Spotify connected state
-# DONE: Tiered search: DB → Claude web_search, auto-fires, pulsing banner
-# DONE: Web search 2x faster (max_uses:1), robust prose fallback
-# DONE: Event dedup (GROUP BY), diversity (max 2/vibe per day)
+# DONE: Simplified to 3 features: Discover, Groups, You
+# DONE: Botanical design — sage green + terracotta, leaf logo
+# DONE: Tabbed You page (Taste | Settings) with live Spotify/YouTube
+# DONE: YouTube web OAuth, Spotify connected state
+# DONE: Tiered search: DB → Claude web_search, pulsing banner
+# DONE: Web results ingested into DB for future searches
 # DONE: Self-improving retro (diagnoses gaps, emails admin)
-# DONE: Shareable event pages (/e/{event_id}) with OG tags
-# DONE: Group features: kick member, mute notifications, recurring events
-# DONE: Group availability poll ("Who's free?") with heatmap + names
-# DONE: Group member list redesigned with colored avatars
-# DONE: Email rethemed to match dashboard (purple → green)
-# DONE: Mobile PWA (manifest + service worker)
-# DONE: Generic event enrichment (fetch detail pages for desc/price)
-# DONE: Seasonal boost (+10 for festivals, parades, holidays)
-# DONE: Week view: Sunday-aligned, prev/next nav, full-width calendar
-# DONE: Search: pulsing green banner, Invalid Date fix, faster prompt
-# DONE: Fixed: crons, pipeline persistence, admin page, You page crash
-# DONE: Removed telegram bot → Claude Code remote control
+# DONE: Shareable event pages (/e/{event_id}), Mobile PWA
+# DONE: Group features: kick, mute, recurring, availability poll
+# DONE: Week view: Sunday-aligned, prev/next nav, full-width
+# DONE: Work hours toggle in Settings (per-user)
+# DONE: Email rethemed, event enrichment, seasonal boost
+# DONE: Deleted 5000+ lines dead code, fixed crons/pipeline/dedup

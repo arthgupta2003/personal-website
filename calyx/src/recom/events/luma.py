@@ -42,7 +42,7 @@ async def _fetch_via_api(settings: Settings) -> list[Event]:
 
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         resp = await client.get(
-            "https://api.lu.ma/discover/get-events",
+            "https://api.lu.ma/discover/get-paginated-events",
             params=params,
             headers=headers,
         )
@@ -56,8 +56,9 @@ async def _fetch_via_api(settings: Settings) -> list[Event]:
         if not title:
             continue
 
-        start_raw = ev.get("start_at", "")
-        end_raw = ev.get("end_at", "")
+        import re as _re
+        start_raw = _re.sub(r'\.\d+Z$', 'Z', ev.get("start_at", ""))
+        end_raw = _re.sub(r'\.\d+Z$', 'Z', ev.get("end_at", ""))
         geo = ev.get("geo_address_info") or {}
         location_name = ev.get("geo_address_json", {}).get("description", "") if isinstance(ev.get("geo_address_json"), dict) else ""
 
