@@ -115,15 +115,15 @@ __OG_TAGS__
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-         background: #faf9f7; color: #1a1a1a; font-size: 14px; line-height: 1.55; min-height: 100vh; }
+         background: #fff; color: #111; font-size: 14px; line-height: 1.55; min-height: 100vh; }
   /* --- App shell --- */
-  .app-nav { background: #fff; padding: 0 20px; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #e8e4df; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  .app-nav { background: #fff; padding: 0 20px; position: sticky; top: 0; z-index: 100; border-bottom: 2px solid #4a6741; }
   .app-nav-inner { display: flex; align-items: center; max-width: 960px; margin: 0 auto; height: 56px; gap: 4px; }
   .app-logo { font-size: 20px; font-weight: 800; color: #4a6741; text-decoration: none; letter-spacing: -.8px; margin-right: auto; text-transform: lowercase; }
   .app-logo:hover { text-decoration: none; opacity: .8; }
-  .app-nav a.nav-link { font-size: 13px; font-weight: 500; color: #888; text-decoration: none; padding: 8px 14px; border-radius: 6px; transition: all .15s; }
-  .app-nav a.nav-link:hover { color: #4a6741; background: #f4f7f3; text-decoration: none; }
-  .app-nav a.nav-link.active { color: #4a6741; font-weight: 700; background: #edf2eb; }
+  .app-nav a.nav-link { font-size: 13px; font-weight: 500; color: #666; text-decoration: none; padding: 8px 14px; letter-spacing: .3px; text-transform: uppercase; transition: color .15s; }
+  .app-nav a.nav-link:hover { color: #4a6741; text-decoration: none; }
+  .app-nav a.nav-link.active { color: #4a6741; font-weight: 700; border-bottom: 2px solid #4a6741; margin-bottom: -2px; }
   .nav-divider { width: 1px; height: 20px; background: #ddd; margin: 0 8px; }
   .app-content { max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }
   /* --- Shared components --- */
@@ -131,7 +131,7 @@ __OG_TAGS__
   h2 { margin: 28px 0 16px; color: #000; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
   a { color: #4a6741; text-decoration: underline; text-underline-offset: 2px; }
   a:hover { text-decoration-thickness: 2px; color: #3a5334; }
-  .card { background: #fff; border: 1px solid #e8e4df; border-radius: 8px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,.03); }
+  .card { background: #fff; border: 1px solid #e0e0e0; padding: 24px; margin-bottom: 24px; }
   .badge { display: inline-block; padding: 2px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
   .badge-green { background: #000; color: #fff; }
   .badge-yellow { background: #f5f5f5; color: #555; }
@@ -153,10 +153,10 @@ __OG_TAGS__
   .interests-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
   .interest-tag { padding: 4px 12px; background: #f5f5f5; color: #333; font-size: 12px; font-weight: 500; }
   .cost-box { background: #fafafa; border: 1px solid #e0e0e0; padding: 12px; margin: 10px 0; }
-  .btn-primary { background: #4a6741; color: #fff; border: none; border-radius: 6px; padding: 10px 24px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: inherit; letter-spacing: .3px; transition: all .15s; }
-  .btn-primary:hover { background: #3a5334; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(74,103,65,.25); }
-  .btn-secondary { background: #fff; color: #4a6741; border: 1px solid #c5d4c1; border-radius: 6px; padding: 10px 24px; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; letter-spacing: .3px; }
-  .btn-secondary:hover { background: #f4f7f3; border-color: #4a6741; }
+  .btn-primary { background: #4a6741; color: #fff; border: none; padding: 10px 24px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: .5px; transition: background .15s; }
+  .btn-primary:hover { background: #3a5334; }
+  .btn-secondary { background: #fff; color: #4a6741; border: 1px solid #4a6741; padding: 10px 24px; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: .5px; }
+  .btn-secondary:hover { background: #edf2eb; }
   .btn-pill { padding: 6px 16px; font-size: 12px; }
   @media (max-width: 640px) {
     .app-nav a.nav-link { font-size: 11px; padding: 8px 8px; }
@@ -1590,12 +1590,12 @@ async def calendar_view(request: Request):
       .score-high {{ background: #4a6741; color: #fff; }}
       .score-mid {{ background: #e8ede7; color: #4a6741; }}
       .score-low {{ background: #f0eeeb; color: #999; }}
-      .rsvp-btn {{ font-size: 12px; padding: 5px 14px; border: 1px solid #d4cfc8; border-radius: 20px; background: white; cursor: pointer; color: #888; font-weight: 600; transition: all .15s; }}
+      .rsvp-btn {{ font-size: 11px; padding: 5px 14px; border: 1px solid #ccc; background: white; cursor: pointer; color: #888; font-weight: 700; transition: all .15s; text-transform: uppercase; letter-spacing: .3px; }}
       .rsvp-btn:hover {{ color: #4a6741; border-color: #4a6741; }}
       .rsvp-btn.going.active {{ background: #4a6741; color: #fff; border-color: #4a6741; }}
-      .rsvp-btn.maybe.active {{ background: #e8ede7; color: #4a6741; border-color: #4a6741; }}
-      .filter-chip {{ font-size: 12px; padding: 5px 12px; border: 1px solid #e0dcd7; border-radius: 20px; background: white; cursor: pointer; color: #888; font-weight: 600; transition: all .15s; }}
-      .filter-chip:hover {{ border-color: #c5d4c1; color: #4a6741; }}
+      .rsvp-btn.maybe.active {{ background: #edf2eb; color: #4a6741; border-color: #4a6741; }}
+      .filter-chip {{ font-size: 11px; padding: 5px 12px; border: 1px solid #e0e0e0; background: white; cursor: pointer; color: #888; font-weight: 600; transition: all .15s; text-transform: uppercase; letter-spacing: .3px; }}
+      .filter-chip:hover {{ border-color: #4a6741; color: #4a6741; }}
       .filter-chip.active {{ border-color: #4a6741; color: #fff; background: #4a6741; }}
       /* --- Card list view --- */
       #list-view {{ display: none; }}
@@ -1606,8 +1606,8 @@ async def calendar_view(request: Request):
       .see-more-btn:hover {{ background: #f5f5f5; }}
       .see-more-collapse {{ color: #888; }}
       .see-more-collapse:hover {{ background: #f5f5f5; color: #000; }}
-      .evt-card {{ background: white; margin: 6px 0; border: 1px solid #e8e4df; border-radius: 8px; transition: all .15s; cursor: pointer; overflow: hidden; display: flex; }}
-      .evt-card:hover {{ box-shadow: 0 2px 8px rgba(0,0,0,.06); transform: translateY(-1px); }}
+      .evt-card {{ background: white; margin: 0; border-bottom: 1px solid #e0e0e0; transition: background .15s; cursor: pointer; overflow: hidden; display: flex; }}
+      .evt-card:hover {{ background: #f8faf7; }}
       .evt-card.rsvp-going-card {{ border-left: 3px solid #4a6741; }}
       .evt-card.rsvp-maybe-card {{ border-left-color: #888; }}
       .evt-card .card-body {{ flex: 1; padding: 14px 16px; min-width: 0; }}
@@ -2951,15 +2951,18 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
 
     {add_event_html}
 
-    {"" if not is_member else f"""<div style="border:1px solid #e0e0e0;padding:20px;margin-bottom:28px;">
-        <h2 style="margin:0 0 12px;">Who&apos;s free?</h2>
-        <div id="avail-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:12px;"></div>
-        <div id="avail-counts" style="font-size:12px;color:#888;"></div>
+    {"" if not is_member else f"""<div style="border:1px solid #e8e4df;border-radius:8px;padding:20px;margin-bottom:28px;background:#fff;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <h2 style="margin:0;">Who&apos;s free this week?</h2>
+            <span style="font-size:12px;color:#888;">Tap to mark your days</span>
+        </div>
+        <div id="avail-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;"></div>
+        <div id="avail-names" style="margin-top:12px;font-size:13px;color:#555;"></div>
     </div>
     <script>
     (function() {{
         const grid = document.getElementById('avail-grid');
-        const counts = document.getElementById('avail-counts');
+        const namesEl = document.getElementById('avail-names');
         const today = new Date(); today.setHours(0,0,0,0);
         const days = [];
         for (let i = 0; i < 7; i++) {{
@@ -2967,30 +2970,61 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
             days.push(d.toISOString().slice(0,10));
         }}
 
-        // Fetch current availability
         function render(data) {{
             grid.innerHTML = '';
-            const mySlots = new Set((data.my_slots || []).map(s => s));
+            const mySlots = new Set((data.my_slots || []));
             const slotCounts = data.slot_counts || {{}};
+            const slotNames = data.slot_names || {{}};
+            const totalMembers = {len(members)};
+            let bestDay = '';
+            let bestCount = 0;
+
             days.forEach(day => {{
                 const d = new Date(day + 'T00:00:00');
-                const label = d.toLocaleDateString('en-US', {{weekday:'short'}});
+                const isToday = d.getTime() === today.getTime();
+                const label = isToday ? 'Today' : d.toLocaleDateString('en-US', {{weekday:'short'}});
                 const dateNum = d.getDate();
                 const isMine = mySlots.has(day);
                 const count = slotCounts[day] || 0;
-                const opacity = Math.min(1, 0.15 + count * 0.2);
-                grid.innerHTML += `<div onclick="toggleAvail('${{day}}',this)" style="text-align:center;padding:12px 4px;border:1px solid ${{isMine ? '#4a6741' : '#e0e0e0'}};background:${{isMine ? '#4a6741' : (count > 0 ? 'rgba(74,103,65,' + opacity + ')' : '#fff')}};color:${{isMine ? '#fff' : '#333'}};cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;">
-                    <div>${{label}}</div><div style="font-size:16px;font-weight:800;">${{dateNum}}</div>
-                    ${{count > 0 ? '<div style="font-size:10px;opacity:.7;margin-top:2px;">' + count + ' free</div>' : ''}}
+                const pct = totalMembers > 0 ? count / totalMembers : 0;
+
+                if (count > bestCount) {{ bestCount = count; bestDay = day; }}
+
+                // Color intensity based on how many members are free
+                let bg, border, textColor;
+                if (isMine) {{
+                    bg = '#4a6741'; border = '#4a6741'; textColor = '#fff';
+                }} else if (pct >= 0.6) {{
+                    bg = '#c8dcc4'; border = '#9ec097'; textColor = '#2d4a27';
+                }} else if (count > 0) {{
+                    bg = '#edf2eb'; border = '#d4e0d1'; textColor = '#4a6741';
+                }} else {{
+                    bg = '#fff'; border = '#e8e4df'; textColor = '#aaa';
+                }}
+
+                grid.innerHTML += `<div onclick="toggleAvail('${{day}}')" style="text-align:center;padding:10px 4px;border:2px solid ${{border}};border-radius:8px;background:${{bg}};color:${{textColor}};cursor:pointer;transition:all .15s;user-select:none;">
+                    <div style="font-size:11px;font-weight:600;">${{label}}</div>
+                    <div style="font-size:18px;font-weight:800;margin:2px 0;">${{dateNum}}</div>
+                    <div style="font-size:10px;opacity:.8;">${{count > 0 ? count + '/' + totalMembers : ''}}</div>
                 </div>`;
             }});
+
+            // Show who's free on the best day
+            if (bestDay && bestCount > 0) {{
+                const names = slotNames[bestDay] || [];
+                const bestDate = new Date(bestDay + 'T00:00:00');
+                const dayLabel = bestDate.toLocaleDateString('en-US', {{weekday:'long', month:'short', day:'numeric'}});
+                namesEl.innerHTML = '<strong>' + dayLabel + '</strong> works best — ' + names.join(', ');
+            }} else {{
+                namesEl.innerHTML = 'No one has marked their availability yet. Be the first!';
+            }}
         }}
 
         function load() {{
             fetch('/api/group/{group_id}/availability').then(r => r.json()).then(render);
         }}
 
-        window.toggleAvail = function(day, el) {{
+        window.toggleAvail = function(day) {{
             fetch('/api/group/{group_id}/availability', {{
                 method: 'POST',
                 headers: {{'Content-Type': 'application/json'}},
@@ -3486,6 +3520,25 @@ async def api_group_leave(group_id: int, request: Request):
     return RedirectResponse("/groups?success=Left+group", status_code=303)
 
 
+def _get_availability_data(db, poll_id: int, user_id: int) -> dict:
+    my_slots = [r["slot"] for r in db.conn.execute(
+        "SELECT slot FROM availability_votes WHERE poll_id=? AND user_id=? AND available=1",
+        (poll_id, user_id),
+    ).fetchall()]
+    slot_counts = {}
+    slot_names: dict[str, list[str]] = {}
+    for r in db.conn.execute(
+        """SELECT av.slot, u.name as user_name FROM availability_votes av
+           JOIN users u ON u.id = av.user_id
+           WHERE av.poll_id=? AND av.available=1""",
+        (poll_id,),
+    ).fetchall():
+        slot = r["slot"]
+        slot_counts[slot] = slot_counts.get(slot, 0) + 1
+        slot_names.setdefault(slot, []).append(r["user_name"] or "?")
+    return {"my_slots": my_slots, "slot_counts": slot_counts, "slot_names": slot_names}
+
+
 @app.get("/api/group/{group_id:int}/availability")
 async def api_group_availability_get(group_id: int, request: Request):
     """Get availability poll data for a group."""
@@ -3508,19 +3561,7 @@ async def api_group_availability_get(group_id: int, request: Request):
         poll = db.conn.execute("SELECT id FROM availability_polls WHERE group_id=? ORDER BY id DESC LIMIT 1", (group_id,)).fetchone()
 
     poll_id = poll["id"]
-    my_slots = [r["slot"] for r in db.conn.execute(
-        "SELECT slot FROM availability_votes WHERE poll_id=? AND user_id=? AND available=1",
-        (poll_id, user["id"]),
-    ).fetchall()]
-
-    slot_counts = {}
-    for r in db.conn.execute(
-        "SELECT slot, COUNT(*) as cnt FROM availability_votes WHERE poll_id=? AND available=1 GROUP BY slot",
-        (poll_id,),
-    ).fetchall():
-        slot_counts[r["slot"]] = r["cnt"]
-
-    return JSONResponse({"my_slots": my_slots, "slot_counts": slot_counts})
+    return JSONResponse(_get_availability_data(db, poll_id, user["id"]))
 
 
 @app.post("/api/group/{group_id:int}/availability")
@@ -3561,19 +3602,7 @@ async def api_group_availability_vote(group_id: int, request: Request):
         )
     db.conn.commit()
 
-    # Return updated state
-    my_slots = [r["slot"] for r in db.conn.execute(
-        "SELECT slot FROM availability_votes WHERE poll_id=? AND user_id=? AND available=1",
-        (poll_id, user["id"]),
-    ).fetchall()]
-    slot_counts = {}
-    for r in db.conn.execute(
-        "SELECT slot, COUNT(*) as cnt FROM availability_votes WHERE poll_id=? AND available=1 GROUP BY slot",
-        (poll_id,),
-    ).fetchall():
-        slot_counts[r["slot"]] = r["cnt"]
-
-    return JSONResponse({"my_slots": my_slots, "slot_counts": slot_counts})
+    return JSONResponse(_get_availability_data(db, poll_id, user["id"]))
 
 
 @app.post("/api/group/{group_id:int}/mute")
