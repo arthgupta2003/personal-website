@@ -343,8 +343,8 @@ async def discover_all_events(
         # Boston event sites
         _run_source("Boston Calendar", fetch_boston_events(settings)),
         _run_source("TimeOut Boston", fetch_timeout_boston(settings)),
-        _run_source("Bandsintown", fetch_bandsintown(settings)),
-        _run_source("Dice.fm", fetch_dice(settings)),
+        # Bandsintown: API requires auth (403) — disabled 2026-03-28
+        # Dice.fm: no Boston coverage, all endpoints 404 — disabled 2026-03-28
         _run_source("Resident Advisor", fetch_resident_advisor(settings)),
         # Museums — individual venues
         _run_source("ICA Boston", _fetch_ica(settings)),

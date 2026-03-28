@@ -13,8 +13,8 @@
 # ============================================================
 
 # DONE: Fix Luma — updated API endpoint + date parsing (39 events now)
-# TODO: Bandsintown — dead, 403 on all endpoints. Needs paid API or removal.
-# TODO: Dice.fm — dead, no Boston coverage. Remove or find alt endpoint.
+# DONE: Bandsintown — disabled (403, needs paid API)
+# DONE: Dice.fm — disabled (no Boston coverage)
 # TODO: Songkick — just needs RECOM_SONGKICK_API_KEY in .env
 # TODO: Harvard Art Museums — returns 0, investigate scraper
 # TODO: Improve ICA, MFA, Museum of Science — only 1-2 events each
@@ -34,7 +34,7 @@
 # ============================================================
 
 # DONE: Web search results ingested into DB on search
-# TODO: Improve search speed (currently ~6s, consider caching)
+# DONE: Search cache — web results cached 1hr, instant on repeat queries
 
 # ============================================================
 # BACKLOG
