@@ -564,156 +564,6 @@ async def profile_redirect():
     return RedirectResponse("/taste-profile#settings")
 
 
-@app.get("/profile-old", response_class=HTMLResponse)
-async def profile_page_old(request: Request, response: Response):
-    """Old profile page — kept for API endpoints. Redirects to /taste-profile#settings."""
-    db = get_db()
-    current_user = _get_current_user(request)
-    if not current_user:
-        return RedirectResponse("/login")
-    name = current_user.get("name") or ""
-    email = current_user.get("email") or ""
-    email_digest = current_user.get("email_digest", 1)
-    digest_checked = "checked" if email_digest else ""
-    is_admin = current_user.get("id") == 1
-    admin_html = '<div style="margin-top:40px;padding-top:20px;border-top:1px solid #e0e0e0;"><a href="/admin" style="font-size:12px;color:#888;">Admin</a> &middot; <a href="/admin/sources" style="font-size:12px;color:#888;">Sources</a></div>' if is_admin else ""
-    spotify_connected = bool(current_user.get("spotify_token_file"))
-    youtube_connected = bool(current_user.get("youtube_token_file"))
-
-    resp = HTMLResponse(_layout("Profile", f"""
-<style>
-.profile-page{{max-width:520px;margin:0 auto;padding:40px 0 80px}}
-.profile-page h1{{font-size:2rem;font-weight:800;color:#000;margin-bottom:32px;letter-spacing:-.5px}}
-.profile-page .card{{background:#fff;border:1px solid #e0e0e0;padding:20px;margin-bottom:20px}}
-.profile-page .card h2{{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px}}
-.profile-page label{{display:block;font-size:12px;font-weight:600;color:#333;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}}
-.profile-page input[type=text]{{width:100%;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s}}
-.profile-page input[type=text]:focus{{border-color:#000}}
-.field{{margin-bottom:14px}}
-.save-btn{{background:#4a6741;color:#fff;border:none;padding:10px 24px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.5px;transition:background .15s}}
-.save-btn:hover{{background:#3a5334}}
-.save-ok{{display:none;border:1px solid #000;color:#000;padding:10px 14px;font-size:13px;margin-top:12px}}
-.toggle-row{{display:flex;align-items:center;justify-content:space-between;padding:4px 0}}
-.toggle-label div:first-child{{font-weight:700;font-size:14px;color:#000}}
-.toggle-label div:last-child{{font-size:12px;color:#888;margin-top:2px}}
-.toggle{{position:relative;width:44px;height:24px;flex-shrink:0}}
-.toggle input{{opacity:0;width:0;height:0}}
-.toggle .slider{{position:absolute;inset:0;background:#ccc;border-radius:24px;cursor:pointer;transition:.2s}}
-.toggle .slider::before{{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:white;border-radius:50%;transition:.2s}}
-.toggle input:checked+.slider{{background:#4a6741}}
-.toggle input:checked+.slider::before{{transform:translateX(20px)}}
-.svc-row{{display:flex;align-items:center;justify-content:space-between;padding:14px 20px}}
-.svc-row+.svc-row{{border-top:1px solid #e0e0e0}}
-</style>
-<div class="profile-page">
-  <h1>Profile</h1>
-
-  <div class="card">
-    <div class="field"><label>Name</label><input type="text" id="name" value="{name}"></div>
-    <div class="field"><label>Email</label><input type="text" id="email" value="{email}" disabled style="background:#f9fafb;color:#9ca3af"></div>
-    <button class="save-btn" onclick="save()">Save</button>
-    <div class="save-ok" id="success">Saved!</div>
-  </div>
-
-  <div class="card">
-    <h2>Email Digest</h2>
-    <div class="toggle-row">
-      <div class="toggle-label">
-        <div>Weekly event picks</div>
-        <div>Personalized recommendations delivered to your inbox</div>
-      </div>
-      <label class="toggle"><input type="checkbox" id="digest-toggle" {digest_checked} onchange="toggleDigest(this.checked)"><span class="slider"></span></label>
-    </div>
-  </div>
-
-  <div class="card" style="padding:0;overflow:hidden;">
-    <div style="padding:20px 20px 0;">
-      <h2>Connected Services</h2>
-      <p style="font-size:13px;color:#888;margin-bottom:12px;">We use these to personalize your event recommendations.</p>
-    </div>
-    <div class="svc-row" style="border-top:1px solid #e0e0e0;">
-      <div><span style="font-weight:700;font-size:14px;color:#000;">Spotify</span><br><span style="font-size:12px;color:#888;">{"Connected" if spotify_connected else "Your top artists and listening history"}</span></div>
-      {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if spotify_connected else '<a href="/auth/spotify" style="padding:6px 14px;background:#4a6741;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
-    </div>
-    <div class="svc-row">
-      <div><span style="font-weight:700;font-size:14px;color:#000;">YouTube</span><br><span style="font-size:12px;color:#888;">{"Connected — subscriptions and likes" if youtube_connected else "Your subscriptions and liked videos"}</span></div>
-      {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if youtube_connected else '<a href="/auth/youtube" style="padding:6px 14px;background:#4a6741;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Tell us about yourself</h2>
-    <p style="font-size:13px;color:#888;margin-bottom:12px;">Paste anything — your YouTube feed, a list of bands you like, hobbies, whatever. We'll figure out your interests from it.</p>
-    <textarea id="paste-box" placeholder="e.g. I love indie rock, just saw Magdalena Bay, really into climbing and art museums lately..." style="width:100%;min-height:100px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box;"></textarea>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
-      <span id="paste-status" style="font-size:12px;color:#888;"></span>
-      <button onclick="submitPaste()" class="btn-primary" id="paste-btn">Save interests</button>
-    </div>
-  </div>
-
-  <div style="text-align:center;margin-top:24px;">
-    <a href="/taste-profile" style="font-size:13px;color:#4a6741;font-weight:600;">View your taste profile &rarr;</a>
-  </div>
-
-  {admin_html}
-</div>
-
-<script>
-function save() {{
-  fetch('/api/profile/update', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{ name: document.getElementById('name').value.trim() }}),
-  }}).then(r => r.json()).then(d => {{
-    if (d.ok) {{
-      const s = document.getElementById('success');
-      s.style.display = 'block';
-      setTimeout(() => s.style.display = 'none', 3000);
-    }}
-  }});
-}}
-
-function toggleDigest(on) {{
-  fetch('/api/profile/update', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{ email_digest: on ? 1 : 0 }}),
-  }});
-}}
-
-function submitPaste() {{
-  const text = document.getElementById('paste-box').value.trim();
-  if (!text) return;
-  const btn = document.getElementById('paste-btn');
-  const status = document.getElementById('paste-status');
-  btn.disabled = true;
-  btn.textContent = 'Processing...';
-  status.textContent = '';
-  fetch('/api/profile/paste-interests', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{ text: text }}),
-  }}).then(r => r.json()).then(d => {{
-    btn.disabled = false;
-    btn.textContent = 'Save interests';
-    if (d.ok) {{
-      status.textContent = 'Saved! ' + (d.summary || '');
-      status.style.color = '#000';
-      document.getElementById('paste-box').value = '';
-    }} else {{
-      status.textContent = d.error || 'Failed';
-      status.style.color = '#d00';
-    }}
-  }}).catch(() => {{
-    btn.disabled = false;
-    btn.textContent = 'Save interests';
-    status.textContent = 'Network error';
-    status.style.color = '#d00';
-  }});
-}}
-</script>
-""", current_user))
-    return _maybe_set_cookie(request, resp, current_user)
 
 
 @app.post("/api/profile/update")
@@ -753,6 +603,9 @@ async def profile_update(request: Request):
     if "email_digest" in body:
         updates.append("email_digest = ?")
         params.append(1 if body["email_digest"] else 0)
+    if "filter_work_hours" in body:
+        updates.append("filter_work_hours = ?")
+        params.append(1 if body["filter_work_hours"] else 0)
     if updates:
         params.append(user_id)
         db.conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
@@ -1120,6 +973,13 @@ async def taste_profile_page(request: Request):
         </div>
         <label class="toggle"><input type="checkbox" id="digest-toggle" {digest_checked} onchange="toggleDigest(this.checked)"><span class="slider"></span></label>
       </div>
+      <div class="toggle-row" style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0;">
+        <div class="toggle-label">
+          <div>Hide weekday 9-5 events</div>
+          <div>Filter out events during work/class hours (Mon-Fri 9am-5pm)</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="workhours-toggle" {"checked" if current_user.get("filter_work_hours", 1) else ""} onchange="toggleWorkHours(this.checked)"><span class="slider"></span></label>
+      </div>
     </div>
 
     <div style="border:1px solid #e0e0e0;overflow:hidden;margin-bottom:20px;">
@@ -1175,6 +1035,14 @@ function toggleDigest(on) {{
     method: 'POST',
     headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify({{ email_digest: on ? 1 : 0 }}),
+  }});
+}}
+
+function toggleWorkHours(on) {{
+  fetch('/api/profile/update', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{ filter_work_hours: on ? 1 : 0 }}),
   }});
 }}
 
@@ -1476,6 +1344,28 @@ async def api_search(request: Request):
 
     # Merge: DB results first, then web results
     merged = db_matches[:5] + web_results[:5]
+
+    # Ingest web results into DB so they're searchable and RSVPable in future
+    if web_results:
+        for wr in web_results:
+            if not wr.get("title"):
+                continue
+            import hashlib
+            eid = "web_" + hashlib.md5(f"{wr['title']}{wr.get('start_time','')}".encode()).hexdigest()[:12]
+            # Check if already exists
+            existing = db.conn.execute("SELECT id FROM events WHERE event_id=? LIMIT 1", (eid,)).fetchone()
+            if not existing:
+                # Find the latest run to attach to
+                latest_run = db.conn.execute("SELECT id FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+                run_id_for_web = latest_run["id"] if latest_run else 1
+                db.conn.execute(
+                    """INSERT INTO events (run_id, event_id, source, title, description, url, start_time,
+                       location_name, location_address) VALUES (?, ?, 'web_search', ?, ?, ?, ?, ?, 'Boston, MA')""",
+                    (run_id_for_web, eid, wr["title"], wr.get("match_reason", ""), wr.get("url", ""),
+                     wr.get("start_time", ""), wr.get("location", "")),
+                )
+            wr["id"] = eid  # Add ID so frontend can RSVP
+        db.conn.commit()
 
     # Fire-and-forget: retro analysis when web found things DB didn't
     if web_results and len(db_matches) < 3:
