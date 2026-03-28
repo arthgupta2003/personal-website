@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS users (
     location_query TEXT DEFAULT 'Cambridge, MA',
     zip_code TEXT DEFAULT '02139',
     created_at TEXT NOT NULL,
-    active INTEGER DEFAULT 1
+    active INTEGER DEFAULT 1,
+    email_digest INTEGER DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS runs (

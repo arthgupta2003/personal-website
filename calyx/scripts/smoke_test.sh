@@ -25,7 +25,7 @@ check() {
   fi
 }
 
-echo "=== Recom Dashboard Smoke Test ==="
+echo "=== Calyx Dashboard Smoke Test ==="
 echo ""
 echo "-- Unauthenticated --"
 
@@ -34,39 +34,15 @@ check "/" "302" "/ (→/groups)"
 check "/landing" "200"
 check "/admin" "200"
 check "/admin/sources" "200"
-# Admin pages that require auth (redirect to login → 307)
-check "/admin/email-preview" "307" "/admin/email-preview (unauth→307)"
-check "/admin/cal-preview" "307" "/admin/cal-preview (unauth→307)"
-check "/admin/ml" "307" "/admin/ml (unauth→307)"
-# Admin pages that are public (200)
-check "/admin/pipeline" "200"
-check "/admin/backtest" "200"
-check "/admin/retros" "200"
-check "/admin/ranking-analysis" "200"
 check "/login" "200"
 check "/feed.ics" "200"
 check "/groups" "200"
-check "/attended" "200"
-check "/bucket-list" "200"
-check "/variants" "200"
-check "/v/calendar/dense" "200"
-check "/v/calendar/magazine" "200"
-check "/v/calendar/app" "200"
-check "/v/calendar/timeline" "200"
-check "/v/calendar/cards" "200"
-check "/v/calendar/minimal" "200"
-check "/v/calendar/spotify" "200"
-check "/v/calendar/map" "200"
-check "/v/calendar/social" "200"
-check "/v/groups/dense" "200"
-check "/v/profile/dense" "200"
+check "/calendar" "200"
 
 # Single-event .ics download
-# Use a known event_id from DB (or test 404 for unknown)
 code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/event/nonexistent_event.ics")
 [ "$code" = "404" ] && { echo "  PASS /event/{id}.ics 404 for unknown"; ((PASS++)); } \
   || { echo "  FAIL /event/{id}.ics — expected 404, got $code"; ((FAIL++)); }
-# Check that a real event returns 200 with text/calendar
 SAMPLE_EID=$(cd "$RECOM_DIR" && uv run python -c "
 from recom.db import Database; db = Database('recom.db')
 r = db.conn.execute('SELECT event_id FROM events ORDER BY run_id DESC LIMIT 1').fetchone()
@@ -79,15 +55,7 @@ if [ -n "$SAMPLE_EID" ]; then
 fi
 
 # Auth-required pages (redirect without cookie)
-check "/venues" "307" "/venues (unauth→307)"
-check "/search" "307" "/search (unauth→307)"
 check "/profile" "307" "/profile (unauth→307)"
-
-# API endpoints (unauthenticated → 401)
-code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/search" \
-  -H "Content-Type: application/json" -d '{"query":"jazz"}')
-[ "$code" = "401" ] && { echo "  PASS /api/search unauth (401)"; ((PASS++)); } \
-  || { echo "  FAIL /api/search unauth — expected 401, got $code"; ((FAIL++)); }
 
 # Authenticated flow (requires --email arg)
 TEST_EMAIL="${1:-}"
@@ -95,7 +63,6 @@ if [ -n "$TEST_EMAIL" ]; then
   echo ""
   echo "-- Authenticated (email: $TEST_EMAIL) --"
 
-  # Create/ensure user exists and get their token
   TOKEN=$(cd "$RECOM_DIR" && uv run python -c "
 from recom.config import Settings
 from recom.db import Database
@@ -111,10 +78,9 @@ print(user['user_token'])
     ((FAIL++))
   else
     echo "  INFO token=${TOKEN}"
-    # All auth pages should now return 200
-    for path in /venues /search /profile /bucket-list; do
-      check "$path" "200" "$path (authed)" "$TOKEN"
-    done
+    check "/profile" "200" "/profile (authed)" "$TOKEN"
+    check "/groups" "200" "/groups (authed)" "$TOKEN"
+    check "/calendar" "200" "/calendar (authed)" "$TOKEN"
 
     # Root (authed) redirects to /groups
     check "/" "302" "/ (authed→/groups)" "$TOKEN"
@@ -124,19 +90,13 @@ print(user['user_token'])
       code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/u/$TOKEN/event/$SAMPLE_EID.ics")
       [ "$code" = "200" ] && { echo "  PASS /u/{token}/event/{id}.ics (200)"; ((PASS++)); } \
         || { echo "  FAIL /u/{token}/event/{id}.ics — expected 200, got $code"; ((FAIL++)); }
-      # Confirmation page
       code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/u/$TOKEN/event/$SAMPLE_EID/added")
       [ "$code" = "200" ] && { echo "  PASS /u/{token}/event/{id}/added (200)"; ((PASS++)); } \
         || { echo "  FAIL /u/{token}/event/{id}/added — expected 200, got $code"; ((FAIL++)); }
     fi
 
-    # API search — may 500 if no run data for test user, accept 200 or 500
-    code=$(curl -s -o /dev/null -w "%{http_code}" \
-      -b "recom_token=$TOKEN" \
-      -X POST "$BASE/api/search" \
-      -H "Content-Type: application/json" -d '{"query":"jazz"}')
-    [ "$code" = "200" ] || [ "$code" = "500" ] && { echo "  PASS /api/search authed ($code)"; ((PASS++)); } \
-      || { echo "  FAIL /api/search authed — expected 200 or 500, got $code"; ((FAIL++)); }
+    # Group create page
+    check "/group/create" "200" "/group/create (authed)" "$TOKEN"
   fi
 fi
 

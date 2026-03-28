@@ -65,8 +65,12 @@ chmod +x ~/.nvm/versions/node/v22.22.1/lib/node_modules/claude-code-web/node_mod
 cd "$CALYX"
 uv sync --no-dev 2>&1 | tail -3
 
-# Create tmux session with dashboard pane
-tmux new-session -d -s "$SESSION" -n main
+# Keep machine awake (background, not a pane)
+caffeinate -dims &
+CAFFEINE_PID=$!
+
+# Create tmux session with enough room for panes (headless default is 80x24)
+tmux new-session -d -s "$SESSION" -n main -x 200 -y 50
 tmux send-keys -t "$SESSION" "while true; do cd $CALYX && uv run recom-dashboard; echo 'Dashboard crashed, restarting in 5s...'; sleep 5; done" Enter
 
 # Cloudflare tunnel pane
@@ -77,20 +81,12 @@ tmux send-keys -t "$SESSION" "while true; do cloudflared tunnel run; echo 'Cloud
 tmux split-window -t "$SESSION" -v
 tmux send-keys -t "$SESSION" "cd $DIR/site && python3 -m http.server 8001" Enter
 
-# Telegram bot pane
-tmux split-window -t "$SESSION" -v
-tmux send-keys -t "$SESSION" "while true; do cd $CALYX && set -a && source .env && set +a && uv run python scripts/telegram_bot.py; echo 'Telegram bot crashed, restarting in 5s...'; sleep 5; done" Enter
-
-# Caffeinate pane — keeps machine awake as long as tmux is alive
-tmux split-window -t "$SESSION" -v
-tmux send-keys -t "$SESSION" "caffeinate -dims" Enter
-
 # Even layout for main window
 tmux select-layout -t "$SESSION" even-vertical
 
-# Claude agent in its own window (SSH in and select this window to talk directly)
+# Claude agent in its own window (remote control via claude.ai/code)
 tmux new-window -t "$SESSION" -n claude
-tmux send-keys -t "$SESSION:claude" "cd $CALYX && claude --dangerously-skip-permissions" Enter
+tmux send-keys -t "$SESSION:claude" "cd $CALYX && claude" Enter
 
 # Switch back to main window
 tmux select-window -t "$SESSION:main"
@@ -99,7 +95,7 @@ echo ""
 echo "=== Recom running (bare metal) ==="
 echo "  Dashboard:  http://localhost:8000  → calyx.arthgupta.dev"
 echo "  Landing:    http://localhost:8001  → arthgupta.dev"
-echo "  Telegram:   @ArthRecomBot"
+echo "  Claude:     remote control via claude.ai/code"
 echo ""
 echo "Commands:"
 echo "  ./start.sh logs      — attach to tmux"

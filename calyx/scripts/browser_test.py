@@ -5,8 +5,8 @@ Tests actual rendered output after JS executes.
 
 Usage:
   python scripts/browser_test.py                  # test localhost:8000
-  python scripts/browser_test.py --url https://recom.arthgupta.dev
-  python scripts/browser_test.py --url https://recom.arthgupta.dev --email you@example.com
+  python scripts/browser_test.py --url https://calyx.arthgupta.dev
+  python scripts/browser_test.py --url https://calyx.arthgupta.dev --email you@example.com
 """
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def get_token(email: str) -> str:
 def test_unauthenticated(page: Page, base: str):
     print("\n-- Unauthenticated --")
 
-    # Root redirects (to /groups or /landing depending on auth state)
+    # Root redirects to /groups
     resp = page.goto(base + "/", wait_until="domcontentloaded", timeout=120000)
     page.wait_for_timeout(2000)
     check("/ redirects (unauth)", "/groups" in page.url or "/landing" in page.url, f"ended at {page.url}")
@@ -71,15 +71,15 @@ def test_unauthenticated(page: Page, base: str):
     has_groups = "group" in content.lower()
     check("/groups has group content", has_groups, f"content snippet: {content[:300]!r}")
 
-    # Other pages load without errors
-    for path, label in [("/groups", "/groups"), ("/attended", "/attended"), ("/login", "/login")]:
+    # Core pages load without errors
+    for path, label in [("/groups", "/groups"), ("/calendar", "/calendar (discover)"), ("/login", "/login")]:
         page.goto(base + path, wait_until="domcontentloaded")
         page.wait_for_timeout(1000)
         check(f"{label} loads (no 5xx)", "500" not in page.title() and "error" not in page.title().lower())
         check(f"{label} has nav", page.locator("nav").count() > 0)
 
     # Auth-required pages redirect
-    for path in ["/venues", "/search", "/profile"]:
+    for path in ["/profile"]:
         resp = page.goto(base + path, wait_until="domcontentloaded")
         page.wait_for_timeout(1000)
         final_url = page.url
@@ -108,16 +108,16 @@ def test_authenticated(page: Page, base: str, token: str):
     check("/groups (authed) no 500", "500" not in page.title() and "Internal Server Error" not in content)
     check("/groups (authed) has nav", page.locator("nav").count() > 0)
 
-    # Nav has core links (Groups + Profile always visible; Search/Venues only on those pages)
+    # Nav has exactly 3 core links: Groups, Discover, Profile
     nav_html = page.locator("nav").inner_html()
-    for link in ["Groups", "Profile"]:
+    for link in ["Groups", "Discover", "Profile"]:
         check(f"nav has {link}", link in nav_html, f"nav: {nav_html[:300]!r}")
 
-    # Auth pages load without errors AND have consistent nav
+    # Core auth pages load without errors and have consistent nav
     for path, label in [
-        ("/venues", "/venues"),
-        ("/search", "/search"),
+        ("/calendar", "/calendar (discover)"),
         ("/profile", "/profile"),
+        ("/groups", "/groups"),
     ]:
         page.goto(base + path, wait_until="domcontentloaded")
         page.wait_for_timeout(1000)
@@ -126,14 +126,13 @@ def test_authenticated(page: Page, base: str, token: str):
         check(f"{label} (authed) no 500", "500" not in title and "Internal Server Error" not in content,
               f"title={title!r}")
         check(f"{label} (authed) has nav", page.locator("nav").count() > 0)
-        # Verify nav links are actually styled (nav CSS loaded correctly)
         nav_bg = page.evaluate("getComputedStyle(document.querySelector('nav')).backgroundColor")
         check(f"{label} nav is dark (not unstyled)", nav_bg not in ("rgba(0, 0, 0, 0)", ""),
               f"nav bg={nav_bg!r}")
 
 
 def test_group_page(page: Page, base: str, token: str):
-    """Test group pages including the new share/join flow."""
+    """Test group pages including the share/join flow."""
     print("\n-- Group pages --")
 
     page.context.add_cookies([{
@@ -160,70 +159,11 @@ def test_group_page(page: Page, base: str, token: str):
     else:
         content = page.content()
         check("/group/1 loads (no 500)", "Internal Server Error" not in content)
-        # Check share section exists for members
         has_share = "Share" in content or "Copy" in content or "group-link" in content
         check("/group/1 has share section", has_share, f"content snippet: {content[:500]!r}")
-        # Check join form exists for non-members viewing unauthenticated
-        # (We're authenticated so we may or may not see join form)
 
-
-def test_new_features(page: Page, base: str, token: str):
-    print("\n-- New features --")
-
-    # Set cookie for auth
-    page.context.add_cookies([{
-        "name": "recom_token",
-        "value": token,
-        "domain": base.replace("https://", "").replace("http://", "").split("/")[0],
-        "path": "/",
-    }])
-
-    # /bucket-list loads (no 500, has nav)
-    page.goto(base + "/bucket-list", wait_until="domcontentloaded")
-    page.wait_for_timeout(1000)
-    title = page.title()
-    content = page.content()
-    check("/bucket-list loads (no 500)", "500" not in title and "Internal Server Error" not in content,
-          f"title={title!r}")
-    check("/bucket-list has nav", page.locator("nav").count() > 0)
-
-    # /variants loads and has "UI Variants" text
-    page.goto(base + "/variants", wait_until="domcontentloaded")
-    page.wait_for_timeout(1000)
-    title = page.title()
-    content = page.content()
-    check("/variants loads (no 500)", "500" not in title and "Internal Server Error" not in content,
-          f"title={title!r}")
-    check("/variants has 'UI Variants' text", "UI Variants" in content or "Variant" in content,
-          f"content snippet: {content[:300]!r}")
-
-    # /v/calendar/dense loads (has events or empty state)
-    page.goto(base + "/v/calendar/dense", wait_until="domcontentloaded")
-    page.wait_for_timeout(1000)
-    title = page.title()
-    content = page.content()
-    check("/v/calendar/dense loads (no 500)", "500" not in title and "Internal Server Error" not in content,
-          f"title={title!r}")
-    has_events = "event" in content.lower() or "evt-card" in content
-    has_empty = "no events" in content.lower() or "no runs" in content.lower() or "empty" in content.lower()
-    check("/v/calendar/dense has events or empty state", has_events or has_empty,
-          f"content snippet: {content[:300]!r}")
-
-    # /v/calendar/magazine loads (has events or empty state)
-    page.goto(base + "/v/calendar/magazine", wait_until="domcontentloaded")
-    page.wait_for_timeout(1000)
-    title = page.title()
-    content = page.content()
-    check("/v/calendar/magazine loads (no 500)", "500" not in title and "Internal Server Error" not in content,
-          f"title={title!r}")
-    has_events = "event" in content.lower() or "evt-card" in content
-    has_empty = "no events" in content.lower() or "no runs" in content.lower() or "empty" in content.lower()
-    check("/v/calendar/magazine has events or empty state", has_events or has_empty,
-          f"content snippet: {content[:300]!r}")
-
-    # Admin pages load without 500
-    for path in ["/admin/sources", "/admin/email-preview", "/admin/pipeline",
-                 "/admin/backtest", "/admin/cal-preview", "/admin/ml"]:
+    # Admin pages still load
+    for path in ["/admin", "/admin/sources"]:
         page.goto(base + path, wait_until="domcontentloaded")
         page.wait_for_timeout(1000)
         title = page.title()
@@ -240,7 +180,7 @@ def main():
 
     base = args.url.rstrip("/")
     token = get_token(args.email)
-    print(f"\n=== Recom Browser Test ===")
+    print(f"\n=== Calyx Browser Test ===")
     print(f"URL: {base}")
     print(f"Token: {token}")
 
@@ -258,11 +198,9 @@ def main():
             test_unauthenticated(page, base)
             test_authenticated(page, base, token)
             test_group_page(page, base, token)
-            test_new_features(page, base, token)
         except Exception:
             fail("test runner crashed", traceback.format_exc())
         finally:
-            # Report any JS errors seen across all pages
             if js_errors:
                 print(f"\n  WARN {len(js_errors)} JS error(s) detected:")
                 for e in js_errors[:5]:
