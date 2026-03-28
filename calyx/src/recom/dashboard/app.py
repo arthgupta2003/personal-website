@@ -565,8 +565,8 @@ async def profile_page(request: Request, response: Response):
 <style>
 .profile-page{{max-width:520px;margin:0 auto;padding:40px 0 80px}}
 .profile-page h1{{font-size:2rem;font-weight:800;color:#000;margin-bottom:32px;letter-spacing:-.5px}}
-.profile-page .card{{background:#fff;border:1px solid #e0e0e0;padding:24px;margin-bottom:24px}}
-.profile-page .card h2{{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px}}
+.profile-page .card{{background:#fff;border:1px solid #e0e0e0;padding:20px;margin-bottom:20px}}
+.profile-page .card h2{{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px}}
 .profile-page label{{display:block;font-size:12px;font-weight:600;color:#333;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}}
 .profile-page input[type=text]{{width:100%;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s}}
 .profile-page input[type=text]:focus{{border-color:#000}}
@@ -574,7 +574,7 @@ async def profile_page(request: Request, response: Response):
 .save-btn{{background:#000;color:#fff;border:none;padding:10px 24px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.5px;transition:background .15s}}
 .save-btn:hover{{background:#333}}
 .save-ok{{display:none;border:1px solid #000;color:#000;padding:10px 14px;font-size:13px;margin-top:12px}}
-.toggle-row{{display:flex;align-items:center;justify-content:space-between;padding:14px 0}}
+.toggle-row{{display:flex;align-items:center;justify-content:space-between;padding:4px 0}}
 .toggle-label div:first-child{{font-weight:700;font-size:14px;color:#000}}
 .toggle-label div:last-child{{font-size:12px;color:#888;margin-top:2px}}
 .toggle{{position:relative;width:44px;height:24px;flex-shrink:0}}
@@ -583,8 +583,8 @@ async def profile_page(request: Request, response: Response):
 .toggle .slider::before{{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:white;border-radius:50%;transition:.2s}}
 .toggle input:checked+.slider{{background:#000}}
 .toggle input:checked+.slider::before{{transform:translateX(20px)}}
-.svc-row{{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border:1px solid #e0e0e0}}
-.svc-row+.svc-row{{border-top:none}}
+.svc-row{{display:flex;align-items:center;justify-content:space-between;padding:14px 20px}}
+.svc-row+.svc-row{{border-top:1px solid #e0e0e0}}
 </style>
 <div class="profile-page">
   <h1>Profile</h1>
@@ -607,10 +607,12 @@ async def profile_page(request: Request, response: Response):
     </div>
   </div>
 
-  <div class="card">
-    <h2>Connected Services</h2>
-    <p style="font-size:13px;color:#64748b;margin-bottom:16px;">We use these to personalize your event recommendations.</p>
-    <div class="svc-row">
+  <div class="card" style="padding:0;overflow:hidden;">
+    <div style="padding:20px 20px 0;">
+      <h2>Connected Services</h2>
+      <p style="font-size:13px;color:#888;margin-bottom:12px;">We use these to personalize your event recommendations.</p>
+    </div>
+    <div class="svc-row" style="border-top:1px solid #e0e0e0;">
       <div><span style="font-weight:700;font-size:14px;color:#000;">Spotify</span><br><span style="font-size:12px;color:#888;">{"Connected" if spotify_connected else "Your top artists and listening history"}</span></div>
       {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if spotify_connected else '<a href="/auth/spotify" style="padding:6px 14px;background:#000;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
     </div>
@@ -620,9 +622,9 @@ async def profile_page(request: Request, response: Response):
         <details style="margin-top:6px;">
           <summary style="font-size:12px;color:#000;cursor:pointer;font-weight:600;text-decoration:underline;text-underline-offset:2px;">Upload Google Takeout</summary>
           <form action="/api/profile/upload-youtube" method="post" enctype="multipart/form-data" style="margin-top:8px;">
-            <p style="font-size:12px;color:#888;margin:0 0 8px;">Export from <a href="https://takeout.google.com" target="_blank">takeout.google.com</a> (YouTube &rarr; history), then upload <code style="background:#f5f5f5;padding:1px 4px;font-size:11px;">watch-history.json</code>.</p>
+            <p style="font-size:12px;color:#888;margin:0 0 8px;">Export from <a href="https://takeout.google.com" target="_blank">takeout.google.com</a> (YouTube &rarr; history), then upload the watch-history file.</p>
             <div style="display:flex;gap:8px;align-items:center;">
-              <input type="file" name="file" accept=".json" required style="font-size:12px;flex:1;">
+              <input type="file" name="file" accept=".json,.html" required style="font-size:12px;flex:1;">
               <button type="submit" style="padding:6px 14px;background:#000;color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;">Upload</button>
             </div>
           </form>
@@ -797,7 +799,7 @@ Text:
 
 @app.post("/api/profile/upload-youtube")
 async def upload_youtube_takeout(request: Request):
-    """Accept a YouTube Takeout watch-history.json and save for ingest."""
+    """Accept YouTube Takeout watch-history (.json or .html) and save for ingest."""
     current_user = _get_current_user(request)
     if not current_user:
         return RedirectResponse("/login", status_code=307)
@@ -808,18 +810,36 @@ async def upload_youtube_takeout(request: Request):
     import json as _json
     from pathlib import Path
     content = await upload.read()
-    try:
-        data = _json.loads(content)
-    except _json.JSONDecodeError:
-        return HTMLResponse("Invalid JSON file", status_code=400)
-    # Save to state/takeout/ for the ingest pipeline to pick up
+    filename = getattr(upload, "filename", "") or ""
+
     takeout_dir = Path("state/takeout")
     takeout_dir.mkdir(parents=True, exist_ok=True)
-    out_path = takeout_dir / f"youtube_user{current_user['id']}.json"
-    out_path.write_bytes(content)
-    logger.info("YouTube takeout saved for user %s: %d items, %s",
-                current_user["id"], len(data) if isinstance(data, list) else 1, out_path)
-    return RedirectResponse("/profile?success=YouTube+history+uploaded", status_code=303)
+
+    if filename.endswith(".html") or content[:50].strip().startswith(b"<"):
+        # HTML format — parse video titles from the Takeout HTML
+        import re as _re
+        text = content.decode("utf-8", errors="ignore")
+        # Google Takeout HTML has video titles in links like: <a href="https://www.youtube.com/watch?v=...">Title</a>
+        titles = _re.findall(r'href="https?://(?:www\.)?youtube\.com/watch\?v=[^"]*"[^>]*>([^<]+)</a>', text)
+        if not titles:
+            # Try broader pattern
+            titles = _re.findall(r'>([^<]{5,80})</a>', text)
+        # Save as JSON array of titles
+        out_path = takeout_dir / f"youtube_user{current_user['id']}.json"
+        out_path.write_text(_json.dumps([{"title": t.strip()} for t in titles[:2000]]))
+        count = len(titles)
+    else:
+        # JSON format
+        try:
+            data = _json.loads(content)
+        except _json.JSONDecodeError:
+            return HTMLResponse("Could not parse file. Upload a .json or .html file from Google Takeout.", status_code=400)
+        out_path = takeout_dir / f"youtube_user{current_user['id']}.json"
+        out_path.write_bytes(content)
+        count = len(data) if isinstance(data, list) else 1
+
+    logger.info("YouTube takeout saved for user %s: %d items, %s", current_user["id"], count, out_path)
+    return RedirectResponse(f"/profile?success=YouTube+history+uploaded+({count}+videos)", status_code=303)
 
 
 def _radar_svg(axes: list[str], values: list[float], colors: list[str] | None = None,
