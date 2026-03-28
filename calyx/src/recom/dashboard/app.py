@@ -2837,6 +2837,17 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         </script>'''
 
     # --- Leave / Delete group button ---
+    # Notification mute toggle
+    mute_html = ""
+    if is_member and current_user:
+        notif_row = db.conn.execute(
+            "SELECT notifications FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, current_user["id"]),
+        ).fetchone()
+        notifs_on = notif_row["notifications"] if notif_row else 1
+        mute_label = "Mute notifications" if notifs_on else "Unmute notifications"
+        mute_html = f'<div style="text-align:center;margin-top:20px;"><button onclick="fetch(&apos;/api/group/{group_id}/mute&apos;,{{method:&apos;POST&apos;}}).then(()=>location.reload())" style="background:none;border:none;color:#888;cursor:pointer;font-size:12px;padding:4px 12px;font-family:inherit;">{mute_label}</button></div>'
+
     leave_html = ""
     if is_member and current_user and group.get("created_by") == current_user["id"]:
         leave_html = f'''<div style="text-align:center;margin-top:32px;margin-bottom:16px;">
@@ -2933,6 +2944,7 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
 
     {add_event_html}
     {actions_html}
+    {mute_html}
     {leave_html}
     </div>
     {group_rsvp_extras}
@@ -3345,7 +3357,13 @@ async def api_group_add_event(group_id: int, request: Request):
     # Notify other group members
     try:
         members = db.get_group_members(group_id)
-        other_emails = [m["email"] for m in members if m["id"] != user["id"] and m.get("email")]
+        # Respect mute preferences
+        muted_users = set()
+        for m in members:
+            mrow = db.conn.execute("SELECT notifications FROM group_members WHERE group_id=? AND user_id=?", (group_id, m["id"])).fetchone()
+            if mrow and not mrow["notifications"]:
+                muted_users.add(m["id"])
+        other_emails = [m["email"] for m in members if m["id"] != user["id"] and m.get("email") and m["id"] not in muted_users]
         if other_emails:
             adder_name = user.get("name") or user.get("email", "Someone")
             event_date = f"{date} {time}"
@@ -3407,6 +3425,28 @@ async def api_group_leave(group_id: int, request: Request):
         return HTMLResponse("<h1>Not a member</h1>", status_code=403)
     db.leave_group(group_id, user["id"])
     return RedirectResponse("/groups?success=Left+group", status_code=303)
+
+
+@app.post("/api/group/{group_id:int}/mute")
+async def api_group_mute(group_id: int, request: Request):
+    """Toggle notification mute for current user in this group."""
+    user = _get_current_user(request)
+    db = get_db()
+    if not user:
+        return JSONResponse({"ok": False}, status_code=401)
+    row = db.conn.execute(
+        "SELECT notifications FROM group_members WHERE group_id=? AND user_id=?",
+        (group_id, user["id"]),
+    ).fetchone()
+    if not row:
+        return JSONResponse({"ok": False}, status_code=404)
+    new_val = 0 if row["notifications"] else 1
+    db.conn.execute(
+        "UPDATE group_members SET notifications=? WHERE group_id=? AND user_id=?",
+        (new_val, group_id, user["id"]),
+    )
+    db.conn.commit()
+    return JSONResponse({"ok": True, "notifications": new_val})
 
 
 @app.post("/api/group/{group_id:int}/kick")

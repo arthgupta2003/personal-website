@@ -13,7 +13,7 @@
 # TODO: Notification preferences — per-group email frequency control
 # DONE: Recurring events in groups — "Every Tuesday at 7pm"
 # DONE: Music genre tags — vibe colors removed as confusing; Spotify artists show on taste profile — extract genre from Spotify for music events
-# TODO: Search: category/date/price filters on Discover
+# DONE: Search: date/free filters on Discover
 
 # ============================================================
 # BACKLOG — nice to have, low priority
@@ -22,7 +22,7 @@
 # TODO: CalDAV server for real sub-calendar support
 # TODO: Containerize all services (Docker)
 # DONE: Boost limited-time / seasonal / festival events in scoring
-# TODO: Event deduplication quality improvements
+# DONE: Event dedup — GROUP BY event_id in DB + 3-pass aggregator dedup
 # TODO: Pipeline observability / timing dashboard
 # TODO: Incremental runs / event caching between pipeline runs
 
