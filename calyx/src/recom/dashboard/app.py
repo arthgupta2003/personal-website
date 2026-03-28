@@ -312,7 +312,7 @@ async def run_history(request: Request):
         if r['top_score'] is None and (r['event_count'] or 0) == 0 and r['cost_total'] < 0.05:
             wip = ' <span class="badge badge-yellow">⏳ In Progress</span>'
         rows_html += f"""<tr>
-            <td><a href="/run/{r['id']}">Run #{r['id']}</a>{wip}</td>
+            <td>Run #{r['id']}{wip}</td>
             <td>{r['timestamp'][:16]}</td>
             <td>{r['event_count'] or 0}</td>
             <td>{score_badge(r['top_score'])}</td>
