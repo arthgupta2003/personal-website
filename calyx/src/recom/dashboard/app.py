@@ -918,6 +918,8 @@ async def taste_profile_page(request: Request):
     if not current_user:
         return RedirectResponse("/login")
     user_id = current_user["id"]
+    spotify_connected = bool(current_user.get("spotify_token_file"))
+    youtube_connected = bool(current_user.get("youtube_token_file"))
 
     # 1. Interest profile from latest pipeline run
     import json as _json
@@ -1385,27 +1387,30 @@ async def api_search(request: Request):
     if len(db_matches) >= 3:
         return JSONResponse({"ok": True, "results": db_matches[:10], "source": "db"})
 
-    # Tier 2: Gemini web search fallback
+    # Tier 2: Web search fallback via Claude with web_search tool
     web_results = []
-    if settings.gemini_api_key:
+    if settings.anthropic_api_key and len(db_matches) < 3:
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=settings.gemini_api_key)
-            model = genai.GenerativeModel("gemini-2.0-flash")
-            from google.generativeai import types as gtypes
-            resp = model.generate_content(
-                f"Find upcoming events in Boston/Cambridge area matching: {query}. "
-                f"Return JSON array of objects with fields: title, date (ISO 8601), location, url, description, price. "
-                f"Max 8 results. Only real, verifiable events.",
-                tools=[gtypes.Tool(google_search=gtypes.GoogleSearch())],
+            import anthropic, json as _json, re as _re
+            client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+            resp = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1000,
+                tools=[{"type": "web_search_20250305", "name": "web_search"}],
+                messages=[{"role": "user", "content":
+                    f"Find upcoming events in Boston/Cambridge area matching: {query}. "
+                    f"Return ONLY a JSON array of objects with fields: title, date (ISO 8601 like 2026-04-05T19:00), location, url, description. "
+                    f"Max 6 results. Only real events with actual URLs."}],
             )
-            # Parse the response text as JSON
-            import json as _json, re as _re
-            text = resp.text
+            # Extract text from response
+            text = ""
+            for block in resp.content:
+                if hasattr(block, "text"):
+                    text += block.text
             json_match = _re.search(r'\[.*\]', text, _re.DOTALL)
             if json_match:
                 events_raw = _json.loads(json_match.group())
-                for ev in events_raw[:8]:
+                for ev in events_raw[:6]:
                     web_results.append({
                         "title": ev.get("title", ""),
                         "start_time": ev.get("date", ""),
@@ -1416,7 +1421,7 @@ async def api_search(request: Request):
                         "source": "web",
                     })
         except Exception as exc:
-            logger.exception("Gemini search failed for query: %s", query)
+            logger.exception("Web search failed for query: %s", query)
 
     # Merge: DB results first, then web results
     merged = db_matches[:5] + web_results[:5]
@@ -1646,9 +1651,10 @@ async def calendar_view(request: Request):
     </div>
 
     <div style="position:relative;margin-bottom:20px;">
-      <input id="search-input" type="text" placeholder="Try &quot;jazz tonight&quot; or &quot;outdoor things this weekend&quot;" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()"
-             style="width:100%;padding:12px 14px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
-      <span id="search-spinner" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:12px;color:#888;">searching...</span>
+      <input id="search-input" type="text" placeholder="Try &quot;jazz tonight&quot; or &quot;outdoor things this weekend&quot;" oninput="onSearchInput()" onkeydown="if(event.key==='Enter'){{event.preventDefault();doSearch();}}"
+             style="width:100%;padding:12px 14px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;border-bottom:2px solid transparent;transition:border-color .15s;"
+             onfocus="this.style.borderBottomColor='#4a6741'" onblur="this.style.borderBottomColor='transparent'">
+      <span id="search-spinner" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:12px;color:#4a6741;">searching the web...</span>
     </div>
     <div id="search-results" style="display:none;margin-bottom:24px;"></div>
     <input type="hidden" id="score-slider" value="0">
@@ -1688,19 +1694,16 @@ async def calendar_view(request: Request):
     let _searchTimeout = null;
     function onSearchInput() {{
       const query = document.getElementById('search-input').value.trim();
-      // Instant local filter
       applyFilters();
-      // Clear previous search results if query is empty
       if (!query) {{
         document.getElementById('search-results').style.display = 'none';
         return;
       }}
-      // Debounce: if user stops typing for 600ms with few visible results, auto-search
+      // Auto-search the web after 600ms of no typing
       clearTimeout(_searchTimeout);
-      _searchTimeout = setTimeout(() => {{
-        const visible = document.querySelectorAll('.evt-card:not([style*="display: none"])').length;
-        if (visible < 3 && query.length >= 3) doSearch();
-      }}, 800);
+      if (query.length >= 3) {{
+        _searchTimeout = setTimeout(() => doSearch(), 600);
+      }}
     }}
 
     function doSearch() {{
@@ -1751,7 +1754,7 @@ async def calendar_view(request: Request):
     function getFilteredEvents() {{
       const query = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
       return EVENTS.filter(e => {{
-        if (!e.start) return false; // skip undated
+        if (!e.start) return false;
         if (query) {{
           const haystack = (e.title + ' ' + e.location + ' ' + e.description + ' ' + e.match_reason).toLowerCase();
           if (!haystack.includes(query)) return false;

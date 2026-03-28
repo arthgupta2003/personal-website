@@ -858,6 +858,7 @@ class Database:
                FROM events e
                LEFT JOIN rankings rk ON rk.run_id = e.run_id AND rk.event_id = e.event_id
                WHERE e.run_id = ?
+               GROUP BY e.event_id
                ORDER BY rk.score DESC""",
             (run_id,),
         ).fetchall()
