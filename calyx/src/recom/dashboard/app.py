@@ -1804,11 +1804,17 @@ async def calendar_view(request: Request):
       const query = document.getElementById('search-input').value.trim();
       applyFilters();
       document.getElementById('web-results-section').style.display = 'none';
-      document.getElementById('search-status').style.display = 'none';
-      if (!query) return;
+      if (!query) {{
+        document.getElementById('search-status').style.display = 'none';
+        return;
+      }}
       clearTimeout(_searchTimeout);
       if (query.length >= 3) {{
+        document.getElementById('search-status-query').textContent = query;
+        document.getElementById('search-status').style.display = 'block';
         _searchTimeout = setTimeout(() => doSearch(), 600);
+      }} else {{
+        document.getElementById('search-status').style.display = 'none';
       }}
     }}
 
