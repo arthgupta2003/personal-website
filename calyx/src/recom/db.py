@@ -829,25 +829,38 @@ class Database:
         return dict(row) if row else None
 
     def get_latest_scored_events(self, user_id: int | None = None) -> list[dict]:
-        """Get all kept events from the most recent scored run for this user (or any user).
-        Dedupes by event_id, keeping highest score."""
+        """Get all scored events across all runs, deduped by event_id (best score wins).
+        Returns events from any run — old events persist alongside new ones."""
+        # Get the last few runs for this user (or any user)
         if user_id:
-            run_row = self.conn.execute(
+            run_rows = self.conn.execute(
                 """SELECT r.id FROM runs r
                    JOIN rankings rk ON rk.run_id = r.id AND rk.keep = 1
                    WHERE r.user_id = ?
-                   GROUP BY r.id ORDER BY r.id DESC LIMIT 1""",
+                   GROUP BY r.id ORDER BY r.id DESC LIMIT 5""",
                 (user_id,),
-            ).fetchone()
+            ).fetchall()
         else:
-            run_row = self.conn.execute(
+            run_rows = self.conn.execute(
                 """SELECT r.id FROM runs r
                    JOIN rankings rk ON rk.run_id = r.id AND rk.keep = 1
-                   GROUP BY r.id ORDER BY r.id DESC LIMIT 1""",
-            ).fetchone()
-        if not run_row:
+                   GROUP BY r.id ORDER BY r.id DESC LIMIT 5""",
+            ).fetchall()
+        if not run_rows:
             return []
-        return self.get_run_events(run_row["id"])
+        # Fetch events from all recent runs, dedupe by event_id keeping highest score
+        all_events = []
+        for rr in run_rows:
+            all_events.extend(self.get_run_events(rr["id"]))
+        # Dedupe: keep highest score per event_id
+        best: dict[str, dict] = {}
+        for e in all_events:
+            eid = e.get("event_id", "")
+            if not eid:
+                continue
+            if eid not in best or (e.get("score") or 0) > (best[eid].get("score") or 0):
+                best[eid] = e
+        return sorted(best.values(), key=lambda x: -(x.get("score") or 0))
 
     def get_run_events(self, run_id: int) -> list[dict]:
         rows = self.conn.execute(

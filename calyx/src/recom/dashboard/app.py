@@ -1639,16 +1639,8 @@ async def calendar_view(request: Request):
         <div id="event-map" style="height:70vh;width:100%;"></div>
         <div id="map-panel" style="display:none;position:absolute;top:12px;right:12px;width:300px;max-height:calc(70vh - 24px);overflow-y:auto;background:#fff;border:1px solid #e0e0e0;padding:16px;z-index:1000;box-shadow:0 2px 12px rgba(0,0,0,.1);"></div>
       </div>
-      <!-- Time slider -->
-      <div style="padding:12px 20px;background:#fff;border-top:1px solid #eee;">
-        <div style="display:flex;align-items:center;gap:12px;">
-          <span id="map-time-label" style="font-size:14px;font-weight:800;color:#4a6741;min-width:160px;"></span>
-          <input type="range" id="map-time-slider" min="0" max="13" value="0" step="1"
-                 style="flex:1;accent-color:#4a6741;cursor:pointer;height:6px;" oninput="onMapTimeSlide(this.value)">
-          <button onclick="playMapTime()" id="map-play-btn" style="background:#4a6741;color:#fff;border:none;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">Play</button>
-        </div>
-        <div id="map-time-ticks" style="display:flex;justify-content:space-between;padding:4px 0;font-size:10px;color:#aaa;"></div>
-      </div>
+      <!-- Day tabs -->
+      <div style="padding:8px 20px;background:#fff;border-top:1px solid #eee;overflow-x:auto;white-space:nowrap;" id="map-day-tabs"></div>
     </div>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -2009,12 +2001,11 @@ async def calendar_view(request: Request):
       container.innerHTML = html;
     }}
 
-    // --- Map view with time slider ---
+    // --- Map view with day tabs ---
     let _map = null;
     let _allMapEvents = [];
     let _mapMarkerLayer = null;
-    let _mapDays = [];
-    let _mapPlaying = false;
+    let _mapSelectedDay = null;
 
     function buildMapView() {{
       if (!_map) {{
@@ -2032,62 +2023,55 @@ async def calendar_view(request: Request):
       }}
       setTimeout(() => _map.invalidateSize(), 100);
 
-      // Build day list from events
       _allMapEvents = getFilteredEvents().filter(e => e.lat && e.lon);
-      const daySet = new Set();
-      _allMapEvents.forEach(e => {{ if (e.start) daySet.add(e.start.slice(0,10)); }});
-      _mapDays = [...daySet].sort();
 
-      // Set slider range
-      const slider = document.getElementById('map-time-slider');
-      slider.max = Math.max(0, _mapDays.length - 1);
-      slider.value = 0;
+      // Build day tabs
+      const today = new Date(); today.setHours(0,0,0,0);
+      const todayStr = today.toISOString().slice(0,10);
+      const tabsEl = document.getElementById('map-day-tabs');
+      let tabsHtml = '<button onclick="selectMapDay(null)" style="' + (_mapSelectedDay === null ? 'background:#4a6741;color:#fff;' : 'background:#fff;color:#555;') + 'border:1px solid #e0e0e0;padding:6px 14px;margin-right:4px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">All</button>';
+      for (let i = -3; i < 14; i++) {{
+        const d = new Date(today); d.setDate(today.getDate() + i);
+        const key = d.toISOString().slice(0,10);
+        const count = _allMapEvents.filter(e => e.start && e.start.slice(0,10) === key).length;
+        if (count === 0 && i < 0) continue;
+        const isToday = i === 0;
+        const isPast = i < 0;
+        const label = isToday ? 'Today' : (i === 1 ? 'Tmw' : d.toLocaleDateString('en-US', {{weekday:'short', day:'numeric'}}));
+        const active = _mapSelectedDay === key;
+        const style = active ? 'background:#4a6741;color:#fff;border-color:#4a6741;' : (isPast ? 'background:#f5f5f5;color:#aaa;' : 'background:#fff;color:#555;');
+        tabsHtml += `<button onclick="selectMapDay('${{key}}')" style="${{style}}border:1px solid #e0e0e0;padding:6px 12px;margin-right:4px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">${{label}}${{count > 0 ? ' <span style="font-size:10px;opacity:.6;">' + count + '</span>' : ''}}</button>`;
+      }}
+      tabsEl.innerHTML = tabsHtml;
 
-      // Build tick labels
-      const ticks = document.getElementById('map-time-ticks');
-      ticks.innerHTML = '';
-      _mapDays.forEach((day, i) => {{
-        const d = new Date(day + 'T00:00:00');
-        const label = d.toLocaleDateString('en-US', {{weekday:'short', month:'numeric', day:'numeric'}});
-        if (i % Math.max(1, Math.floor(_mapDays.length / 7)) === 0 || i === _mapDays.length - 1) {{
-          ticks.innerHTML += `<span>${{label}}</span>`;
-        }}
-      }});
-
-      onMapTimeSlide(0);
+      _renderMapPins();
     }}
 
-    function onMapTimeSlide(val) {{
-      const idx = parseInt(val);
-      const day = _mapDays[idx];
-      if (!day) return;
+    function selectMapDay(day) {{
+      _mapSelectedDay = day;
+      buildMapView();
+    }}
 
-      const d = new Date(day + 'T00:00:00');
-      const today = new Date(); today.setHours(0,0,0,0);
-      const isToday = d.getTime() === today.getTime();
-      const label = isToday ? 'Today' : d.toLocaleDateString('en-US', {{weekday:'long', month:'long', day:'numeric'}});
-      document.getElementById('map-time-label').textContent = label;
-
-      // Filter events to this day
-      const dayEvents = _allMapEvents.filter(e => e.start && e.start.slice(0,10) === day);
-
+    function _renderMapPins() {{
       _mapMarkerLayer.clearLayers();
       const panel = document.getElementById('map-panel');
+      const events = _mapSelectedDay
+        ? _allMapEvents.filter(e => e.start && e.start.slice(0,10) === _mapSelectedDay)
+        : _allMapEvents;
 
-      dayEvents.forEach(e => {{
+      events.forEach(e => {{
         const score = e.score || 0;
-        // Size encodes score: high-score events are bigger and more visible
-        const size = Math.max(6, Math.min(20, score / 5));
+        const size = Math.max(6, Math.min(18, score / 5));
         const color = score >= 70 ? '#4a6741' : score >= 50 ? '#c4734f' : '#bbb';
-        const opacity = score >= 50 ? 0.85 : 0.5;
 
         const marker = L.circleMarker([e.lat, e.lon], {{
-          radius: size, color: '#fff', fillColor: color, fillOpacity: opacity, weight: 2
+          radius: size, color: '#fff', fillColor: color, fillOpacity: 0.8, weight: 2
         }});
 
         marker.on('click', () => {{
           let timeStr = '';
           try {{ const dt = new Date(e.start); if (dt.getHours()||dt.getMinutes()) timeStr = dt.toLocaleTimeString('en-US',{{hour:'numeric',minute:'2-digit'}}); }} catch(x){{}}
+          const dayStr = e.start ? new Date(e.start).toLocaleDateString('en-US',{{weekday:'short',month:'short',day:'numeric'}}) : '';
 
           panel.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
@@ -2095,42 +2079,15 @@ async def calendar_view(request: Request):
               <button onclick="document.getElementById('map-panel').style.display='none'" style="background:none;border:none;color:#ccc;font-size:18px;cursor:pointer;">&times;</button>
             </div>
             <div style="font-weight:800;font-size:16px;color:#1a1a1a;margin-bottom:6px;">${{e.title}}</div>
-            <div style="font-size:13px;color:#888;margin-bottom:4px;">${{timeStr || ''}} ${{e.location || ''}}</div>
+            <div style="font-size:13px;color:#888;margin-bottom:4px;">${{[dayStr, timeStr, e.location].filter(Boolean).join(' · ')}}</div>
             ${{e.price ? '<div style="font-size:13px;font-weight:600;color:#c4734f;margin-bottom:8px;">' + e.price + '</div>' : ''}}
             ${{e.description ? '<div style="font-size:13px;color:#555;line-height:1.5;margin-bottom:12px;">' + e.description.slice(0,200) + '</div>' : ''}}
-            <div style="display:flex;gap:8px;">
-              ${{e.url ? '<a href="'+e.url+'" target="_blank" class="btn-primary" style="text-decoration:none;padding:8px 16px;font-size:12px;">View</a>' : ''}}
-            </div>`;
+            ${{e.url ? '<a href="'+e.url+'" target="_blank" class="btn-primary" style="text-decoration:none;padding:8px 16px;font-size:12px;display:inline-block;">View</a>' : ''}}`;
           panel.style.display = 'block';
         }});
 
         _mapMarkerLayer.addLayer(marker);
       }});
-
-      if (!dayEvents.length) {{
-        panel.innerHTML = '<p style="color:#aaa;font-size:13px;text-align:center;padding:20px 0;">No events with locations on this day</p>';
-        panel.style.display = 'block';
-      }}
-    }}
-
-    function playMapTime() {{
-      if (_mapPlaying) {{ _mapPlaying = false; document.getElementById('map-play-btn').textContent = 'Play'; return; }}
-      _mapPlaying = true;
-      document.getElementById('map-play-btn').textContent = 'Stop';
-      const slider = document.getElementById('map-time-slider');
-      let idx = 0;
-      const step = () => {{
-        if (!_mapPlaying || idx > _mapDays.length - 1) {{
-          _mapPlaying = false;
-          document.getElementById('map-play-btn').textContent = 'Play';
-          return;
-        }}
-        slider.value = idx;
-        onMapTimeSlide(idx);
-        idx++;
-        setTimeout(step, 800);
-      }};
-      step();
     }}
 
     // --- Init ---
