@@ -2864,3 +2864,51 @@
 # [ ] Search: category/date/price filters
 # [ ] Notify on RSVP status changes (not just "going")
 # [ ] Prompt to fill profile if incomplete after group join
+
+# ============================================================
+# [2026-03-28] SESSION: Major simplification + new features
+# ============================================================
+#
+# DONE:
+#   - Simplified app to 3 features: Groups, Discover, Profile
+#   - Deleted 5000+ lines: taste, venues, travel, budget, bucket-list,
+#     search page, attended, variants, 8 admin sub-pages
+#   - MoMA-inspired redesign: white nav, monochrome, sharp edges,
+#     botanical accent colors (sage green, gold)
+#   - Removed telegram bot, replaced with Claude Code remote control
+#   - Nav: Groups | Discover | Profile (was 5+ items with overflow menu)
+#   - Profile simplified: name, email digest toggle, connected services
+#   - Discover: removed modal popups, images, vibe filters, top-picks toggle,
+#     heatmap view. Events link directly to source URL. Search bar added.
+#   - Groups: removed "Upcoming with Friends" noise, replaced with
+#     "Friends are going" (only events with actual RSVPs)
+#   - Fixed cron paths for monorepo (calyx/ subdirectory)
+#   - Fixed discover showing 0 events during pipeline run
+#   - Simplified event query: no more run-finding logic, just get latest scored events
+#
+# NEW FEATURES:
+#   - YouTube web OAuth (/auth/youtube + /callback/youtube)
+#   - Spotify shows "Connected" state on profile
+#   - "Tell us about yourself" paste box — Claude Haiku extracts interests
+#   - YouTube upload accepts .html files from Google Takeout
+#   - Email digest opt-in/out toggle (new DB column: email_digest)
+#   - Tiered search API: DB text match → Gemini web search fallback
+#   - "Search web" button on Discover page
+#   - Admin link at bottom of profile
+#
+# TODO (from this session, not yet done):
+#   - Taste profile page (/taste-profile) — show users what Calyx learned
+#     about them. Top interests, Spotify artists, YouTube subs, paste keywords.
+#     Editable (remove tags). MoMA-style page.
+#   - Self-improving retro: when web search finds things DB didn't, Claude
+#     diagnoses the gap (missing sources, broken scrapers, seasonal gaps).
+#     Auto-appends improvement tasks to todo.txt.
+#   - Spotify periodic polling for existing users (catch evolving tastes)
+#   - Location-adaptive sources (new user from NYC → add NYC event sources)
+#   - Search cross-referencing with external LLMs (compare, adopt better results)
+#   - Instagram/X/TikTok: not practical via API (deprecated/paywalled/slow).
+#     Paste box handles these well. Revisit if APIs open up.
+#   - Google Cloud Console: need to create "Web application" OAuth client
+#     for YouTube (current is "Desktop app" type, only supports localhost)
+#   - Pipeline last ran March 19 — 9 days stale. Cron paths fixed.
+#     Fresh run kicked off 2026-03-28. Work hours filter keeps 9am-5pm.

@@ -1061,6 +1061,87 @@ async def home_redirect(request: Request):
     return RedirectResponse("/landing", status_code=302)
 
 
+@app.post("/api/search", response_class=JSONResponse)
+async def api_search(request: Request):
+    """Tiered event search: DB first, then Gemini web search fallback."""
+    current_user = _get_current_user(request)
+    if not current_user:
+        return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
+    body = await request.json()
+    query = (body.get("query") or "").strip()
+    if not query:
+        return JSONResponse({"ok": False, "error": "Empty query"})
+
+    db = get_db()
+    settings = Settings()
+
+    # Tier 1: Search DB events via text match
+    user_id = current_user["id"]
+    all_events = db.get_latest_scored_events(user_id)
+    kept = [e for e in all_events if e.get("keep") and e.get("start_time")]
+    q_lower = query.lower()
+    db_matches = []
+    for e in kept:
+        haystack = f"{e.get('title','')} {e.get('location_name','')} {e.get('description','')} {e.get('match_reason','')} {e.get('category','')}".lower()
+        if q_lower in haystack:
+            db_matches.append({
+                "title": e.get("title", ""),
+                "start_time": e.get("start_time", ""),
+                "location": e.get("location_name", ""),
+                "url": e.get("url", ""),
+                "score": int(e.get("score") or 0),
+                "match_reason": e.get("match_reason", ""),
+                "source": "db",
+            })
+
+    # If we have enough DB results, return them
+    if len(db_matches) >= 3:
+        return JSONResponse({"ok": True, "results": db_matches[:10], "source": "db"})
+
+    # Tier 2: Gemini web search fallback
+    web_results = []
+    if settings.gemini_api_key:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=settings.gemini_api_key)
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            from google.generativeai import types as gtypes
+            resp = model.generate_content(
+                f"Find upcoming events in Boston/Cambridge area matching: {query}. "
+                f"Return JSON array of objects with fields: title, date (ISO 8601), location, url, description, price. "
+                f"Max 8 results. Only real, verifiable events.",
+                tools=[gtypes.Tool(google_search=gtypes.GoogleSearch())],
+            )
+            # Parse the response text as JSON
+            import json as _json, re as _re
+            text = resp.text
+            json_match = _re.search(r'\[.*\]', text, _re.DOTALL)
+            if json_match:
+                events_raw = _json.loads(json_match.group())
+                for ev in events_raw[:8]:
+                    web_results.append({
+                        "title": ev.get("title", ""),
+                        "start_time": ev.get("date", ""),
+                        "location": ev.get("location", ""),
+                        "url": ev.get("url", ""),
+                        "score": 0,
+                        "match_reason": ev.get("description", "")[:120],
+                        "source": "web",
+                    })
+        except Exception as exc:
+            logger.exception("Gemini search failed for query: %s", query)
+
+    # Merge: DB results first, then web results
+    merged = db_matches[:5] + web_results[:5]
+    return JSONResponse({
+        "ok": True,
+        "results": merged,
+        "source": "merged" if web_results else "db",
+        "db_count": len(db_matches),
+        "web_count": len(web_results),
+    })
+
+
 @app.get("/calendar", response_class=HTMLResponse)
 async def calendar_view(request: Request):
     import re as _re
@@ -1230,8 +1311,12 @@ async def calendar_view(request: Request):
       </div>
     </div>
 
-    <input id="search-input" type="text" placeholder="Search events..." oninput="applyFilters()"
-           style="width:100%;padding:10px 14px;border:1px solid #ccc;font-size:14px;font-family:inherit;margin-bottom:20px;outline:none;">
+    <div style="display:flex;gap:8px;margin-bottom:20px;">
+      <input id="search-input" type="text" placeholder="Search events..." oninput="applyFilters()" onkeydown="if(event.key==='Enter')searchWeb()"
+             style="flex:1;padding:10px 14px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none;">
+      <button id="web-search-btn" onclick="searchWeb()" class="btn-primary" style="white-space:nowrap;padding:10px 16px;">Search web</button>
+    </div>
+    <div id="web-results" style="display:none;margin-bottom:20px;"></div>
     <input type="hidden" id="score-slider" value="0">
     <input type="hidden" id="dist-slider" value="50">
     <span id="score-label" style="display:none">0</span>
@@ -1265,6 +1350,52 @@ async def calendar_view(request: Request):
       return km.toFixed(1) + 'km away';
     }}
     function scoreCls(s) {{ return s >= 70 ? 'score-high' : s >= 50 ? 'score-mid' : 'score-low'; }}
+
+    function searchWeb() {{
+      const query = document.getElementById('search-input').value.trim();
+      if (!query) return;
+      const btn = document.getElementById('web-search-btn');
+      const container = document.getElementById('web-results');
+      btn.disabled = true;
+      btn.textContent = 'Searching...';
+      container.style.display = 'none';
+      fetch('/api/search', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{query}})
+      }}).then(r => r.json()).then(d => {{
+        btn.disabled = false;
+        btn.textContent = 'Search web';
+        if (!d.ok || !d.results || !d.results.length) {{
+          container.innerHTML = '<p style="color:#888;font-size:13px;">No results found.</p>';
+          container.style.display = 'block';
+          return;
+        }}
+        let html = `<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">${{d.db_count || 0}} from DB, ${{d.web_count || 0}} from web</div>`;
+        d.results.forEach(r => {{
+          const badge = r.source === 'web' ? '<span style="font-size:10px;font-weight:700;background:#f5f5f5;padding:2px 6px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Web</span>' : '';
+          let timeStr = '';
+          if (r.start_time) {{
+            try {{ const dt = new Date(r.start_time); timeStr = dt.toLocaleDateString('en-US', {{weekday:'short', month:'short', day:'numeric'}}); }} catch(e) {{}}
+          }}
+          html += `<div class="evt-card" style="cursor:pointer;" onclick="window.open(&apos;${{r.url||'#'}}&apos;,&apos;_blank&apos;)">
+            <div class="card-body">
+              <div class="card-top">
+                <span class="card-title">${{r.title}}</span>
+                ${{r.score ? '<span class="card-score ' + scoreCls(r.score) + '">' + r.score + '</span>' : badge}}
+              </div>
+              <div class="card-meta">${{[timeStr, r.location].filter(Boolean).join(' &middot; ')}}</div>
+              ${{r.match_reason ? '<div class="card-reason">' + r.match_reason + '</div>' : ''}}
+            </div>
+          </div>`;
+        }});
+        container.innerHTML = html;
+        container.style.display = 'block';
+      }}).catch(() => {{
+        btn.disabled = false;
+        btn.textContent = 'Search web';
+      }});
+    }}
 
     function getFilteredEvents() {{
       const query = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
