@@ -1543,9 +1543,11 @@ async def calendar_view(request: Request):
       .see-more-btn:hover {{ background: #fdf5f2; border-color: #c4734f; }}
       .see-more-collapse {{ color: #888; }}
       .see-more-collapse:hover {{ background: #f5f5f5; color: #000; }}
-      .evt-card {{ background: white; margin: 0; border-bottom: 1px solid #e0e0e0; transition: background .15s; cursor: pointer; overflow: hidden; display: flex; }}
-      .evt-card:hover {{ background: #f8faf7; }}
-      .evt-card.rsvp-going-card {{ border-left: 3px solid #4a6741; }}
+      .evt-card {{ background: white; margin: 4px 0; border: 1px solid #eee; border-left: 3px solid #ddd; transition: all .15s; cursor: pointer; overflow: hidden; display: flex; }}
+      .evt-card:hover {{ background: #f8faf7; border-left-color: #4a6741; }}
+      .evt-card.score-high-card {{ border-left-color: #4a6741; }}
+      .evt-card.score-mid-card {{ border-left-color: #c4734f; }}
+      .evt-card.rsvp-going-card {{ border-left: 4px solid #4a6741; background: #f8faf7; }}
       .evt-card.rsvp-maybe-card {{ border-left-color: #888; }}
       .evt-card .card-body {{ flex: 1; padding: 14px 16px; min-width: 0; }}
       .evt-card .card-top {{ display: flex; align-items: flex-start; gap: 8px; }}
@@ -1670,38 +1672,6 @@ async def calendar_view(request: Request):
     }}
     function scoreCls(s) {{ return s >= 70 ? 'score-high' : s >= 50 ? 'score-mid' : 'score-low'; }}
 
-    let _dateFilter = 'all';
-    let _freeOnly = false;
-
-    function setDateFilter(f, btn) {{
-      _dateFilter = f;
-      document.querySelectorAll('.filter-chip[data-filter]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      applyFilters();
-    }}
-
-    function toggleFreeFilter(btn) {{
-      _freeOnly = !_freeOnly;
-      btn.classList.toggle('active', _freeOnly);
-      applyFilters();
-    }}
-
-    function _matchesDateFilter(startStr) {{
-      if (_dateFilter === 'all') return true;
-      const d = new Date(startStr);
-      const today = new Date(); today.setHours(0,0,0,0);
-      const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
-      const dayAfter = new Date(tomorrow); dayAfter.setDate(dayAfter.getDate() + 1);
-      if (_dateFilter === 'today') return d >= today && d < tomorrow;
-      if (_dateFilter === 'tomorrow') return d >= tomorrow && d < dayAfter;
-      if (_dateFilter === 'weekend') {{
-        const fri = new Date(today);
-        fri.setDate(today.getDate() + ((5 - today.getDay() + 7) % 7));
-        const mon = new Date(fri); mon.setDate(fri.getDate() + 3);
-        return d >= fri && d < mon;
-      }}
-      return true;
-    }}
 
     let _searchTimeout = null;
     let _searchAbort = null;
@@ -1784,8 +1754,6 @@ async def calendar_view(request: Request):
       const query = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
       return EVENTS.filter(e => {{
         if (!e.start) return false;
-        if (!_matchesDateFilter(e.start)) return false;
-        if (_freeOnly && e.price && !e.price.toLowerCase().includes('free') && e.price !== '$0') return false;
         if (query) {{
           const haystack = (e.title + ' ' + e.location + ' ' + e.description + ' ' + e.match_reason).toLowerCase();
           if (!haystack.includes(query)) return false;
@@ -1943,7 +1911,8 @@ async def calendar_view(request: Request):
         </div>`;
       }}
       const meta = [timeStr, e.location, e.price].filter(Boolean).join(' &middot; ');
-      return `<div class="evt-card${{e.my_rsvp === 'going' ? ' rsvp-going-card' : ''}}" onclick="if(event.target.tagName!=='BUTTON')window.open(&apos;${{e.url || '#'}}&apos;, &apos;_blank&apos;)">
+      const scoreClass = e.score >= 70 ? ' score-high-card' : e.score >= 50 ? ' score-mid-card' : '';
+      return `<div class="evt-card${{scoreClass}}${{e.my_rsvp === 'going' ? ' rsvp-going-card' : ''}}" onclick="if(event.target.tagName!=='BUTTON')window.open(&apos;${{e.url || '#'}}&apos;, &apos;_blank&apos;)">
         <div class="card-body">
           <div class="card-top">
             <span class="card-title">${{e.title}}</span>
@@ -1951,6 +1920,7 @@ async def calendar_view(request: Request):
           </div>
           <div class="card-meta">${{meta}}</div>
           ${{e.description ? '<div class="card-reason">' + e.description + '</div>' : ''}}
+          ${{e.source ? '<div style="font-size:10px;color:#bbb;margin-top:4px;text-transform:capitalize;">via ' + e.source + '</div>' : ''}}
           ${{rsvpBtns}}
         </div>
       </div>`;
