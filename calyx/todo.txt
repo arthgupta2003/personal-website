@@ -5,18 +5,13 @@
 # ACTIVE — in priority order
 # ============================================================
 
-# TODO: Taste profile page (/taste-profile)
-#   Show users what Calyx learned about them. Currently opaque.
-#   Data: InterestProfile JSON from pipeline, Spotify top artists,
-#   YouTube subs, paste-box keywords, manual interests.
-#   UI: MoMA-style page with editable keyword tags per source.
-#   Link from profile: "View your taste profile →"
+# DONE: Taste profile page (/taste-profile) — 2026-03-28
+#   Shows pipeline interests, manual keywords, paste-box, Spotify artists.
+#   Linked from profile page. Future: make tags editable/removable.
 
-# TODO: Self-improving retro system
-#   When web search finds events DB didn't, Claude diagnoses the gap.
-#   Logs missing sources, broken scrapers, seasonal gaps.
-#   Auto-appends new scraper tasks to this file.
-#   See old spec (archived) for full tiered design.
+# DONE: Self-improving retro system — 2026-03-28
+#   Fires after web search fallback. Claude Haiku diagnoses gap.
+#   Saves to search_retros table. Auto-appends TODO to todo.txt.
 
 # TODO: Spotify periodic polling
 #   Existing users: re-fetch top artists/genres periodically.
@@ -27,9 +22,9 @@
 #   New user from NYC → pipeline detects city → adds NYC scrapers.
 #   Currently hardcoded to Boston/Cambridge.
 
-# TODO: Delete group (creator-only, with confirmation)
+# DONE: Delete group (creator-only, with confirmation) — already implemented
 # TODO: Remove member from group (creator can kick)
-# TODO: Notify group members when new event added
+# DONE: Notify group members when new event added — already implemented
 # TODO: Onboarding guidance after joining group via invite
 # TODO: Event detail pages — shareable URL per event (Partiful-style)
 # TODO: Shareable event links — non-users can view + RSVP without account

@@ -1036,8 +1036,8 @@ async def taste_profile_page(request: Request):
 
   {"<div class='taste-section'><h2>YouTube subscriptions</h2><div class='tags'>" + _tags(youtube_subs, "#c4302b") + "</div></div>" if youtube_subs else ""}
 
-  <div style="border-top:1px solid #e0e0e0;padding-top:20px;margin-top:20px;">
-    <a href="/profile" style="font-size:13px;color:#888;">Account settings</a>
+  <div style="margin-top:32px;">
+    <a href="/profile" class="btn-secondary" style="display:inline-block;text-decoration:none;">Account settings</a>
   </div>
 </div>
 """
@@ -1276,6 +1276,12 @@ async def api_search(request: Request):
 
     # Merge: DB results first, then web results
     merged = db_matches[:5] + web_results[:5]
+
+    # Fire-and-forget: retro analysis when web found things DB didn't
+    if web_results and len(db_matches) < 3:
+        import asyncio
+        asyncio.create_task(_run_search_retro(query, db_matches, web_results, settings))
+
     return JSONResponse({
         "ok": True,
         "results": merged,
@@ -1283,6 +1289,47 @@ async def api_search(request: Request):
         "db_count": len(db_matches),
         "web_count": len(web_results),
     })
+
+
+async def _run_search_retro(query: str, db_results: list, web_results: list, settings):
+    """Background: Claude diagnoses why DB missed events the web found."""
+    try:
+        import anthropic, json as _json
+        from pathlib import Path
+
+        db = get_db()
+        web_titles = [r["title"] for r in web_results[:5]]
+        db_titles = [r["title"] for r in db_results[:5]]
+
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{"role": "user", "content": f"""A user searched for "{query}" in a Boston/Cambridge event app.
+Our database had {len(db_results)} results: {db_titles[:5]}
+Web search found {len(web_results)} additional results: {web_titles}
+
+In 2-3 sentences: Why did our database miss these? What event sources or scrapers should we add? Be specific (name websites/platforms)."""}],
+        )
+        diagnosis = resp.content[0].text.strip()
+
+        # Save to DB
+        db.conn.execute(
+            "INSERT INTO search_retros (query, timestamp, db_count, web_count, diagnosis) VALUES (?, ?, ?, ?, ?)",
+            (query, datetime.now().isoformat(), len(db_results), len(web_results), diagnosis),
+        )
+        db.conn.commit()
+
+        # Append to todo.txt if actionable
+        if "add" in diagnosis.lower() or "scraper" in diagnosis.lower() or "source" in diagnosis.lower():
+            todo_path = Path("todo.txt")
+            with open(todo_path, "a") as f:
+                f.write(f"\n# TODO: [auto-retro] {diagnosis[:120]}\n")
+                f.write(f"#   Query: \"{query}\" — {len(web_results)} web results vs {len(db_results)} DB results\n")
+
+        logger.info("Search retro for '%s': %s", query, diagnosis[:100])
+    except Exception:
+        logger.exception("Search retro failed for '%s'", query)
 
 
 @app.get("/calendar", response_class=HTMLResponse)
