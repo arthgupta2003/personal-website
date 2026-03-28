@@ -1559,6 +1559,10 @@ async def calendar_view(request: Request):
       .evt-card .card-actions {{ display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }}
       .source-badge {{ font-size: 10px; font-weight: 600; padding: 1px 7px; background: #f5f5f5; color: #888; text-transform: capitalize; }}
       /* --- Timeline view --- */
+      .map-tbtn {{ padding: 8px 18px; border: none; background: #fff; cursor: pointer; font-size: 12px; font-weight: 600; color: #888; font-family: inherit; transition: all .15s; }}
+      .map-tbtn:hover {{ color: #4a6741; }}
+      .map-tbtn.active {{ background: #4a6741; color: #fff; }}
+      .map-tbtn + .map-tbtn {{ border-left: 1px solid #e0e0e0; }}
       #timeline-view {{ display: none; padding-bottom: 8px; margin: 0 -20px; padding: 0 20px; }}
       @media (min-width: 1100px) {{ #timeline-view {{ margin: 0 calc(-50vw + 480px); padding: 0 calc(50vw - 480px); }} }}
       .timeline-week {{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: #e0e0e0; }}
@@ -1637,13 +1641,19 @@ async def calendar_view(request: Request):
     <div id="map-view" style="display:none;margin:0 -20px;">
       <div style="position:relative;">
         <div id="event-map" style="height:70vh;width:100%;"></div>
+        <div id="map-time-btns" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:1000;display:flex;gap:0;background:#fff;border:1px solid #e0e0e0;box-shadow:0 2px 8px rgba(0,0,0,.12);overflow:hidden;">
+          <button onclick="selectMapDay('today')" class="map-tbtn active" id="map-tb-today">Today</button>
+          <button onclick="selectMapDay('week')" class="map-tbtn" id="map-tb-week">This week</button>
+          <button onclick="selectMapDay('all')" class="map-tbtn" id="map-tb-all">All</button>
+        </div>
         <div id="map-panel" style="display:none;position:absolute;top:12px;right:12px;width:300px;max-height:calc(70vh - 24px);overflow-y:auto;background:#fff;border:1px solid #e0e0e0;padding:16px;z-index:1000;box-shadow:0 2px 12px rgba(0,0,0,.1);"></div>
       </div>
-      <!-- Day tabs -->
-      <div style="padding:8px 20px;background:#fff;border-top:1px solid #eee;overflow-x:auto;white-space:nowrap;" id="map-day-tabs"></div>
     </div>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
     <script>
     const EVENTS = {events_json_str};
@@ -2019,45 +2029,48 @@ async def calendar_view(request: Request):
           iconSize: [14, 14], className: ''
         }});
         L.marker([HOME_LAT, HOME_LON], {{icon: homeIcon}}).addTo(_map);
-        _mapMarkerLayer = L.layerGroup().addTo(_map);
+        _mapMarkerLayer = L.markerClusterGroup({{
+          maxClusterRadius: 30,
+          spiderfyOnMaxZoom: true,
+          showCoverageOnHover: false,
+          iconCreateFunction: function(cluster) {{
+            const count = cluster.getChildCount();
+            return L.divIcon({{
+              html: '<div style="width:32px;height:32px;background:#4a6741;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.2);">' + count + '</div>',
+              iconSize: [32, 32], className: ''
+            }});
+          }}
+        }}).addTo(_map);
       }}
       setTimeout(() => _map.invalidateSize(), 100);
 
       _allMapEvents = getFilteredEvents().filter(e => e.lat && e.lon);
-
-      // Build day tabs
-      const today = new Date(); today.setHours(0,0,0,0);
-      const todayStr = today.toISOString().slice(0,10);
-      const tabsEl = document.getElementById('map-day-tabs');
-      let tabsHtml = '<button onclick="selectMapDay(null)" style="' + (_mapSelectedDay === null ? 'background:#4a6741;color:#fff;' : 'background:#fff;color:#555;') + 'border:1px solid #e0e0e0;padding:6px 14px;margin-right:4px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">All</button>';
-      for (let i = -3; i < 14; i++) {{
-        const d = new Date(today); d.setDate(today.getDate() + i);
-        const key = d.toISOString().slice(0,10);
-        const count = _allMapEvents.filter(e => e.start && e.start.slice(0,10) === key).length;
-        if (count === 0 && i < 0) continue;
-        const isToday = i === 0;
-        const isPast = i < 0;
-        const label = isToday ? 'Today' : (i === 1 ? 'Tmw' : d.toLocaleDateString('en-US', {{weekday:'short', day:'numeric'}}));
-        const active = _mapSelectedDay === key;
-        const style = active ? 'background:#4a6741;color:#fff;border-color:#4a6741;' : (isPast ? 'background:#f5f5f5;color:#aaa;' : 'background:#fff;color:#555;');
-        tabsHtml += `<button onclick="selectMapDay('${{key}}')" style="${{style}}border:1px solid #e0e0e0;padding:6px 12px;margin-right:4px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">${{label}}${{count > 0 ? ' <span style="font-size:10px;opacity:.6;">' + count + '</span>' : ''}}</button>`;
-      }}
-      tabsEl.innerHTML = tabsHtml;
-
       _renderMapPins();
     }}
 
-    function selectMapDay(day) {{
-      _mapSelectedDay = day;
-      buildMapView();
+    function selectMapDay(mode) {{
+      _mapSelectedDay = mode;
+      document.querySelectorAll('.map-tbtn').forEach(b => b.classList.remove('active'));
+      document.getElementById('map-tb-' + mode).classList.add('active');
+      _renderMapPins();
     }}
 
     function _renderMapPins() {{
       _mapMarkerLayer.clearLayers();
       const panel = document.getElementById('map-panel');
-      const events = _mapSelectedDay
-        ? _allMapEvents.filter(e => e.start && e.start.slice(0,10) === _mapSelectedDay)
-        : _allMapEvents;
+      const today = new Date(); today.setHours(0,0,0,0);
+      const todayStr = today.toISOString().slice(0,10);
+      const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7);
+      const weekEndStr = weekEnd.toISOString().slice(0,10);
+
+      let events;
+      if (_mapSelectedDay === 'today') {{
+        events = _allMapEvents.filter(e => e.start && e.start.slice(0,10) === todayStr);
+      }} else if (_mapSelectedDay === 'week') {{
+        events = _allMapEvents.filter(e => e.start && e.start.slice(0,10) >= todayStr && e.start.slice(0,10) < weekEndStr);
+      }} else {{
+        events = _allMapEvents;
+      }}
 
       events.forEach(e => {{
         const score = e.score || 0;
