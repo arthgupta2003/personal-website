@@ -559,6 +559,7 @@ async def profile_page(request: Request, response: Response):
     digest_checked = "checked" if email_digest else ""
     is_admin = current_user.get("id") == 1
     admin_html = '<div style="margin-top:40px;padding-top:20px;border-top:1px solid #e0e0e0;"><a href="/admin" style="font-size:12px;color:#888;">Admin</a> &middot; <a href="/admin/sources" style="font-size:12px;color:#888;">Sources</a></div>' if is_admin else ""
+    spotify_connected = bool(current_user.get("spotify_token_file"))
 
     resp = HTMLResponse(_layout("Profile", f"""
 <style>
@@ -610,12 +611,12 @@ async def profile_page(request: Request, response: Response):
     <h2>Connected Services</h2>
     <p style="font-size:13px;color:#64748b;margin-bottom:16px;">We use these to personalize your event recommendations.</p>
     <div class="svc-row">
-      <div><span style="font-weight:700;font-size:14px;color:#1e293b;">Spotify</span><br><span style="font-size:12px;color:#6b7280;">Your top artists and listening history</span></div>
-      <a href="/auth/spotify" style="padding:6px 14px;background:#000;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>
+      <div><span style="font-weight:700;font-size:14px;color:#000;">Spotify</span><br><span style="font-size:12px;color:#888;">{"Connected" if spotify_connected else "Your top artists and listening history"}</span></div>
+      {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if spotify_connected else '<a href="/auth/spotify" style="padding:6px 14px;background:#000;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
     </div>
     <div class="svc-row">
       <div style="flex:1">
-        <span style="font-weight:700;font-size:14px;color:#1e293b;">YouTube</span><br><span style="font-size:12px;color:#6b7280;">Watch history helps us learn your interests</span>
+        <span style="font-weight:700;font-size:14px;color:#000;">YouTube</span><br><span style="font-size:12px;color:#888;">Watch history helps us learn your interests</span>
         <details style="margin-top:6px;">
           <summary style="font-size:12px;color:#000;cursor:pointer;font-weight:600;text-decoration:underline;text-underline-offset:2px;">Upload Google Takeout</summary>
           <form action="/api/profile/upload-youtube" method="post" enctype="multipart/form-data" style="margin-top:8px;">
@@ -629,6 +630,17 @@ async def profile_page(request: Request, response: Response):
       </div>
     </div>
   </div>
+
+  <div class="card">
+    <h2>Tell us about yourself</h2>
+    <p style="font-size:13px;color:#888;margin-bottom:12px;">Paste anything — your YouTube feed, a list of bands you like, hobbies, whatever. We'll figure out your interests from it.</p>
+    <textarea id="paste-box" placeholder="e.g. I love indie rock, just saw Magdalena Bay, really into climbing and art museums lately..." style="width:100%;min-height:100px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box;"></textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+      <span id="paste-status" style="font-size:12px;color:#888;"></span>
+      <button onclick="submitPaste()" class="btn-primary" id="paste-btn">Save interests</button>
+    </div>
+  </div>
+
   {admin_html}
 </div>
 
@@ -652,6 +664,37 @@ function toggleDigest(on) {{
     method: 'POST',
     headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify({{ email_digest: on ? 1 : 0 }}),
+  }});
+}}
+
+function submitPaste() {{
+  const text = document.getElementById('paste-box').value.trim();
+  if (!text) return;
+  const btn = document.getElementById('paste-btn');
+  const status = document.getElementById('paste-status');
+  btn.disabled = true;
+  btn.textContent = 'Processing...';
+  status.textContent = '';
+  fetch('/api/profile/paste-interests', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{ text: text }}),
+  }}).then(r => r.json()).then(d => {{
+    btn.disabled = false;
+    btn.textContent = 'Save interests';
+    if (d.ok) {{
+      status.textContent = 'Saved! ' + (d.summary || '');
+      status.style.color = '#000';
+      document.getElementById('paste-box').value = '';
+    }} else {{
+      status.textContent = d.error || 'Failed';
+      status.style.color = '#d00';
+    }}
+  }}).catch(() => {{
+    btn.disabled = false;
+    btn.textContent = 'Save interests';
+    status.textContent = 'Network error';
+    status.style.color = '#d00';
   }});
 }}
 </script>
@@ -701,6 +744,55 @@ async def profile_update(request: Request):
         db.conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
         db.conn.commit()
     return {"ok": True}
+
+
+@app.post("/api/profile/paste-interests")
+async def paste_interests(request: Request):
+    """Parse free-form text (YouTube feed dump, interest list, etc.) into interests via Claude."""
+    current_user = _get_current_user(request)
+    if not current_user:
+        return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
+    body = await request.json()
+    text = (body.get("text") or "").strip()
+    if not text:
+        return JSONResponse({"ok": False, "error": "Nothing to parse"})
+
+    import anthropic
+    settings = Settings()
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    # Truncate to ~8k chars to avoid huge prompts
+    text_truncated = text[:8000]
+    try:
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{"role": "user", "content": f"""Extract a list of interests, hobbies, favorite artists, genres, and topics from this text. Return ONLY a comma-separated list of keywords/phrases, nothing else. Be specific (e.g. "Magdalena Bay" not just "music"). Max 30 items.
+
+Text:
+{text_truncated}"""}],
+        )
+        keywords_raw = resp.content[0].text.strip()
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)})
+
+    # Save to user's interests file
+    from pathlib import Path
+    interests_dir = Path("state/interests")
+    interests_dir.mkdir(parents=True, exist_ok=True)
+    interests_file = interests_dir / f"user_{current_user['id']}_paste.txt"
+    # Append to existing paste interests
+    existing = interests_file.read_text() if interests_file.exists() else ""
+    combined = (existing + "\n" + keywords_raw).strip()
+    interests_file.write_text(combined)
+    # Update user record
+    db = get_db()
+    db.conn.execute("UPDATE users SET interests_file = ? WHERE id = ?",
+                    (str(interests_file), current_user["id"]))
+    db.conn.commit()
+
+    # Count keywords for summary
+    keywords = [k.strip() for k in keywords_raw.split(",") if k.strip()]
+    return JSONResponse({"ok": True, "summary": f"Found {len(keywords)} interests", "keywords": keywords})
 
 
 @app.post("/api/profile/upload-youtube")
@@ -3415,12 +3507,19 @@ async def spotify_callback(code: str = "", error: str = "", state: str = ""):
             return HTMLResponse(f"<h1>Token exchange failed</h1><pre>{resp.text}</pre>")
         token_data = resp.json()
 
-    # Save token
+    # Save token per-user
     import json as _json
     from pathlib import Path
-    token_path = Path(settings.spotify_token_file)
-    token_path.parent.mkdir(parents=True, exist_ok=True)
+    db = get_db()
+    user = db.get_user_by_token(state) if state else None
+    user_id = user["id"] if user else 1
+    token_dir = Path("state/tokens")
+    token_dir.mkdir(parents=True, exist_ok=True)
+    token_path = token_dir / f"spotify_user_{user_id}.json"
     token_path.write_text(_json.dumps(token_data))
+    # Update user record
+    db.conn.execute("UPDATE users SET spotify_token_file = ? WHERE id = ?", (str(token_path), user_id))
+    db.conn.commit()
 
     # Redirect back to profile with success message
     resp = RedirectResponse("/profile?success=Spotify+connected", status_code=303)
