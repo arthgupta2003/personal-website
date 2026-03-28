@@ -1679,10 +1679,12 @@ async def calendar_view(request: Request):
       <input id="search-input" type="text" placeholder="Try &quot;jazz tonight&quot; or &quot;outdoor things this weekend&quot;" oninput="onSearchInput()" onkeydown="if(event.key==='Enter'){{event.preventDefault();doSearch();}}"
              style="width:100%;padding:12px 14px;border:1px solid #ccc;border-bottom:2px solid #ccc;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;transition:border-color .15s;"
              onfocus="this.style.borderBottomColor='#4a6741'" onblur="this.style.borderBottomColor='#ccc'">
-      <div id="search-progress" style="position:absolute;left:0;bottom:0;height:2px;background:#4a6741;width:0;transition:width .3s;"></div>
+    </div>
+    <div id="search-status" style="display:none;padding:12px 16px;margin-bottom:16px;background:#edf2eb;border-left:3px solid #4a6741;font-size:13px;font-weight:600;color:#4a6741;">
+      Searching the web for events...
     </div>
     <div id="web-results-section" style="display:none;margin-bottom:16px;border-left:3px solid #c4734f;padding-left:16px;">
-      <div style="font-size:11px;font-weight:700;color:#c4734f;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Also found on the web</div>
+      <div style="font-size:11px;font-weight:700;color:#c4734f;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Found on the web</div>
       <div id="web-results-list"></div>
     </div>
     <input type="hidden" id="score-slider" value="0">
@@ -1765,8 +1767,8 @@ async def calendar_view(request: Request):
     function onSearchInput() {{
       const query = document.getElementById('search-input').value.trim();
       applyFilters();
-      // Hide web results when query changes
       document.getElementById('web-results-section').style.display = 'none';
+      document.getElementById('search-status').style.display = 'none';
       if (!query) return;
       clearTimeout(_searchTimeout);
       if (query.length >= 3) {{
@@ -1782,14 +1784,10 @@ async def calendar_view(request: Request):
       if (_searchAbort) _searchAbort.abort();
       _searchAbort = new AbortController();
 
-      // Start progress bar animation
-      const bar = document.getElementById('search-progress');
-      bar.style.transition = 'none';
-      bar.style.width = '0';
-      requestAnimationFrame(() => {{
-        bar.style.transition = 'width 8s cubic-bezier(0.1, 0.5, 0.1, 1)';
-        bar.style.width = '90%';
-      }});
+      // Show searching indicator
+      const status = document.getElementById('search-status');
+      status.style.display = 'block';
+      document.getElementById('web-results-section').style.display = 'none';
 
       fetch('/api/search', {{
         method: 'POST',
@@ -1797,10 +1795,7 @@ async def calendar_view(request: Request):
         body: JSON.stringify({{query}}),
         signal: _searchAbort.signal,
       }}).then(r => r.json()).then(d => {{
-        // Complete progress bar
-        bar.style.transition = 'width .2s';
-        bar.style.width = '100%';
-        setTimeout(() => {{ bar.style.transition = 'width .3s'; bar.style.width = '0'; }}, 400);
+        status.style.display = 'none';
 
         const webSection = document.getElementById('web-results-section');
         const webList = document.getElementById('web-results-list');
@@ -1829,10 +1824,7 @@ async def calendar_view(request: Request):
         webList.innerHTML = html;
         webSection.style.display = 'block';
       }}).catch(e => {{
-        if (e.name !== 'AbortError') {{
-          bar.style.transition = 'width .2s';
-          bar.style.width = '0';
-        }}
+        if (e.name !== 'AbortError') status.style.display = 'none';
       }});
     }}
 
