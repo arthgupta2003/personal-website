@@ -6,8 +6,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     claude_model: str = "claude-sonnet-4-20250514"
 
-    # YouTube
+    # YouTube / Google
     google_client_secrets_file: str = "state/tokens/client_secret.json"
+    google_client_id: str = ""
+    google_client_secret: str = ""
     youtube_token_file: str = "state/tokens/youtube_token.json"
     gmail_token_file: str = "state/tokens/gmail_token.json"
 

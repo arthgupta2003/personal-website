@@ -560,6 +560,7 @@ async def profile_page(request: Request, response: Response):
     is_admin = current_user.get("id") == 1
     admin_html = '<div style="margin-top:40px;padding-top:20px;border-top:1px solid #e0e0e0;"><a href="/admin" style="font-size:12px;color:#888;">Admin</a> &middot; <a href="/admin/sources" style="font-size:12px;color:#888;">Sources</a></div>' if is_admin else ""
     spotify_connected = bool(current_user.get("spotify_token_file"))
+    youtube_connected = bool(current_user.get("youtube_token_file"))
 
     resp = HTMLResponse(_layout("Profile", f"""
 <style>
@@ -617,19 +618,8 @@ async def profile_page(request: Request, response: Response):
       {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if spotify_connected else '<a href="/auth/spotify" style="padding:6px 14px;background:#000;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
     </div>
     <div class="svc-row">
-      <div style="flex:1">
-        <span style="font-weight:700;font-size:14px;color:#000;">YouTube</span><br><span style="font-size:12px;color:#888;">Watch history helps us learn your interests</span>
-        <details style="margin-top:6px;">
-          <summary style="font-size:12px;color:#000;cursor:pointer;font-weight:600;text-decoration:underline;text-underline-offset:2px;">Upload Google Takeout</summary>
-          <form action="/api/profile/upload-youtube" method="post" enctype="multipart/form-data" style="margin-top:8px;">
-            <p style="font-size:12px;color:#888;margin:0 0 8px;">Export from <a href="https://takeout.google.com" target="_blank">takeout.google.com</a> (YouTube &rarr; history), then upload the watch-history file.</p>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input type="file" name="file" accept=".json,.html" required style="font-size:12px;flex:1;">
-              <button type="submit" style="padding:6px 14px;background:#000;color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;">Upload</button>
-            </div>
-          </form>
-        </details>
-      </div>
+      <div><span style="font-weight:700;font-size:14px;color:#000;">YouTube</span><br><span style="font-size:12px;color:#888;">{"Connected — subscriptions and likes" if youtube_connected else "Your subscriptions and liked videos"}</span></div>
+      {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if youtube_connected else '<a href="/auth/youtube" style="padding:6px 14px;background:#000;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
     </div>
   </div>
 
@@ -1088,25 +1078,25 @@ async def calendar_view(request: Request, run_id: int | None = None):
 
     # Default to current user's latest COMPLETED run (skip in-progress runs with 0 events)
     if run_id is None:
+        # Find most recent run that has scored (kept) events — skip in-progress runs
+        def _run_has_scored_events(rid: int) -> bool:
+            evts = db.get_run_events(rid)
+            return any(e.get("keep") for e in evts)
+
         if current_user:
             latest = db.get_user_latest_run(current_user["id"])
-            if latest:
-                # Check if this run actually has scored events
-                evts = db.get_run_events(latest["id"])
-                if evts:
-                    run_id = latest["id"]
+            if latest and _run_has_scored_events(latest["id"]):
+                run_id = latest["id"]
         if run_id is None:
             runs = db.get_runs()
             if not runs:
-                return HTMLResponse(_layout("Calendar", "<h1>Calendar</h1><div class='card'><p>No runs yet. Run the pipeline first.</p></div>", current_user))
-            # Find first run that actually has events (skip in-progress)
+                return HTMLResponse(_layout("Discover", "<h1>Discover</h1><div class='card'><p>No runs yet. Run the pipeline first.</p></div>", current_user))
             for r in runs:
-                check_evts = db.get_run_events(r["id"])
-                if check_evts:
+                if _run_has_scored_events(r["id"]):
                     run_id = r["id"]
                     break
             if run_id is None:
-                return HTMLResponse(_layout("Calendar", "<h1>Calendar</h1><div class='card'><p>Pipeline is running... check back in a few minutes.</p></div>", current_user))
+                return HTMLResponse(_layout("Discover", "<h1>Discover</h1><div class='card'><p>Pipeline is running... check back in a few minutes.</p></div>", current_user))
 
     events = db.get_run_events(run_id)
     all_kept = [e for e in events if e.get("keep")]
@@ -3543,6 +3533,107 @@ async def spotify_callback(code: str = "", error: str = "", state: str = ""):
 
     # Redirect back to profile with success message
     resp = RedirectResponse("/profile?success=Spotify+connected", status_code=303)
+    if state:
+        _set_token_cookie(resp, state)
+    return resp
+
+
+@app.get("/auth/youtube")
+async def youtube_auth_start(request: Request):
+    """Redirect user to Google OAuth for YouTube access."""
+    current_user = _get_current_user(request)
+    if not current_user:
+        return RedirectResponse("/login", status_code=307)
+    settings = Settings()
+    # Get client ID from env or from client_secrets.json
+    client_id = settings.google_client_id
+    if not client_id:
+        try:
+            import json as _json
+            from pathlib import Path
+            secrets = _json.loads(Path(settings.google_client_secrets_file).read_text())
+            cred = secrets.get("web") or secrets.get("installed", {})
+            client_id = cred.get("client_id", "")
+        except Exception:
+            pass
+    if not client_id:
+        return HTMLResponse("<h1>YouTube not configured</h1><p>Set RECOM_GOOGLE_CLIENT_ID in .env</p>")
+
+    import urllib.parse
+    redirect_uri = f"{settings.dashboard_url}/callback/youtube"
+    params = urllib.parse.urlencode({
+        "client_id": client_id,
+        "response_type": "code",
+        "redirect_uri": redirect_uri,
+        "scope": "https://www.googleapis.com/auth/youtube.readonly",
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": current_user["user_token"],
+    })
+    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+
+
+@app.get("/callback/youtube")
+async def youtube_callback(code: str = "", error: str = "", state: str = ""):
+    """Handle Google OAuth callback for YouTube."""
+    if error or not code:
+        return HTMLResponse(f"<h1>YouTube auth failed</h1><p>{error}</p>")
+
+    settings = Settings()
+    # Get client credentials
+    client_id = settings.google_client_id
+    client_secret = settings.google_client_secret
+    if not client_id or not client_secret:
+        try:
+            import json as _json
+            from pathlib import Path
+            secrets = _json.loads(Path(settings.google_client_secrets_file).read_text())
+            cred = secrets.get("web") or secrets.get("installed", {})
+            client_id = client_id or cred.get("client_id", "")
+            client_secret = client_secret or cred.get("client_secret", "")
+        except Exception:
+            pass
+
+    redirect_uri = f"{settings.dashboard_url}/callback/youtube"
+    import httpx
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "client_id": client_id,
+                "client_secret": client_secret,
+            },
+        )
+        if resp.status_code != 200:
+            return HTMLResponse(f"<h1>YouTube token exchange failed</h1><pre>{resp.text}</pre>")
+        token_data = resp.json()
+
+    # Save token per-user (format compatible with google-auth library)
+    import json as _json
+    from pathlib import Path
+    db = get_db()
+    user = db.get_user_by_token(state) if state else None
+    user_id = user["id"] if user else 1
+    token_dir = Path("state/tokens")
+    token_dir.mkdir(parents=True, exist_ok=True)
+    token_path = token_dir / f"youtube_user_{user_id}.json"
+    # Save in google-auth-compatible format
+    google_token = {
+        "token": token_data.get("access_token"),
+        "refresh_token": token_data.get("refresh_token"),
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "scopes": ["https://www.googleapis.com/auth/youtube.readonly"],
+    }
+    token_path.write_text(_json.dumps(google_token))
+    db.conn.execute("UPDATE users SET youtube_token_file = ? WHERE id = ?", (str(token_path), user_id))
+    db.conn.commit()
+
+    resp = RedirectResponse("/profile?success=YouTube+connected", status_code=303)
     if state:
         _set_token_cookie(resp, state)
     return resp
