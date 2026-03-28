@@ -3536,7 +3536,27 @@ async def extract_event_from_url(request: Request):
             resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
             if resp.status_code != 200:
                 return JSONResponse({"ok": False, "error": f"Could not fetch URL ({resp.status_code})"})
-            html = resp.text[:15000]  # Truncate to avoid huge prompts
+            # Extract the most useful parts: title, meta tags, main content
+            from bs4 import BeautifulSoup as _BS
+            soup = _BS(resp.text, "lxml")
+            # Grab structured data, meta, and visible text
+            parts = []
+            for s in soup.find_all("script", type="application/ld+json"):
+                if s.string:
+                    parts.append(s.string[:500])
+            meta_desc = soup.find("meta", attrs={"name": "description"})
+            if meta_desc and meta_desc.get("content"):
+                parts.append(meta_desc["content"])
+            title_tag = soup.find("title")
+            if title_tag:
+                parts.append(title_tag.get_text())
+            # Get text from time/date/location elements
+            import re as _re2
+            for el in soup.find_all(class_=_re2.compile(r"time|date|door|venue|location|address", _re2.I)):
+                parts.append(el.get_text(strip=True)[:100])
+            # Fallback: page text
+            parts.append(soup.get_text(" ", strip=True)[:3000])
+            html = "\n".join(parts)[:8000]
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)})
 
