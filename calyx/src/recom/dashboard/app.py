@@ -98,7 +98,7 @@ LAYOUT_STYLE = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#1a1a2e">
+<meta name="theme-color" content="#4a6741">
 <meta name="apple-mobile-web-app-capable" content="yes">
 __OG_TAGS__
 <title>Calyx — __TITLE__</title>
@@ -112,18 +112,18 @@ __OG_TAGS__
   /* --- App shell — MoMA-inspired: white, clean, typographic --- */
   .app-nav { background: #fff; padding: 0 20px; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #000; }
   .app-nav-inner { display: flex; align-items: center; max-width: 960px; margin: 0 auto; height: 56px; gap: 4px; }
-  .app-logo { font-size: 20px; font-weight: 800; color: #000; text-decoration: none; letter-spacing: -.8px; margin-right: auto; text-transform: lowercase; }
-  .app-logo:hover { text-decoration: none; }
-  .app-nav a.nav-link { font-size: 13px; font-weight: 500; color: #666; text-decoration: none; padding: 8px 14px; letter-spacing: .3px; text-transform: uppercase; transition: color .15s; }
-  .app-nav a.nav-link:hover { color: #000; text-decoration: none; }
-  .app-nav a.nav-link.active { color: #000; font-weight: 700; }
+  .app-logo { font-size: 20px; font-weight: 800; color: #4a6741; text-decoration: none; letter-spacing: -.8px; margin-right: auto; text-transform: lowercase; }
+  .app-logo:hover { text-decoration: none; opacity: .8; }
+  .app-nav a.nav-link { font-size: 13px; font-weight: 500; color: #888; text-decoration: none; padding: 8px 14px; letter-spacing: .3px; text-transform: uppercase; transition: color .15s; }
+  .app-nav a.nav-link:hover { color: #4a6741; text-decoration: none; }
+  .app-nav a.nav-link.active { color: #4a6741; font-weight: 700; }
   .nav-divider { width: 1px; height: 20px; background: #ddd; margin: 0 8px; }
   .app-content { max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }
   /* --- Shared components --- */
   h1 { margin-bottom: 24px; color: #000; font-size: 2rem; font-weight: 800; letter-spacing: -.5px; }
   h2 { margin: 28px 0 16px; color: #000; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
-  a { color: #000; text-decoration: underline; text-underline-offset: 2px; }
-  a:hover { text-decoration-thickness: 2px; }
+  a { color: #4a6741; text-decoration: underline; text-underline-offset: 2px; }
+  a:hover { text-decoration-thickness: 2px; color: #3a5334; }
   .card { background: #fff; border: 1px solid #e0e0e0; padding: 24px; margin-bottom: 24px; }
   .badge { display: inline-block; padding: 2px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
   .badge-green { background: #000; color: #fff; }
@@ -146,10 +146,10 @@ __OG_TAGS__
   .interests-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
   .interest-tag { padding: 4px 12px; background: #f5f5f5; color: #333; font-size: 12px; font-weight: 500; }
   .cost-box { background: #fafafa; border: 1px solid #e0e0e0; padding: 12px; margin: 10px 0; }
-  .btn-primary { background: #000; color: #fff; border: none; padding: 10px 24px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: .5px; transition: background .15s; }
-  .btn-primary:hover { background: #333; }
-  .btn-secondary { background: #fff; color: #000; border: 1px solid #000; padding: 10px 24px; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: .5px; }
-  .btn-secondary:hover { background: #f5f5f5; }
+  .btn-primary { background: #4a6741; color: #fff; border: none; padding: 10px 24px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: .5px; transition: background .15s; }
+  .btn-primary:hover { background: #3a5334; }
+  .btn-secondary { background: #fff; color: #4a6741; border: 1px solid #4a6741; padding: 10px 24px; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: .5px; }
+  .btn-secondary:hover { background: #f4f7f3; }
   .btn-pill { padding: 6px 16px; font-size: 12px; }
   @media (max-width: 640px) {
     .app-nav a.nav-link { font-size: 11px; padding: 8px 8px; }
@@ -572,8 +572,8 @@ async def profile_page(request: Request, response: Response):
 .profile-page input[type=text]{{width:100%;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s}}
 .profile-page input[type=text]:focus{{border-color:#000}}
 .field{{margin-bottom:14px}}
-.save-btn{{background:#000;color:#fff;border:none;padding:10px 24px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.5px;transition:background .15s}}
-.save-btn:hover{{background:#333}}
+.save-btn{{background:#4a6741;color:#fff;border:none;padding:10px 24px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.5px;transition:background .15s}}
+.save-btn:hover{{background:#3a5334}}
 .save-ok{{display:none;border:1px solid #000;color:#000;padding:10px 14px;font-size:13px;margin-top:12px}}
 .toggle-row{{display:flex;align-items:center;justify-content:space-between;padding:4px 0}}
 .toggle-label div:first-child{{font-weight:700;font-size:14px;color:#000}}
@@ -582,7 +582,7 @@ async def profile_page(request: Request, response: Response):
 .toggle input{{opacity:0;width:0;height:0}}
 .toggle .slider{{position:absolute;inset:0;background:#ccc;border-radius:24px;cursor:pointer;transition:.2s}}
 .toggle .slider::before{{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:white;border-radius:50%;transition:.2s}}
-.toggle input:checked+.slider{{background:#000}}
+.toggle input:checked+.slider{{background:#4a6741}}
 .toggle input:checked+.slider::before{{transform:translateX(20px)}}
 .svc-row{{display:flex;align-items:center;justify-content:space-between;padding:14px 20px}}
 .svc-row+.svc-row{{border-top:1px solid #e0e0e0}}
@@ -615,11 +615,11 @@ async def profile_page(request: Request, response: Response):
     </div>
     <div class="svc-row" style="border-top:1px solid #e0e0e0;">
       <div><span style="font-weight:700;font-size:14px;color:#000;">Spotify</span><br><span style="font-size:12px;color:#888;">{"Connected" if spotify_connected else "Your top artists and listening history"}</span></div>
-      {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if spotify_connected else '<a href="/auth/spotify" style="padding:6px 14px;background:#000;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
+      {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if spotify_connected else '<a href="/auth/spotify" style="padding:6px 14px;background:#4a6741;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
     </div>
     <div class="svc-row">
       <div><span style="font-weight:700;font-size:14px;color:#000;">YouTube</span><br><span style="font-size:12px;color:#888;">{"Connected — subscriptions and likes" if youtube_connected else "Your subscriptions and liked videos"}</span></div>
-      {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if youtube_connected else '<a href="/auth/youtube" style="padding:6px 14px;background:#000;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
+      {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if youtube_connected else '<a href="/auth/youtube" style="padding:6px 14px;background:#4a6741;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
     </div>
   </div>
 
@@ -1230,13 +1230,13 @@ async def calendar_view(request: Request):
       .view-toggle button {{ padding: 7px 16px; border: none; background: transparent; cursor: pointer; font-size: 12px; font-weight: 500; color: #888; transition: all .15s; text-transform: uppercase; letter-spacing: .5px; }}
       .view-toggle button.active {{ background: #000; color: #fff; }}
       .score-badge {{ display: inline-block; font-weight: 700; padding: 2px 10px; font-size: 13px; }}
-      .score-high {{ background: #000; color: #fff; }}
-      .score-mid {{ background: #f5f5f5; color: #555; }}
+      .score-high {{ background: #4a6741; color: #fff; }}
+      .score-mid {{ background: #e8ede7; color: #4a6741; }}
       .score-low {{ background: #f5f5f5; color: #999; }}
       .rsvp-btn {{ font-size: 11px; padding: 5px 14px; border: 1px solid #ccc; background: white; cursor: pointer; color: #888; font-weight: 700; transition: all .15s; text-transform: uppercase; letter-spacing: .3px; }}
-      .rsvp-btn:hover, .rsvp-btn.active {{ color: #000; border-color: #000; }}
-      .rsvp-btn.going:hover, .rsvp-btn.going.active {{ background: #000; color: #fff; border-color: #000; }}
-      .rsvp-btn.maybe:hover, .rsvp-btn.maybe.active {{ background: #f5f5f5; color: #000; border-color: #000; }}
+      .rsvp-btn:hover, .rsvp-btn.active {{ color: #4a6741; border-color: #4a6741; }}
+      .rsvp-btn.going:hover, .rsvp-btn.going.active {{ background: #4a6741; color: #fff; border-color: #4a6741; }}
+      .rsvp-btn.maybe:hover, .rsvp-btn.maybe.active {{ background: #f4f7f3; color: #4a6741; border-color: #4a6741; }}
       /* --- Card list view --- */
       #list-view {{ display: none; }}
       .day-group {{ margin-bottom: 28px; }}
@@ -1251,7 +1251,7 @@ async def calendar_view(request: Request):
       .evt-card.vibe-social {{ border-left-color: #c9a227; }}
       .evt-card.vibe-intellectual {{ border-left-color: #4a6741; }}
       .evt-card.vibe-mixed {{ border-left-color: #555; }}
-      .evt-card.rsvp-going-card {{ border-left-color: #000; border-left-width: 4px; }}
+      .evt-card.rsvp-going-card {{ border-left-color: #4a6741; border-left-width: 4px; }}
       .evt-card.rsvp-maybe-card {{ border-left-color: #888; }}
       .evt-card .card-body {{ flex: 1; padding: 14px 16px; min-width: 0; }}
       .evt-card .card-top {{ display: flex; align-items: flex-start; gap: 8px; }}
