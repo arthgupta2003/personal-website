@@ -115,23 +115,23 @@ __OG_TAGS__
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-         background: #fff; color: #111; font-size: 14px; line-height: 1.55; min-height: 100vh; }
-  /* --- App shell — MoMA-inspired: white, clean, typographic --- */
-  .app-nav { background: #fff; padding: 0 20px; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #000; }
+         background: #faf9f7; color: #1a1a1a; font-size: 14px; line-height: 1.55; min-height: 100vh; }
+  /* --- App shell --- */
+  .app-nav { background: #fff; padding: 0 20px; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #e8e4df; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
   .app-nav-inner { display: flex; align-items: center; max-width: 960px; margin: 0 auto; height: 56px; gap: 4px; }
   .app-logo { font-size: 20px; font-weight: 800; color: #4a6741; text-decoration: none; letter-spacing: -.8px; margin-right: auto; text-transform: lowercase; }
   .app-logo:hover { text-decoration: none; opacity: .8; }
-  .app-nav a.nav-link { font-size: 13px; font-weight: 500; color: #888; text-decoration: none; padding: 8px 14px; letter-spacing: .3px; text-transform: uppercase; transition: color .15s; }
-  .app-nav a.nav-link:hover { color: #4a6741; text-decoration: none; }
-  .app-nav a.nav-link.active { color: #4a6741; font-weight: 700; }
+  .app-nav a.nav-link { font-size: 13px; font-weight: 500; color: #888; text-decoration: none; padding: 8px 14px; border-radius: 6px; transition: all .15s; }
+  .app-nav a.nav-link:hover { color: #4a6741; background: #f4f7f3; text-decoration: none; }
+  .app-nav a.nav-link.active { color: #4a6741; font-weight: 700; background: #edf2eb; }
   .nav-divider { width: 1px; height: 20px; background: #ddd; margin: 0 8px; }
   .app-content { max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }
   /* --- Shared components --- */
-  h1 { margin-bottom: 24px; color: #000; font-size: 2rem; font-weight: 800; letter-spacing: -.5px; }
+  h1 { margin-bottom: 24px; color: #1a1a1a; font-size: 2rem; font-weight: 800; letter-spacing: -.5px; }
   h2 { margin: 28px 0 16px; color: #000; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
   a { color: #4a6741; text-decoration: underline; text-underline-offset: 2px; }
   a:hover { text-decoration-thickness: 2px; color: #3a5334; }
-  .card { background: #fff; border: 1px solid #e0e0e0; padding: 24px; margin-bottom: 24px; }
+  .card { background: #fff; border: 1px solid #e8e4df; border-radius: 8px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,.03); }
   .badge { display: inline-block; padding: 2px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
   .badge-green { background: #000; color: #fff; }
   .badge-yellow { background: #f5f5f5; color: #555; }
@@ -153,10 +153,10 @@ __OG_TAGS__
   .interests-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
   .interest-tag { padding: 4px 12px; background: #f5f5f5; color: #333; font-size: 12px; font-weight: 500; }
   .cost-box { background: #fafafa; border: 1px solid #e0e0e0; padding: 12px; margin: 10px 0; }
-  .btn-primary { background: #4a6741; color: #fff; border: none; padding: 10px 24px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: .5px; transition: background .15s; }
-  .btn-primary:hover { background: #3a5334; }
-  .btn-secondary { background: #fff; color: #4a6741; border: 1px solid #4a6741; padding: 10px 24px; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: .5px; }
-  .btn-secondary:hover { background: #f4f7f3; }
+  .btn-primary { background: #4a6741; color: #fff; border: none; border-radius: 6px; padding: 10px 24px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: inherit; letter-spacing: .3px; transition: all .15s; }
+  .btn-primary:hover { background: #3a5334; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(74,103,65,.25); }
+  .btn-secondary { background: #fff; color: #4a6741; border: 1px solid #c5d4c1; border-radius: 6px; padding: 10px 24px; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; letter-spacing: .3px; }
+  .btn-secondary:hover { background: #f4f7f3; border-color: #4a6741; }
   .btn-pill { padding: 6px 16px; font-size: 12px; }
   @media (max-width: 640px) {
     .app-nav a.nav-link { font-size: 11px; padding: 8px 8px; }
@@ -1586,16 +1586,17 @@ async def calendar_view(request: Request):
       .view-toggle {{ display: flex; border: 1px solid #e0e0e0; }}
       .view-toggle button {{ padding: 7px 16px; border: none; background: transparent; cursor: pointer; font-size: 12px; font-weight: 500; color: #888; transition: all .15s; text-transform: uppercase; letter-spacing: .5px; }}
       .view-toggle button.active {{ background: #000; color: #fff; }}
-      .score-badge {{ display: inline-block; font-weight: 700; padding: 2px 10px; font-size: 13px; }}
+      .score-badge {{ display: inline-block; font-weight: 700; padding: 3px 10px; font-size: 13px; border-radius: 4px; }}
       .score-high {{ background: #4a6741; color: #fff; }}
       .score-mid {{ background: #e8ede7; color: #4a6741; }}
-      .score-low {{ background: #f5f5f5; color: #999; }}
-      .rsvp-btn {{ font-size: 11px; padding: 5px 14px; border: 1px solid #ccc; background: white; cursor: pointer; color: #888; font-weight: 700; transition: all .15s; text-transform: uppercase; letter-spacing: .3px; }}
-      .rsvp-btn:hover, .rsvp-btn.active {{ color: #4a6741; border-color: #4a6741; }}
-      .rsvp-btn.going:hover, .rsvp-btn.going.active {{ background: #4a6741; color: #fff; border-color: #4a6741; }}
-      .rsvp-btn.maybe:hover, .rsvp-btn.maybe.active {{ background: #f4f7f3; color: #4a6741; border-color: #4a6741; }}
-      .filter-chip {{ font-size: 12px; padding: 5px 12px; border: 1px solid #e0e0e0; background: white; cursor: pointer; color: #888; font-weight: 600; transition: all .15s; }}
-      .filter-chip.active {{ border-color: #4a6741; color: #4a6741; background: #f4f7f3; }}
+      .score-low {{ background: #f0eeeb; color: #999; }}
+      .rsvp-btn {{ font-size: 12px; padding: 5px 14px; border: 1px solid #d4cfc8; border-radius: 20px; background: white; cursor: pointer; color: #888; font-weight: 600; transition: all .15s; }}
+      .rsvp-btn:hover {{ color: #4a6741; border-color: #4a6741; }}
+      .rsvp-btn.going.active {{ background: #4a6741; color: #fff; border-color: #4a6741; }}
+      .rsvp-btn.maybe.active {{ background: #e8ede7; color: #4a6741; border-color: #4a6741; }}
+      .filter-chip {{ font-size: 12px; padding: 5px 12px; border: 1px solid #e0dcd7; border-radius: 20px; background: white; cursor: pointer; color: #888; font-weight: 600; transition: all .15s; }}
+      .filter-chip:hover {{ border-color: #c5d4c1; color: #4a6741; }}
+      .filter-chip.active {{ border-color: #4a6741; color: #fff; background: #4a6741; }}
       /* --- Card list view --- */
       #list-view {{ display: none; }}
       .day-group {{ margin-bottom: 28px; }}
@@ -1605,8 +1606,8 @@ async def calendar_view(request: Request):
       .see-more-btn:hover {{ background: #f5f5f5; }}
       .see-more-collapse {{ color: #888; }}
       .see-more-collapse:hover {{ background: #f5f5f5; color: #000; }}
-      .evt-card {{ background: white; margin: 0; border-bottom: 1px solid #e0e0e0; transition: background .15s; cursor: pointer; overflow: hidden; display: flex; }}
-      .evt-card:hover {{ background: #fafafa; }}
+      .evt-card {{ background: white; margin: 6px 0; border: 1px solid #e8e4df; border-radius: 8px; transition: all .15s; cursor: pointer; overflow: hidden; display: flex; }}
+      .evt-card:hover {{ box-shadow: 0 2px 8px rgba(0,0,0,.06); transform: translateY(-1px); }}
       .evt-card.rsvp-going-card {{ border-left: 3px solid #4a6741; }}
       .evt-card.rsvp-maybe-card {{ border-left-color: #888; }}
       .evt-card .card-body {{ flex: 1; padding: 14px 16px; min-width: 0; }}
