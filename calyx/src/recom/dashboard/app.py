@@ -2061,12 +2061,20 @@ async def calendar_view(request: Request):
 
       events.forEach(e => {{
         const score = e.score || 0;
-        const size = Math.max(6, Math.min(18, score / 5));
         const color = score >= 70 ? '#4a6741' : score >= 50 ? '#c4734f' : '#bbb';
 
-        const marker = L.circleMarker([e.lat, e.lon], {{
-          radius: size, color: '#fff', fillColor: color, fillOpacity: 0.8, weight: 2
-        }});
+        let marker;
+        if (score >= 70) {{
+          // Top picks: star marker
+          const starSvg = `<svg width="28" height="28" viewBox="0 0 24 24"><polygon points="12,2 15,9 22,9 16.5,14 18.5,21 12,17 5.5,21 7.5,14 2,9 9,9" fill="${{color}}" stroke="#fff" stroke-width="1.5"/></svg>`;
+          const icon = L.divIcon({{ html: starSvg, iconSize: [28, 28], iconAnchor: [14, 14], className: '' }});
+          marker = L.marker([e.lat, e.lon], {{ icon }});
+        }} else {{
+          const size = score >= 50 ? 8 : 5;
+          marker = L.circleMarker([e.lat, e.lon], {{
+            radius: size, color: '#fff', fillColor: color, fillOpacity: 0.7, weight: 1.5
+          }});
+        }}
 
         marker.on('click', () => {{
           let timeStr = '';
