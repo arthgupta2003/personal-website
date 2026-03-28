@@ -933,20 +933,7 @@ async def taste_profile_page(request: Request):
   <!-- Taste tab -->
   <div id="you-taste" class="you-panel active">
     <div class="taste-section">
-      <h2>Your interests</h2>
-      <div class="tags">{_tags(algo_tags)}</div>
-    </div>
-
-    {"<div class='taste-section'><h2>Music (from Spotify)</h2><div class='tags'>" + _tags(spotify_artists, "#8b6914") + "</div></div>" if spotify_artists else ""}
-
-    {"<div class='taste-section'><h2>YouTube</h2><div class='tags'>" + _tags(youtube_subs, "#c4302b") + "</div></div>" if youtube_subs else ""}
-
-    {"<div class='taste-section'><h2>Your words</h2><div class='tags'>" + _tags(paste_keywords) + "</div></div>" if paste_keywords else ""}
-
-    {"<div class='taste-section'><h2>Manual</h2><div class='tags'>" + _tags(manual) + "</div></div>" if manual else ""}
-
-    <div class="taste-section">
-      <h2>Tell us more</h2>
+      <h2>Tell us about yourself</h2>
       <p style="font-size:13px;color:#888;margin-bottom:10px;">Paste anything — your YouTube feed, bands you like, hobbies. We'll figure it out.</p>
       <textarea id="paste-box" placeholder="e.g. I love indie rock, just saw Magdalena Bay, really into climbing and art museums lately..." style="width:100%;min-height:80px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box;"></textarea>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
@@ -954,6 +941,12 @@ async def taste_profile_page(request: Request):
         <button onclick="submitPaste()" class="btn-primary" id="paste-btn" style="padding:8px 16px;">Save</button>
       </div>
     </div>
+
+    {"<div class='taste-section'><h2>Your interests</h2><div class='tags'>" + _tags(algo_tags + manual + paste_keywords) + "</div></div>" if (algo_tags or manual or paste_keywords) else ""}
+
+    {"<div class='taste-section'><h2>Music (from Spotify)</h2><div class='tags'>" + _tags(spotify_artists, "#8b6914") + "</div></div>" if spotify_artists else ""}
+
+    {"<div class='taste-section'><h2>YouTube</h2><div class='tags'>" + _tags(youtube_subs, "#c4302b") + "</div></div>" if youtube_subs else ""}
   </div>
 
   <!-- Settings tab -->
