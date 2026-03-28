@@ -1520,15 +1520,23 @@ In 2-3 sentences: Why did our database miss these? What event sources or scraper
         )
         db.conn.commit()
 
-        # Append clean one-liner to todo.txt
-        # Don't auto-append to todo — it writes garbage. Just log to DB.
-        # Admin can review search_retros table and add TODOs manually.
-
         # Email the retro to admin
         try:
             from recom.email.sender import send_email as _send
-            subject = f"[Calyx Retro] Search gap: {query}"
-            html = f"<h3>Search Gap Detected</h3><p><strong>Query:</strong> {query}</p><p><strong>DB:</strong> {len(db_results)} results | <strong>Web:</strong> {len(web_results)} results</p><p>{diagnosis}</p>"
+            subject = f"[Calyx] Search gap: {query}"
+            html = f"""<div style="font-family:Inter,system-ui,sans-serif;max-width:500px;">
+                <div style="border-left:3px solid #c4734f;padding:12px 16px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:700;color:#c4734f;text-transform:uppercase;letter-spacing:1px;">Search Gap Detected</div>
+                    <div style="font-size:18px;font-weight:800;color:#1a1a1a;margin-top:4px;">{query}</div>
+                </div>
+                <div style="font-size:13px;color:#555;line-height:1.6;">
+                    <p><strong>Your DB:</strong> {len(db_results)} results &nbsp;|&nbsp; <strong>Web:</strong> {len(web_results)} results</p>
+                    <p style="background:#f8f8f8;padding:12px;border:1px solid #eee;margin-top:12px;">{diagnosis}</p>
+                </div>
+                <div style="margin-top:16px;font-size:12px;color:#888;">
+                    <a href="{settings.dashboard_url}/admin" style="color:#4a6741;">View admin dashboard</a>
+                </div>
+            </div>"""
             _send(subject, html, settings)
         except Exception:
             pass
@@ -2126,6 +2134,54 @@ async def calendar_view(request: Request):
         html += '</div>';
       }}
       container.innerHTML = html;
+    }}
+
+    // --- Map view ---
+    let _map = null;
+    let _mapMarkers = [];
+    function buildMapView() {{
+      const mapEl = document.getElementById('event-map');
+      if (!_map) {{
+        _map = L.map('event-map').setView([HOME_LAT, HOME_LON], 13);
+        L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}@2x.png', {{
+          attribution: '&copy; OpenStreetMap &copy; CARTO',
+          maxZoom: 19
+        }}).addTo(_map);
+        // Home marker
+        L.circleMarker([HOME_LAT, HOME_LON], {{radius:6, color:'#4a6741', fillColor:'#4a6741', fillOpacity:1, weight:2}}).addTo(_map).bindPopup('You');
+      }}
+      setTimeout(() => _map.invalidateSize(), 100);
+
+      // Clear old markers
+      _mapMarkers.forEach(m => _map.removeLayer(m));
+      _mapMarkers = [];
+
+      const filtered = getFilteredEvents();
+      filtered.forEach(e => {{
+        if (!e.lat || !e.lon) return;
+        const score = e.score || 0;
+        const radius = Math.max(5, Math.min(14, score / 8));
+        const color = score >= 70 ? '#4a6741' : score >= 50 ? '#c4734f' : '#999';
+
+        const marker = L.circleMarker([e.lat, e.lon], {{
+          radius: radius, color: color, fillColor: color, fillOpacity: 0.7, weight: 1
+        }}).addTo(_map);
+
+        let timeStr = '';
+        try {{ const dt = new Date(e.start); if (dt.getHours()||dt.getMinutes()) timeStr = dt.toLocaleTimeString('en-US',{{hour:'numeric',minute:'2-digit'}}); }} catch(x){{}}
+        const dayStr = e.start ? new Date(e.start).toLocaleDateString('en-US',{{weekday:'short',month:'short',day:'numeric'}}) : '';
+
+        marker.bindPopup(`<div style="font-family:Inter,system-ui,sans-serif;min-width:180px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${{e.title}}</div>
+          <div style="font-size:12px;color:#888;">${{[dayStr, timeStr, e.location].filter(Boolean).join(' · ')}}</div>
+          <div style="margin-top:8px;display:flex;gap:8px;">
+            ${{e.url ? '<a href="'+e.url+'" target="_blank" style="font-size:12px;color:#4a6741;font-weight:600;">View event</a>' : ''}}
+            <span style="font-size:12px;font-weight:700;color:'+color+';">${{score}}</span>
+          </div>
+        </div>`, {{maxWidth: 250}});
+
+        _mapMarkers.push(marker);
+      }});
     }}
 
     // --- Init ---
