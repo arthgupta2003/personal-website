@@ -1416,26 +1416,61 @@ async def api_search(request: Request):
                 max_tokens=1000,
                 tools=[{"type": "web_search_20250305", "name": "web_search"}],
                 messages=[{"role": "user", "content":
-                    f"Find upcoming events in Boston/Cambridge area matching: {query}. "
-                    f"Return ONLY a JSON array of objects with fields: title, date (ISO 8601 like 2026-04-05T19:00), location, url, description. "
-                    f"Max 6 results. Only real events with actual URLs."}],
+                    f"Find places and events in Boston/Cambridge area for: {query}. "
+                    f"Include studios, venues, classes, and workshops — not just one-off events. "
+                    f"Return a JSON array: [{{\"title\":\"\",\"date\":\"\",\"location\":\"\",\"url\":\"\",\"description\":\"\"}}]. "
+                    f"Max 6 results. Include real URLs."}],
             )
             # Extract text from response
             text = ""
             for block in resp.content:
                 if hasattr(block, "text"):
                     text += block.text
+            # Try JSON array first
             json_match = _re.search(r'\[.*\]', text, _re.DOTALL)
             if json_match:
-                events_raw = _json.loads(json_match.group())
-                for ev in events_raw[:6]:
+                try:
+                    events_raw = _json.loads(json_match.group())
+                    for ev in events_raw[:6]:
+                        web_results.append({
+                            "title": ev.get("title", ""),
+                            "start_time": ev.get("date", ""),
+                            "location": ev.get("location", ""),
+                            "url": ev.get("url", ""),
+                            "score": 0,
+                            "match_reason": ev.get("description", "")[:120],
+                            "source": "web",
+                        })
+                except _json.JSONDecodeError:
+                    pass
+            # Fallback: if no JSON results, extract URLs and names from prose
+            if not web_results and text:
+                urls = _re.findall(r'(https?://[^\s\)\"\'<>]+)', text)
+                # Use Claude's text as a single helpful result
+                summary = text.strip()[:200]
+                if urls:
+                    for url in urls[:4]:
+                        # Extract a title near the URL
+                        idx = text.find(url)
+                        context = text[max(0,idx-80):idx].strip()
+                        title = context.split(".")[-1].strip().split(",")[-1].strip() or url.split("/")[2]
+                        web_results.append({
+                            "title": title[:60],
+                            "start_time": "",
+                            "location": "Boston area",
+                            "url": url,
+                            "score": 0,
+                            "match_reason": "",
+                            "source": "web",
+                        })
+                elif summary:
                     web_results.append({
-                        "title": ev.get("title", ""),
-                        "start_time": ev.get("date", ""),
-                        "location": ev.get("location", ""),
-                        "url": ev.get("url", ""),
+                        "title": f"Web results for \"{query}\"",
+                        "start_time": "",
+                        "location": "",
+                        "url": "",
                         "score": 0,
-                        "match_reason": ev.get("description", "")[:120],
+                        "match_reason": summary,
                         "source": "web",
                     })
         except Exception as exc:
