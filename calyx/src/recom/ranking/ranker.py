@@ -663,6 +663,19 @@ def rank_events(
                 ranked_ev.match_reason = f"🫂 {names} {'is' if len(friends)==1 else 'are'} going! " + ranked_ev.match_reason
                 logger.debug("Friend boost for %s: +%d (%s -> %s)", ranked_ev.event.title, bonus, old_score, ranked_ev.score)
 
+    # Seasonal/festival boost — limited-time events deserve extra visibility
+    _seasonal_keywords = {"festival", "parade", "marathon", "fireworks", "holiday", "market",
+                          "cherry blossom", "st. patrick", "4th of july", "halloween",
+                          "oktoberfest", "new year", "pride", "opening day", "block party"}
+    for ranked_ev in all_ranked:
+        if not ranked_ev.keep:
+            continue
+        title_lower = ranked_ev.event.title.lower()
+        if any(kw in title_lower for kw in _seasonal_keywords):
+            old = ranked_ev.score
+            ranked_ev.score = min(100.0, ranked_ev.score + 10)
+            logger.debug("Seasonal boost for %s: +10 (%s -> %s)", ranked_ev.event.title, old, ranked_ev.score)
+
     # Apply steering directives
     if steering:
         steer_map: dict[str, str] = {}

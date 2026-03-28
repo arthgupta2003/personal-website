@@ -4319,7 +4319,7 @@ async def api_join_group(group_id: int, invite_code: str, request: Request):
     db.add_group_member(group["id"], user_id)
 
     # No magic link email — just set cookie and redirect. Instant join.
-    resp = RedirectResponse(f"/group/{group_id}?u={token}&success=Welcome+to+the+group!", status_code=303)
+    resp = RedirectResponse(f"/group/{group_id}?u={token}&success=Welcome!+Add+events+or+RSVP+to+get+started.", status_code=303)
     _set_token_cookie(resp, token)
     return resp
 

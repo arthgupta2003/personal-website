@@ -141,6 +141,36 @@ async def _fetch_boston_calendar(client: httpx.AsyncClient) -> list[Event]:
             )
         )
 
+    # Enrich: fetch detail pages for events missing price/description (up to 20)
+    to_enrich = [e for e in events if not e.price and e.url][:20]
+    if to_enrich:
+        for event in to_enrich:
+            try:
+                detail = await client.get(event.url, headers=headers)
+                if detail.status_code == 200:
+                    dsoup = BeautifulSoup(detail.text, "lxml")
+                    # Price: look for dollar amounts or "price" class
+                    price_el = dsoup.find(class_=lambda c: c and "price" in str(c).lower())
+                    if price_el:
+                        event.price = price_el.get_text(strip=True)
+                    else:
+                        text = dsoup.get_text()
+                        price_match = re.search(r"\$\d[\d,.]*(?:\s*[-–]\s*\$\d[\d,.]*)?", text)
+                        if price_match:
+                            event.price = price_match.group()
+                    # Description: meta description or first paragraph
+                    if not event.description:
+                        meta = dsoup.find("meta", attrs={"name": "description"})
+                        if meta and meta.get("content"):
+                            event.description = meta["content"][:300]
+                        else:
+                            p = dsoup.find("p")
+                            if p:
+                                event.description = p.get_text(strip=True)[:300]
+            except Exception:
+                pass
+        logger.info("Enriched %d/%d events with detail page data", len(to_enrich), len(events))
+
     logger.info("The Boston Calendar returned %d events", len(events))
     return events
 
