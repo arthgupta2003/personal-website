@@ -10,7 +10,7 @@
 
 # DONE: Onboarding guidance — welcome toast with action hint
 # TODO: Group availability poll — "who's free this weekend?" (When2Meet-style)
-# TODO: Notification preferences — per-group email frequency control
+# DONE: Notification preferences — per-group mute toggle
 # DONE: Recurring events in groups — "Every Tuesday at 7pm"
 # DONE: Music genre tags — vibe colors removed as confusing; Spotify artists show on taste profile — extract genre from Spotify for music events
 # DONE: Search: date/free filters on Discover

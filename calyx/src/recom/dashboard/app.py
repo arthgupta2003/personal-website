@@ -2744,9 +2744,15 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                     <input name="location" placeholder="Where? (optional)"
                            style="flex:1;min-width:130px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;">
                 </div>
-                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#888;margin-bottom:10px;cursor:pointer;">
-                    <input type="checkbox" name="recurring" value="weekly"> Repeat weekly (4 weeks)
-                </label>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <select name="recurring" style="padding:6px 10px;border:1px solid #ccc;font-size:13px;font-family:inherit;color:#555;">
+                        <option value="">One time</option>
+                        <option value="2">Weekly for 2 weeks</option>
+                        <option value="4">Weekly for 4 weeks</option>
+                        <option value="8">Weekly for 8 weeks</option>
+                        <option value="12">Weekly for 12 weeks</option>
+                    </select>
+                </div>
                 <button type="submit" class="btn-primary" style="width:100%;">Add Event</button>
             </form>
         </div>'''
@@ -2943,6 +2949,59 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     {f'<div style="border-bottom:1px solid #e0e0e0;padding-bottom:28px;margin-bottom:28px;">{upcoming_html}</div>' if upcoming_html and "No upcoming" not in upcoming_html else '<p style="color:#888;font-size:14px;margin-bottom:28px;">No upcoming events yet.</p>'}
 
     {add_event_html}
+
+    {"" if not is_member else f"""<div style="border:1px solid #e0e0e0;padding:20px;margin-bottom:28px;">
+        <h2 style="margin:0 0 12px;">Who&apos;s free?</h2>
+        <div id="avail-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:12px;"></div>
+        <div id="avail-counts" style="font-size:12px;color:#888;"></div>
+    </div>
+    <script>
+    (function() {{
+        const grid = document.getElementById('avail-grid');
+        const counts = document.getElementById('avail-counts');
+        const today = new Date(); today.setHours(0,0,0,0);
+        const days = [];
+        for (let i = 0; i < 7; i++) {{
+            const d = new Date(today); d.setDate(today.getDate() + i);
+            days.push(d.toISOString().slice(0,10));
+        }}
+
+        // Fetch current availability
+        function render(data) {{
+            grid.innerHTML = '';
+            const mySlots = new Set((data.my_slots || []).map(s => s));
+            const slotCounts = data.slot_counts || {{}};
+            days.forEach(day => {{
+                const d = new Date(day + 'T00:00:00');
+                const label = d.toLocaleDateString('en-US', {{weekday:'short'}});
+                const dateNum = d.getDate();
+                const isMine = mySlots.has(day);
+                const count = slotCounts[day] || 0;
+                const opacity = Math.min(1, 0.15 + count * 0.2);
+                grid.innerHTML += `<div onclick="toggleAvail('${{day}}',this)" style="text-align:center;padding:12px 4px;border:1px solid ${{isMine ? '#4a6741' : '#e0e0e0'}};background:${{isMine ? '#4a6741' : (count > 0 ? 'rgba(74,103,65,' + opacity + ')' : '#fff')}};color:${{isMine ? '#fff' : '#333'}};cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;">
+                    <div>${{label}}</div><div style="font-size:16px;font-weight:800;">${{dateNum}}</div>
+                    ${{count > 0 ? '<div style="font-size:10px;opacity:.7;margin-top:2px;">' + count + ' free</div>' : ''}}
+                </div>`;
+            }});
+        }}
+
+        function load() {{
+            fetch('/api/group/{group_id}/availability').then(r => r.json()).then(render);
+        }}
+
+        window.toggleAvail = function(day, el) {{
+            fetch('/api/group/{group_id}/availability', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{slot: day}})
+            }}).then(r => r.json()).then(render);
+        }};
+
+        load();
+    }})();
+    </script>
+    """}
+
     {actions_html}
     {mute_html}
     {leave_html}
@@ -3344,14 +3403,13 @@ async def api_group_add_event(group_id: int, request: Request):
     location = (form.get("location") or "").strip()
     if not title or not date:
         return HTMLResponse("<h1>Title and date required</h1>", status_code=400)
-    recurring = form.get("recurring") == "weekly"
+    repeat_weeks = int(form.get("recurring") or "0")
     from datetime import datetime as _dt, timedelta as _td
     start_time = f"{date}T{time}:00"
     db.add_group_event(group_id, user["id"], title, start_time, location=location)
-    # Create recurring copies
-    if recurring:
+    if repeat_weeks > 1:
         base_date = _dt.fromisoformat(start_time)
-        for week in range(1, 4):  # 3 more weeks
+        for week in range(1, repeat_weeks):
             next_dt = base_date + _td(weeks=week)
             db.add_group_event(group_id, user["id"], title, next_dt.isoformat(), location=location)
     # Notify other group members
@@ -3425,6 +3483,96 @@ async def api_group_leave(group_id: int, request: Request):
         return HTMLResponse("<h1>Not a member</h1>", status_code=403)
     db.leave_group(group_id, user["id"])
     return RedirectResponse("/groups?success=Left+group", status_code=303)
+
+
+@app.get("/api/group/{group_id:int}/availability")
+async def api_group_availability_get(group_id: int, request: Request):
+    """Get availability poll data for a group."""
+    user = _get_current_user(request)
+    db = get_db()
+    if not user:
+        return JSONResponse({"my_slots": [], "slot_counts": {}})
+
+    # Get or create poll for this group
+    poll = db.conn.execute(
+        "SELECT id FROM availability_polls WHERE group_id=? ORDER BY id DESC LIMIT 1",
+        (group_id,),
+    ).fetchone()
+    if not poll:
+        db.conn.execute(
+            "INSERT INTO availability_polls (group_id, created_by, created_at) VALUES (?, ?, ?)",
+            (group_id, user["id"], datetime.now().isoformat()),
+        )
+        db.conn.commit()
+        poll = db.conn.execute("SELECT id FROM availability_polls WHERE group_id=? ORDER BY id DESC LIMIT 1", (group_id,)).fetchone()
+
+    poll_id = poll["id"]
+    my_slots = [r["slot"] for r in db.conn.execute(
+        "SELECT slot FROM availability_votes WHERE poll_id=? AND user_id=? AND available=1",
+        (poll_id, user["id"]),
+    ).fetchall()]
+
+    slot_counts = {}
+    for r in db.conn.execute(
+        "SELECT slot, COUNT(*) as cnt FROM availability_votes WHERE poll_id=? AND available=1 GROUP BY slot",
+        (poll_id,),
+    ).fetchall():
+        slot_counts[r["slot"]] = r["cnt"]
+
+    return JSONResponse({"my_slots": my_slots, "slot_counts": slot_counts})
+
+
+@app.post("/api/group/{group_id:int}/availability")
+async def api_group_availability_vote(group_id: int, request: Request):
+    """Toggle availability for a slot."""
+    user = _get_current_user(request)
+    db = get_db()
+    if not user:
+        return JSONResponse({"ok": False}, status_code=401)
+    body = await request.json()
+    slot = body.get("slot", "")
+    if not slot:
+        return JSONResponse({"ok": False})
+
+    poll = db.conn.execute(
+        "SELECT id FROM availability_polls WHERE group_id=? ORDER BY id DESC LIMIT 1",
+        (group_id,),
+    ).fetchone()
+    if not poll:
+        return JSONResponse({"ok": False})
+
+    poll_id = poll["id"]
+    existing = db.conn.execute(
+        "SELECT available FROM availability_votes WHERE poll_id=? AND user_id=? AND slot=?",
+        (poll_id, user["id"], slot),
+    ).fetchone()
+
+    if existing:
+        new_val = 0 if existing["available"] else 1
+        db.conn.execute(
+            "UPDATE availability_votes SET available=? WHERE poll_id=? AND user_id=? AND slot=?",
+            (new_val, poll_id, user["id"], slot),
+        )
+    else:
+        db.conn.execute(
+            "INSERT INTO availability_votes (poll_id, user_id, slot, available) VALUES (?, ?, ?, 1)",
+            (poll_id, user["id"], slot),
+        )
+    db.conn.commit()
+
+    # Return updated state
+    my_slots = [r["slot"] for r in db.conn.execute(
+        "SELECT slot FROM availability_votes WHERE poll_id=? AND user_id=? AND available=1",
+        (poll_id, user["id"]),
+    ).fetchall()]
+    slot_counts = {}
+    for r in db.conn.execute(
+        "SELECT slot, COUNT(*) as cnt FROM availability_votes WHERE poll_id=? AND available=1 GROUP BY slot",
+        (poll_id,),
+    ).fetchall():
+        slot_counts[r["slot"]] = r["cnt"]
+
+    return JSONResponse({"my_slots": my_slots, "slot_counts": slot_counts})
 
 
 @app.post("/api/group/{group_id:int}/mute")
