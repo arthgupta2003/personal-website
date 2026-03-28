@@ -86,7 +86,7 @@ tmux select-layout -t "$SESSION" even-vertical
 
 # Claude agent in its own window (remote control via claude.ai/code)
 tmux new-window -t "$SESSION" -n claude
-tmux send-keys -t "$SESSION:claude" "cd $CALYX && claude" Enter
+tmux send-keys -t "$SESSION:claude" "cd $CALYX && claude --dangerously-skip-permissions /remote-control" Enter
 
 # Switch back to main window
 tmux select-window -t "$SESSION:main"

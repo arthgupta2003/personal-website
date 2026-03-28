@@ -1100,7 +1100,6 @@ async def calendar_view(request: Request, run_id: int | None = None):
 
     _default_og = '<meta property="og:site_name" content="Calyx"><meta property="og:type" content="website"><meta property="og:title" content="This Week in Cambridge"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://calyx.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
     page_html = LAYOUT_STYLE.replace("__TITLE__", "This Week in Cambridge").replace("__OG_TAGS__", _default_og) + render_nav(current_user) + '<div class="app-content">' + f"""
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
     <style>
       /* --- Top bar --- */
       .page-header {{ margin-bottom: 16px; }}
@@ -1110,73 +1109,16 @@ async def calendar_view(request: Request, run_id: int | None = None):
       .view-toggle {{ display: flex; border: 1px solid #e0e0e0; }}
       .view-toggle button {{ padding: 7px 16px; border: none; background: transparent; cursor: pointer; font-size: 12px; font-weight: 500; color: #888; transition: all .15s; text-transform: uppercase; letter-spacing: .5px; }}
       .view-toggle button.active {{ background: #000; color: #fff; }}
-      .vibe-filters {{ display: flex; gap: 4px; }}
-      .vibe-filter {{ padding: 5px 12px; border: 1px solid #e0e0e0; background: white; cursor: pointer; font-size: 11px; font-weight: 600; color: #888; transition: all .15s; text-transform: uppercase; letter-spacing: .5px; }}
-      .vibe-filter.active {{ border-color: #000; color: #000; }}
-      .vibe-filter[data-vibe="social"].active {{ background: #fff; }}
-      .vibe-filter[data-vibe="intellectual"].active {{ background: #fff; }}
-      .vibe-filter[data-vibe="mixed"].active {{ background: #fff; }}
-      .vibe-filter[data-vibe="all"].active {{ background: #fff; }}
-      .stats-row {{ display: flex; gap: 16px; font-size: 13px; color: #888; margin-bottom: 12px; }}
-      .stats-row strong {{ color: #000; }}
-      /* --- Search + score filter --- */
-      .search-bar {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }}
-      .search-input {{ flex: 1; min-width: 160px; padding: 7px 12px; border: 1px solid #ccc; font-size: 13px; color: #111; outline: none; transition: border-color .15s; }}
-      .search-input:focus {{ border-color: #000; }}
-      .score-filter-wrap {{ display: flex; align-items: center; gap: 6px; font-size: 12px; color: #888; white-space: nowrap; }}
-      .score-filter-wrap input[type=range] {{ width: 80px; accent-color: #000; cursor: pointer; }}
-      #score-label {{ font-weight: 700; color: #000; min-width: 20px; }}
-      /* --- FullCalendar --- */
-      #fc-container .fc {{ font-size: 13px; }}
-      #fc-container .fc-event {{ cursor: pointer; border: none; padding: 2px 6px; border-radius: 4px; font-size: 11px; }}
-      #fc-container .fc-daygrid-event-dot {{ display: none; }}
-      #fc-container .fc-toolbar {{ flex-wrap: wrap; gap: 8px; }}
-      /* --- Modal --- */
-      .evt-modal-overlay {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; justify-content: center; align-items: flex-end; }}
-      .evt-modal-overlay.show {{ display: flex; }}
-      .evt-modal {{ background: white; padding: 28px; width: 100%; max-width: 520px; max-height: 85vh; overflow-y: auto; position: relative; animation: slideUp .2s ease-out; }}
-      @keyframes slideUp {{ from {{ transform: translateY(100%); }} to {{ transform: translateY(0); }} }}
-      .evt-modal .drag-handle {{ width: 36px; height: 3px; background: #ddd; margin: 0 auto 16px; }}
-      .evt-modal h3 {{ margin: 0 0 8px; font-size: 18px; color: #000; font-weight: 800; }}
-      .evt-modal h3 a {{ color: #000; }}
-      .evt-modal .close {{ position: absolute; top: 16px; right: 16px; font-size: 20px; cursor: pointer; color: #888; background: #f5f5f5; border: none; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }}
-      .evt-modal .close:hover {{ background: #e0e0e0; color: #000; }}
-      .evt-modal .modal-meta {{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }}
-      .evt-modal .meta-line {{ font-size: 14px; color: #888; margin: 4px 0; }}
-      .evt-modal .desc {{ font-size: 14px; color: #333; line-height: 1.55; margin: 10px 0; }}
-      .evt-modal .reason {{ font-size: 13px; color: #555; background: #f5f5f5; padding: 8px 12px; margin: 10px 0; line-height: 1.4; font-style: italic; }}
       .score-badge {{ display: inline-block; font-weight: 700; padding: 2px 10px; font-size: 13px; }}
       .score-high {{ background: #000; color: #fff; }}
       .score-mid {{ background: #f5f5f5; color: #555; }}
       .score-low {{ background: #f5f5f5; color: #999; }}
-      .vibe-tag {{ display: inline-block; padding: 2px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }}
-      .type-tag {{ display: inline-block; padding: 2px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }}
-      .type-tag.club {{ background: #f5f5f5; color: #555; }}
-      .type-tag.cls {{ background: #f5f5f5; color: #555; }}
-      /* --- RSVP --- */
-      .rsvp-badges {{ display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }}
-      .rsvp-pill {{ font-size: 10px; padding: 3px 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }}
-      .rsvp-going {{ background: #000; color: #fff; }}
-      .rsvp-maybe {{ background: #f5f5f5; color: #555; }}
-      .rsvp-cant {{ background: #f5f5f5; color: #999; }}
-      .rsvp-btns {{ display: flex; gap: 8px; margin-top: 10px; }}
-      .rsvp-btn {{ font-size: 12px; padding: 6px 16px; border: 1px solid #ccc; background: white; cursor: pointer; color: #888; font-weight: 600; transition: all .15s; text-transform: uppercase; letter-spacing: .3px; }}
-      .rsvp-btn:hover, .rsvp-btn.active {{ font-weight: 700; color: #000; border-color: #000; }}
+      .rsvp-btn {{ font-size: 11px; padding: 5px 14px; border: 1px solid #ccc; background: white; cursor: pointer; color: #888; font-weight: 700; transition: all .15s; text-transform: uppercase; letter-spacing: .3px; }}
+      .rsvp-btn:hover, .rsvp-btn.active {{ color: #000; border-color: #000; }}
       .rsvp-btn.going:hover, .rsvp-btn.going.active {{ background: #000; color: #fff; border-color: #000; }}
       .rsvp-btn.maybe:hover, .rsvp-btn.maybe.active {{ background: #f5f5f5; color: #000; border-color: #000; }}
-      .rsvp-btn.cant:hover, .rsvp-btn.cant.active {{ background: #fff; color: #999; border-color: #ccc; }}
-      .attend-btn {{ font-size: 12px; padding: 6px 16px; border: 1px solid #ccc; background: white; cursor: pointer; color: #888; margin-top: 10px; font-weight: 600; transition: all .15s; }}
-      .attend-btn:hover {{ background: #000; color: #fff; border-color: #000; }}
-      .attend-btn.done {{ background: #000; color: #fff; border-color: #000; cursor: default; }}
-      /* Large RSVP buttons for modal */
-      .rsvp-btn-lg {{ flex: 1; font-size: 13px; padding: 10px 12px; border: 1px solid #ccc; background: white; cursor: pointer; color: #888; font-weight: 700; font-family: inherit; transition: all .15s; text-align: center; text-transform: uppercase; letter-spacing: .3px; }}
-      .rsvp-btn-lg:hover {{ border-color: #000; color: #000; }}
-      .rsvp-btn-lg.going:hover, .rsvp-btn-lg.going.active {{ background: #000; color: #fff; border-color: #000; }}
-      .rsvp-btn-lg.maybe:hover, .rsvp-btn-lg.maybe.active {{ background: #f5f5f5; color: #000; border-color: #000; }}
-      .rsvp-btn-lg.cant:hover, .rsvp-btn-lg.cant.active {{ background: #fff; color: #999; }}
-      .rsvp-btn-lg.active {{ font-weight: 800; }}
       /* --- Card list view --- */
-      #list-view {{ display: none; max-width: 640px; }}
+      #list-view {{ display: none; }}
       .day-group {{ margin-bottom: 28px; }}
       .day-header {{ position: sticky; top: 56px; background: #fff; padding: 12px 0 8px; font-size: 11px; font-weight: 700; color: #000; z-index: 10; border-bottom: 1px solid #000; display: flex; justify-content: space-between; align-items: baseline; text-transform: uppercase; letter-spacing: 1.5px; }}
       .day-header .day-count {{ font-size: 11px; font-weight: 500; color: #888; text-transform: none; letter-spacing: 0; }}
@@ -1191,7 +1133,6 @@ async def calendar_view(request: Request, run_id: int | None = None):
       .evt-card.vibe-mixed {{ border-left-color: #555; }}
       .evt-card.rsvp-going-card {{ border-left-color: #000; border-left-width: 4px; }}
       .evt-card.rsvp-maybe-card {{ border-left-color: #888; }}
-      .evt-card .card-img {{ width: 80px; flex-shrink: 0; background: #f5f5f5; object-fit: cover; }}
       .evt-card .card-body {{ flex: 1; padding: 14px 16px; min-width: 0; }}
       .evt-card .card-top {{ display: flex; align-items: flex-start; gap: 8px; }}
       .evt-card .card-title {{ font-size: 14px; font-weight: 700; color: #000; flex: 1; text-decoration: none; line-height: 1.35; }}
@@ -1201,9 +1142,6 @@ async def calendar_view(request: Request, run_id: int | None = None):
       .evt-card .card-reason {{ font-size: 12px; color: #555; background: #f5f5f5; padding: 4px 8px; margin-top: 6px; line-height: 1.35; font-style: italic; }}
       .evt-card .card-actions {{ display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }}
       .source-badge {{ font-size: 10px; font-weight: 600; padding: 1px 7px; background: #f5f5f5; color: #888; text-transform: capitalize; }}
-      /* Score bar mini visualization */
-      .score-bar {{ height: 2px; border-radius: 2px; background: #e5e7eb; margin-top: 8px; overflow: hidden; }}
-      .score-bar-fill {{ height: 100%; border-radius: 2px; transition: width .4s ease; }}
       /* --- Timeline view --- */
       #timeline-view {{ display: none; overflow-x: auto; padding-bottom: 8px; }}
       .timeline-week {{ display: flex; gap: 1px; min-width: max-content; padding: 4px 0 12px; background: #e0e0e0; }}
@@ -1228,21 +1166,6 @@ async def calendar_view(request: Request, run_id: int | None = None):
       .tl-more-btn {{ display: block; width: 100%; padding: 6px; background: #fff; border: 1px solid #e0e0e0; color: #000; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: center; margin-top: 0; transition: all .15s; text-transform: uppercase; letter-spacing: .5px; }}
       .tl-more-btn:hover {{ background: #f5f5f5; }}
       .tl-collapse-btn {{ color: #888; }}
-      /* --- Heatmap view (score overview) --- */
-      #heat-view {{ display: none; }}
-      .heat-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1px; background: #e0e0e0; }}
-      .heat-day {{ overflow: hidden; transition: background .15s; }}
-      .heat-day:hover {{ background: #fafafa; }}
-      .heat-day-header {{ padding: 12px 16px 10px; display: flex; align-items: baseline; justify-content: space-between; }}
-      .heat-day-header .hd-name {{ font-size: 12px; font-weight: 700; color: white; text-transform: uppercase; letter-spacing: 1px; }}
-      .heat-day-header .hd-date {{ font-size: 11px; color: rgba(255,255,255,.8); }}
-      .heat-top-event {{ background: white; padding: 12px 16px; cursor: pointer; transition: background .1s; }}
-      .heat-top-event:hover {{ background: #fafafa; }}
-      .heat-top-event .he-title {{ font-size: 14px; font-weight: 600; color: #000; line-height: 1.3; margin-bottom: 4px; }}
-      .heat-top-event .he-meta {{ font-size: 12px; color: #888; }}
-      .heat-top-event .he-score {{ font-size: 13px; font-weight: 700; }}
-      .heat-more {{ background: #fafafa; padding: 8px 16px; font-size: 12px; color: #888; border-top: 1px solid #e0e0e0; }}
-      .heat-empty {{ background: white; padding: 16px; text-align: center; color: #ccc; font-size: 13px; }}
       @media (min-width: 641px) {{
         .evt-modal-overlay {{ align-items: center; }}
         .evt-modal {{ border-radius: 16px; }}
@@ -1262,27 +1185,14 @@ async def calendar_view(request: Request, run_id: int | None = None):
         <h1 style="margin:0;">Discover</h1>
         <div style="font-size:13px;color:#888;margin-top:4px;">{top_picks} events this week</div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <div class="view-toggle">
-          <button id="btn-list" onclick="switchView('list')">List</button>
-          <button id="btn-timeline" onclick="switchView('timeline')">Week</button>
-          <button id="btn-heat" onclick="switchView('heat')">Overview</button>
-        </div>
+      <div class="view-toggle">
+        <button id="btn-list" onclick="switchView('list')">List</button>
+        <button id="btn-timeline" onclick="switchView('timeline')">Week</button>
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
-      <button id="show-all-btn" onclick="showAllEvents=!showAllEvents;this.textContent=showAllEvents?&apos;Top picks&apos;:&apos;All events&apos;;applyFilters();" style="font-size:11px;padding:5px 12px;border:1px solid #e0e0e0;background:white;cursor:pointer;color:#888;text-transform:uppercase;letter-spacing:.5px;font-weight:600;">All events</button>
-      <div class="vibe-filters" style="display:flex;gap:4px;">
-        <button class="vibe-filter active" data-vibe="all" onclick="filterVibe('all',this)">All</button>
-        <button class="vibe-filter" data-vibe="social" onclick="filterVibe('social',this)">Social</button>
-        <button class="vibe-filter" data-vibe="intellectual" onclick="filterVibe('intellectual',this)">Culture</button>
-        <button class="vibe-filter" data-vibe="mixed" onclick="filterVibe('mixed',this)">Mixed</button>
-      </div>
-    </div>
-
-    <!-- Hidden filter state (used by JS, no visible UI) -->
-    <input type="hidden" id="search-input" value="">
+    <input id="search-input" type="text" placeholder="Search events..." oninput="applyFilters()"
+           style="width:100%;padding:10px 14px;border:1px solid #ccc;font-size:14px;font-family:inherit;margin-bottom:20px;outline:none;">
     <input type="hidden" id="score-slider" value="0">
     <input type="hidden" id="dist-slider" value="50">
     <span id="score-label" style="display:none">0</span>
@@ -1291,16 +1201,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
     <div id="cal-view" style="display:none"><div id="fc-container"></div></div>
     <div id="list-view"></div>
     <div id="timeline-view"><div class="timeline-week" id="tl-week"></div></div>
-    <div id="heat-view"><div class="heat-grid" id="heat-grid"></div></div>
-
-    <!-- Event detail modal -->
-    <div class="evt-modal-overlay" id="evt-modal" onclick="if(event.target===this)closeModal()">
-      <div class="evt-modal">
-        <div class="drag-handle"></div>
-        <button class="close" onclick="closeModal()">&times;</button>
-        <div id="modal-body"></div>
-      </div>
-    </div>
+    <div id="heat-view" style="display:none"></div>
 
     <script>
     const EVENTS = {events_json_str};
@@ -1324,82 +1225,13 @@ async def calendar_view(request: Request, run_id: int | None = None):
       if (km < 1) return Math.round(km*1000) + 'm away';
       return km.toFixed(1) + 'km away';
     }}
-    let activeVibe = 'all';
-    let nearbyOnly = false;
-
-    function toggleNearby(btn) {{
-      nearbyOnly = !nearbyOnly;
-      btn.classList.toggle('active', nearbyOnly);
-      if (nearbyOnly) {{
-        // Set dist slider to 2km
-        const sl = document.getElementById('dist-slider');
-        if (sl) {{ sl.value = 2; updateDistLabel(); }}
-      }} else {{
-        const sl = document.getElementById('dist-slider');
-        if (sl) {{ sl.value = 50; updateDistLabel(); }}
-      }}
-      applyFilters();
-    }}
-
     function scoreCls(s) {{ return s >= 70 ? 'score-high' : s >= 50 ? 'score-mid' : 'score-low'; }}
-
-    // --- View toggle ---
-    function switchView(view) {{
-      localStorage.setItem('recom-view', view);
-      document.getElementById('cal-view').style.display = view === 'calendar' ? 'block' : 'none';
-      document.getElementById('list-view').style.display = view === 'list' ? 'block' : 'none';
-      document.getElementById('timeline-view').style.display = view === 'timeline' ? 'block' : 'none';
-      document.getElementById('heat-view').style.display = view === 'heat' ? 'block' : 'none';
-      ['cal','list','timeline','heat'].forEach(v => {{
-        const btn = document.getElementById('btn-' + v);
-        if (btn) btn.classList.toggle('active', v === view);
-      }});
-      if (view === 'calendar' && window._fc) window._fc.updateSize();
-      if (view === 'timeline') buildTimelineView();
-      if (view === 'heat') buildHeatmapView();
-    }}
-
-    // --- Vibe filter ---
-    function filterVibe(vibe, btn) {{
-      activeVibe = vibe;
-      // Only reset vibe buttons, not the nearby toggle
-      document.querySelectorAll('.vibe-filter[data-vibe]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      buildListView();
-      buildTimelineView();
-      buildHeatmapView();
-      if (window._fc) {{
-        const fcEvents = getFilteredFcEvents();
-        window._fc.removeAllEvents();
-        fcEvents.forEach(e => window._fc.addEvent(e));
-      }}
-    }}
-    // AI search state
-    let aiFilterIds = null; // null = no AI filter active, Set = filter to these IDs
-    let aiSearchLabel = '';
-    let showAllEvents = false; // false = primary only (like email), true = show everything
-
-    function updateDistLabel() {{
-      const v = parseInt(document.getElementById('dist-slider')?.value || '50', 10);
-      document.getElementById('dist-label').textContent = v >= 50 ? 'Any' : v + 'km';
-    }}
 
     function getFilteredEvents() {{
       const query = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
-      const minScore = parseInt(document.getElementById('score-slider')?.value || '0', 10);
-      const maxDist = parseInt(document.getElementById('dist-slider')?.value || '50', 10);
       return EVENTS.filter(e => {{
-        // Default: only show primary (top) picks unless "Show all" toggled
-        if (!showAllEvents && !e.primary) return false;
-        if (activeVibe !== 'all' && e.vibe !== activeVibe) return false;
-        if (e.score < minScore) return false;
-        if (maxDist < 50 && !e.is_online) {{
-          const km = distKm(e.lat, e.lon);
-          if (km != null && km > maxDist) return false;
-        }}
-        if (aiFilterIds !== null && !aiFilterIds.has(e.id)) return false;
-        if (query && !aiFilterIds) {{
-          // Only apply text filter when no AI filter active
+        if (!e.start) return false; // skip undated
+        if (query) {{
           const haystack = (e.title + ' ' + e.location + ' ' + e.description + ' ' + e.match_reason).toLowerCase();
           if (!haystack.includes(query)) return false;
         }}
@@ -1407,65 +1239,9 @@ async def calendar_view(request: Request, run_id: int | None = None):
       }});
     }}
 
-    function askAI() {{
-      const query = document.getElementById('search-input').value.trim();
-      if (!query) return;
-      const btn = document.getElementById('ai-search-btn');
-      btn.textContent = '⏳';
-      btn.disabled = true;
-
-      // Send query + event summaries to backend
-      const eventSummaries = EVENTS.map(e => {{
-        const km = distKm(e.lat, e.lon);
-        return {{
-          id: e.id,
-          title: e.title,
-          start: e.start,
-          location: e.location,
-          description: e.description,
-          match_reason: e.match_reason,
-          score: e.score,
-          vibe: e.vibe,
-          distance_km: km != null ? Math.round(km * 10) / 10 : null,
-        }};
-      }});
-
-      fetch('/api/ai-search', {{
-        method: 'POST',
-        headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{query, events: eventSummaries}})
-      }}).then(r => r.json()).then(d => {{
-        btn.textContent = '✦ Ask AI';
-        btn.disabled = false;
-        if (d.ok && d.ids) {{
-          aiFilterIds = new Set(d.ids);
-          aiSearchLabel = d.summary || `Showing ${{d.ids.length}} results for "${{query}}"`;
-          const banner = document.getElementById('ai-result-banner');
-          document.getElementById('ai-result-text').textContent = aiSearchLabel;
-          banner.style.display = 'flex';
-          applyFilters();
-        }}
-      }}).catch(() => {{
-        btn.textContent = '✦ Ask AI';
-        btn.disabled = false;
-      }});
-    }}
-
-    function clearAISearch() {{
-      aiFilterIds = null;
-      document.getElementById('search-input').value = '';
-      document.getElementById('ai-result-banner').style.display = 'none';
-      applyFilters();
-    }}
-
     function applyFilters() {{
       buildListView();
       buildTimelineView();
-      buildHeatmapView();
-      if (window._fc) {{
-        window._fc.removeAllEvents();
-        getFilteredFcEvents().forEach(e => window._fc.addEvent(e));
-      }}
     }}
 
     // --- RSVP & Attend ---
@@ -1518,163 +1294,25 @@ async def calendar_view(request: Request, run_id: int | None = None):
       }});
     }}
 
-    // --- Modal ---
-    function openModal(evt) {{
-      // Social RSVP section — Partiful-style
-      const goingRsvps = evt.rsvps.filter(r => r.status === 'going');
-      const maybeRsvps = evt.rsvps.filter(r => r.status === 'maybe');
-      let socialSection = '';
-      if (goingRsvps.length || maybeRsvps.length) {{
-        let avatars = '';
-        const allRsvps = [...goingRsvps, ...maybeRsvps];
-        allRsvps.slice(0, 8).forEach((r, i) => {{
-          const bg = r.status === 'going' ? '#dcfce7' : '#fef3c7';
-          const fg = r.status === 'going' ? '#166534' : '#92400e';
-          const initial = (r.user_name || '?')[0].toUpperCase();
-          avatars += `<div title="${{r.user_name}} (${{r.status}})" style="width:32px;height:32px;border-radius:50%;background:${{bg}};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${{fg}};border:2px solid white;margin-left:${{i > 0 ? '-6px' : '0'}};position:relative;z-index:${{10-i}};">${{initial}}</div>`;
-        }});
-        let nameList = '';
-        if (goingRsvps.length) {{
-          const names = goingRsvps.slice(0, 3).map(r => r.user_name).join(', ');
-          const extra = goingRsvps.length > 3 ? ` +${{goingRsvps.length - 3}}` : '';
-          nameList += `<span style="color:#166534;font-weight:600;">${{names}}${{extra}}</span> going`;
-        }}
-        if (maybeRsvps.length) {{
-          if (nameList) nameList += ' · ';
-          nameList += `<span style="color:#92400e;">${{maybeRsvps.length}} maybe</span>`;
-        }}
-        socialSection = `<div style="background:#f8fafc;border-radius:12px;padding:12px 14px;margin:12px 0;">
-          <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Who&apos;s going</div>
-          <div style="display:flex;align-items:center;gap:10px;padding-left:4px;">
-            ${{avatars}}
-          </div>
-          <div style="font-size:13px;color:#6b7280;margin-top:8px;">${{nameList}}</div>
-        </div>`;
-      }}
-
-      let typeBadge = '';
-      if (evt.event_type === 'club') typeBadge = '<span class="type-tag club">CLUB</span>';
-      else if (evt.event_type === 'class') typeBadge = '<span class="type-tag cls">CLASS</span>';
-      let vibeBg = VIBE_BG[evt.vibe] || VIBE_BG.mixed;
-      let vibeColor = VIBE_COLORS[evt.vibe] || VIBE_COLORS.mixed;
-      let timeStr = '';
-      if (evt.start) {{
-        try {{
-          const d = new Date(evt.start);
-          timeStr = d.toLocaleDateString('en-US', {{weekday:'long', month:'short', day:'numeric'}}) +
-                    ' at ' + d.toLocaleTimeString('en-US', {{hour:'numeric', minute:'2-digit'}});
-        }} catch(e) {{}}
-      }}
-      // Enhanced RSVP buttons — Partiful-style pill buttons
-      let rsvpBtns = '';
-      if (HAS_USER) {{
-        const eid = evt.id.replace(/'/g, "\\\\'");
-        const myStatus = evt.my_rsvp || '';
-        rsvpBtns = `<div style="display:flex;gap:8px;margin:16px 0 8px;">
-          <button class="rsvp-btn-lg going${{myStatus === 'going' ? ' active' : ''}}" onclick="setRsvp('${{eid}}', ${{RUN_ID}}, 'going', this)">Going</button>
-          <button class="rsvp-btn-lg maybe${{myStatus === 'maybe' ? ' active' : ''}}" onclick="setRsvp('${{eid}}', ${{RUN_ID}}, 'maybe', this)">Maybe</button>
-          <button class="rsvp-btn-lg cant${{myStatus === 'cant' ? ' active' : ''}}" onclick="setRsvp('${{eid}}', ${{RUN_ID}}, 'cant', this)">Can&apos;t</button>
-        </div>`;
-      }}
-      const titleEsc = evt.title.replace(/'/g, "\\\\'").replace(/"/g, '&quot;');
-      const modalImg = evt.image_url ? `<img src="${{evt.image_url}}" alt="" style="width:100%;height:160px;object-fit:cover;border-radius:10px;margin-bottom:14px;" onerror="this.style.display='none'">` : '';
-      document.getElementById('modal-body').innerHTML = `
-        ${{modalImg}}
-        <div class="modal-meta">
-          <span class="score-badge ${{scoreCls(evt.score)}}">${{evt.score}}</span>
-          <span class="vibe-tag" style="background:${{vibeBg}};color:${{vibeColor}}">${{evt.vibe}}</span>
-          ${{typeBadge}}
-          ${{evt.source ? '<span style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:capitalize">via '+evt.source+'</span>' : ''}}
-        </div>
-        <h3>${{evt.url ? '<a href="'+evt.url+'" target="_blank">'+evt.title+'</a>' : evt.title}}</h3>
-        <div class="meta-line">${{timeStr}}</div>
-        ${{evt.location || distLabel(evt) ? '<div class="meta-line">' + [evt.location, evt.price, distLabel(evt)].filter(Boolean).join(' · ') + '</div>' : ''}}
-        ${{evt.match_reason ? '<div class="reason">' + evt.match_reason + '</div>' : ''}}
-        ${{evt.description ? '<div class="desc">' + evt.description + '</div>' : ''}}
-        ${{(() => {{
-          const s = evt.scores || {{}};
-          const dims = [['Match','interest'],['Social','social'],['FOMO','urgency'],['Easy','logistics'],['Friends','friend'],['Discovery','discovery'],['Quality','quality']];
-          const hasData = dims.some(([,k]) => s[k] > 0);
-          if (!hasData) return '';
-          const bars = dims.map(([label, key]) => {{
-            const v = s[key] || 0;
-            const pct = Math.round(v / 15 * 100);
-            const col = v >= 11 ? '#22c55e' : v >= 7 ? '#818cf8' : '#9ca3af';
-            return `<div style="flex:1;min-width:0;text-align:center;">
-              <div style="height:40px;background:#f3f4f6;border-radius:6px;position:relative;margin-bottom:3px;overflow:hidden;">
-                <div style="position:absolute;bottom:0;left:0;right:0;height:${{pct}}%;background:${{col}};border-radius:6px;transition:height .4s;"></div>
-              </div>
-              <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;">${{label}}</div>
-              <div style="font-size:11px;font-weight:800;color:#374151;">${{v}}</div>
-            </div>`;
-          }}).join('');
-          return `<div style="margin:12px 0;"><div style="font-size:11px;font-weight:700;color:#9ca3af;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;">Score breakdown</div><div style="display:flex;gap:4px;align-items:flex-end;">${{bars}}</div></div>`;
-        }})()}}
-        ${{socialSection}}
-        ${{rsvpBtns}}
-        <button class="attend-btn" onclick="markAttend('${{evt.id}}', ${{RUN_ID}}, '${{titleEsc}}', this)">I went</button>
-      `;
-      document.getElementById('evt-modal').classList.add('show');
-    }}
-    function closeModal() {{
-      document.getElementById('evt-modal').classList.remove('show');
-    }}
-    document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closeModal(); }});
-
-    // --- FullCalendar ---
-    function getFilteredFcEvents() {{
-      return getFilteredEvents().filter(e => e.start).map(e => ({{
-        id: e.id,
-        title: '[' + e.score + '] ' + e.title,
-        start: e.start,
-        end: e.end || undefined,
-        backgroundColor: VIBE_COLORS[e.vibe] || VIBE_COLORS.mixed,
-        borderColor: VIBE_COLORS[e.vibe] || VIBE_COLORS.mixed,
-        extendedProps: e
-      }}));
-    }}
-
-    document.addEventListener('DOMContentLoaded', function() {{
-      const calEl = document.getElementById('fc-container');
-      const isMobile = window.innerWidth < 641;
-      const calendar = new FullCalendar.Calendar(calEl, {{
-        initialView: isMobile ? 'listWeek' : 'dayGridMonth',
-        headerToolbar: {{
-          left: 'prev,next today',
-          center: 'title',
-          right: isMobile ? 'listWeek,dayGridMonth' : 'dayGridMonth,timeGridWeek,timeGridDay'
-        }},
-        events: getFilteredFcEvents(),
-        eventClick: function(info) {{
-          info.jsEvent.preventDefault();
-          openModal(info.event.extendedProps);
-        }},
-        height: 'auto',
-        nowIndicator: true,
-        dayMaxEvents: 4,
+    // --- Modal (removed — events link directly now) ---
+    // --- View toggle ---
+    function switchView(view) {{
+      localStorage.setItem('recom-view', view);
+      document.getElementById('list-view').style.display = view === 'list' ? 'block' : 'none';
+      document.getElementById('timeline-view').style.display = view === 'timeline' ? 'block' : 'none';
+      document.getElementById('cal-view').style.display = 'none';
+      document.getElementById('heat-view').style.display = 'none';
+      ['list','timeline'].forEach(v => {{
+        const btn = document.getElementById('btn-' + v);
+        if (btn) btn.classList.toggle('active', v === view);
       }});
-      calendar.render();
-      window._fc = calendar;
-
-      // --- Build all views ---
-      buildListView();
-      buildTimelineView();
-      buildHeatmapView();
-
-      // Default: list on mobile, saved pref or list on desktop
-      const saved = localStorage.getItem('recom-view');
-      const defaultView = saved || 'list';
-      switchView(defaultView);
-    }});
-
-    // Track which day groups are expanded
-    const expandedDays = new Set();
+      if (view === 'timeline') buildTimelineView();
+    }}
 
     function buildListView() {{
       const container = document.getElementById('list-view');
       const filtered = getFilteredEvents();
-      const sorted = [...filtered].filter(e => e.start).sort((a, b) => a.start.localeCompare(b.start));
-      const undated = filtered.filter(e => !e.start);
+      const sorted = [...filtered].sort((a, b) => a.start.localeCompare(b.start));
       const groups = {{}};
       sorted.forEach(e => {{
         const day = e.start.slice(0, 10);
@@ -1690,76 +1328,18 @@ async def calendar_view(request: Request, run_id: int | None = None):
         let label = d.toLocaleDateString('en-US', {{weekday:'long', month:'long', day:'numeric'}});
         if (d.getTime() === today.getTime()) label = 'Today, ' + d.toLocaleDateString('en-US', {{month:'long', day:'numeric'}});
         else if (d.getTime() === tomorrow.getTime()) label = 'Tomorrow, ' + d.toLocaleDateString('en-US', {{month:'long', day:'numeric'}});
-        const allDay = [...groups[day]].sort((a,b) => b.score - a.score);
-        const primary = allDay.filter(e => e.primary);
-        const overflow = allDay.filter(e => !e.primary);
-        const isExpanded = expandedDays.has(day);
-        const shown = isExpanded ? allDay : primary;
-        const total = allDay.length;
-        const hiddenCount = overflow.length;
-        html += `<div class="day-group" id="dg-${{day}}"><div class="day-header">
+        const dayEvts = [...groups[day]].sort((a,b) => b.score - a.score);
+        html += `<div class="day-group"><div class="day-header">
           <span>${{label}}</span>
-          <span class="day-count">${{total}} event${{total !== 1 ? 's' : ''}}</span>
+          <span class="day-count">${{dayEvts.length}}</span>
         </div>`;
-        shown.forEach(e => {{ html += renderCard(e); }});
-        if (hiddenCount > 0 && !isExpanded) {{
-          html += `<button class="see-more-btn" onclick="expandDay('${{day}}')">
-            + ${{hiddenCount}} more option${{hiddenCount !== 1 ? 's' : ''}} this day
-          </button>`;
-        }} else if (hiddenCount > 0 && isExpanded) {{
-          html += `<button class="see-more-btn see-more-collapse" onclick="collapseDay('${{day}}')">
-            ↑ Show top picks only
-          </button>`;
-        }}
+        dayEvts.forEach(e => {{ html += renderCard(e); }});
         html += '</div>';
       }});
-      if (undated.length) {{
-        const uPrimary = undated.filter(e => e.primary).sort((a,b) => b.score - a.score);
-        const uOverflow = undated.filter(e => !e.primary).sort((a,b) => b.score - a.score);
-        const uExpanded = expandedDays.has('__undated__');
-        const uShown = uExpanded ? [...uPrimary, ...uOverflow] : uPrimary;
-        html += '<div class="day-group"><div class="day-header"><span>No Date</span><span class="day-count">' + undated.length + '</span></div>';
-        uShown.forEach(e => {{ html += renderCard(e); }});
-        if (uOverflow.length && !uExpanded)
-          html += `<button class="see-more-btn" onclick="expandDay('__undated__')">+ ${{uOverflow.length}} more</button>`;
-        else if (uOverflow.length && uExpanded)
-          html += `<button class="see-more-btn see-more-collapse" onclick="collapseDay('__undated__')">↑ Show top picks only</button>`;
-        html += '</div>';
-      }}
-      container.innerHTML = html || '<p style="color:#9ca3af">No events to display.</p>';
-    }}
-
-    function expandDay(day) {{
-      expandedDays.add(day);
-      buildListView();
-    }}
-    function collapseDay(day) {{
-      expandedDays.delete(day);
-      buildListView();
+      container.innerHTML = html || '<p style="color:#888">No events to display.</p>';
     }}
 
     function renderCard(e) {{
-      const rsvpLabels = {{going:'going', maybe:'maybe', cant:"can't"}};
-      const rsvpCls = {{going:'rsvp-going', maybe:'rsvp-maybe', cant:'rsvp-cant'}};
-      // Partiful-style avatar circles for RSVPs
-      const goingRsvps = e.rsvps.filter(r => r.status === 'going');
-      const maybeRsvps = e.rsvps.filter(r => r.status === 'maybe');
-      let badges = '';
-      if (goingRsvps.length || maybeRsvps.length) {{
-        let avatars = '';
-        const allRsvps = [...goingRsvps, ...maybeRsvps].slice(0, 5);
-        allRsvps.forEach((r, i) => {{
-          const bg = r.status === 'going' ? '#dcfce7' : '#fef3c7';
-          const fg = r.status === 'going' ? '#166534' : '#92400e';
-          const initial = (r.user_name || '?')[0].toUpperCase();
-          avatars += `<div title="${{r.user_name}} (${{r.status}})" style="width:24px;height:24px;border-radius:50%;background:${{bg}};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${{fg}};border:2px solid white;margin-left:${{i > 0 ? '-5px' : '0'}};position:relative;z-index:${{5-i}};">${{initial}}</div>`;
-        }});
-        let summary = '';
-        if (goingRsvps.length) summary += `<span style="color:#166534;font-weight:600;">${{goingRsvps.length}} going</span>`;
-        if (goingRsvps.length && maybeRsvps.length) summary += ' · ';
-        if (maybeRsvps.length) summary += `<span style="color:#92400e;">${{maybeRsvps.length}} maybe</span>`;
-        badges = `<div style="display:flex;align-items:center;gap:8px;padding-left:4px;">${{avatars}}<span style="font-size:11px;color:#6b7280;">${{summary}}</span></div>`;
-      }}
       let timeStr = '';
       if (e.start) {{
         try {{
@@ -1768,43 +1348,44 @@ async def calendar_view(request: Request, run_id: int | None = None):
             timeStr = d.toLocaleTimeString('en-US', {{hour:'numeric', minute:'2-digit'}});
         }} catch(x) {{}}
       }}
-      let typeBadge = '';
-      if (e.event_type === 'club') typeBadge = '<span class="type-tag club">CLUB</span>';
-      else if (e.event_type === 'class') typeBadge = '<span class="type-tag cls">CLASS</span>';
-      const titleEsc = e.title.replace(/'/g, "\\\\'").replace(/"/g, '&quot;');
       const eid = e.id.replace(/'/g, "\\\\'");
       let rsvpBtns = '';
       if (HAS_USER) {{
-        rsvpBtns = `<button class="rsvp-btn going" onclick="setRsvp('${{eid}}', ${{RUN_ID}}, 'going', this)">Going</button>
-          <button class="rsvp-btn maybe" onclick="setRsvp('${{eid}}', ${{RUN_ID}}, 'maybe', this)">Maybe</button>`;
+        const goingCls = e.my_rsvp === 'going' ? ' active' : '';
+        const maybeCls = e.my_rsvp === 'maybe' ? ' active' : '';
+        rsvpBtns = `<div class="card-actions" onclick="event.stopPropagation()">
+          <button class="rsvp-btn going${{goingCls}}" onclick="setRsvp(&apos;${{eid}}&apos;, ${{RUN_ID}}, &apos;going&apos;, this)">Going</button>
+          <button class="rsvp-btn maybe${{maybeCls}}" onclick="setRsvp(&apos;${{eid}}&apos;, ${{RUN_ID}}, &apos;maybe&apos;, this)">Maybe</button>
+        </div>`;
       }}
-      const barColor = e.score >= 70 ? '#22c55e' : e.score >= 50 ? '#f59e0b' : '#9ca3af';
-      const barW = Math.min(100, Math.round(e.score * 100 / 105));
-      const imgHtml = e.image_url ? `<img class="card-img" src="${{e.image_url}}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
-      const srcBadge = e.source ? `<span class="source-badge">${{e.source}}</span>` : '';
-      // My RSVP indicator
-      let myRsvpBadge = '';
-      if (e.my_rsvp === 'going') myRsvpBadge = '<span title="You&apos;re going!" style="font-size:13px;color:#16a34a;font-weight:700;">✓ Going</span>';
-      else if (e.my_rsvp === 'maybe') myRsvpBadge = '<span title="On your maybe list" style="font-size:12px;color:#d97706;font-weight:600;">Maybe</span>';
-      else if (e.my_rsvp === 'cant') myRsvpBadge = '<span style="font-size:11px;color:#9ca3af;font-weight:500;text-decoration:line-through;">Can&apos;t go</span>';
-      return `<div class="evt-card vibe-${{e.vibe}}${{e.my_rsvp === 'maybe' ? ' rsvp-maybe-card' : ''}}${{e.my_rsvp === 'going' ? ' rsvp-going-card' : ''}}" onclick="openModal(EVENTS.find(x=>x.id==='${{eid}}'))">
-        ${{imgHtml}}
+      const meta = [timeStr, e.location, e.price].filter(Boolean).join(' &middot; ');
+      return `<div class="evt-card vibe-${{e.vibe}}${{e.my_rsvp === 'going' ? ' rsvp-going-card' : ''}}" onclick="if(event.target.tagName!=='BUTTON')window.open(&apos;${{e.url || '#'}}&apos;, &apos;_blank&apos;)">
         <div class="card-body">
           <div class="card-top">
-            ${{e.url ? '<a href="'+e.url+'" target="_blank" class="card-title" onclick="event.stopPropagation()">'+e.title+'</a>' : '<span class="card-title">'+e.title+'</span>'}}
+            <span class="card-title">${{e.title}}</span>
             <span class="card-score ${{scoreCls(e.score)}}">${{e.score}}</span>
           </div>
-          <div class="card-meta">${{[timeStr, e.location, e.price, distLabel(e)].filter(Boolean).join(' · ')}}</div>
+          <div class="card-meta">${{meta}}</div>
           ${{e.match_reason ? '<div class="card-reason">' + e.match_reason + '</div>' : ''}}
-          <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;">
-            ${{srcBadge}}
-            ${{myRsvpBadge}}
-            ${{badges ? '<span class="rsvp-badges" onclick="event.stopPropagation()">' + badges + '</span>' : ''}}
-          </div>
-          <div class="score-bar"><div class="score-bar-fill" style="width:${{barW}}%;background:${{barColor}}"></div></div>
-          ${{rsvpBtns || typeBadge ? '<div class="card-actions" onclick="event.stopPropagation()">' + rsvpBtns + typeBadge + '</div>' : ''}}
+          ${{rsvpBtns}}
         </div>
       </div>`;
+    }}
+
+    function setRsvp(eventId, runId, status, btn) {{
+      fetch('/api/rsvp', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{event_id: eventId, run_id: runId, status: status, user_token: USER_TOKEN}})
+      }}).then(r => r.json()).then(data => {{
+        if (data.ok) {{
+          const btns = btn.parentElement.querySelectorAll('.rsvp-btn');
+          btns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const ev = EVENTS.find(x => x.id === eventId);
+          if (ev) {{ ev.my_rsvp = status; applyFilters(); }}
+        }}
+      }});
     }}
 
     // --- Timeline (week columns) view ---
@@ -1813,12 +1394,11 @@ async def calendar_view(request: Request, run_id: int | None = None):
       const filtered = getFilteredEvents();
       const today = new Date(); today.setHours(0,0,0,0);
       const groups = {{}};
-      filtered.filter(e => e.start).forEach(e => {{
+      filtered.forEach(e => {{
         const day = e.start.slice(0, 10);
         if (!groups[day]) groups[day] = [];
         groups[day].push(e);
       }});
-      // Build 7 days starting today
       let html = '';
       for (let i = 0; i < 7; i++) {{
         const d = new Date(today); d.setDate(today.getDate() + i);
@@ -1834,141 +1414,33 @@ async def calendar_view(request: Request, run_id: int | None = None):
             ${{dayEvts.length ? '<span class="col-count">' + dayEvts.length + '</span>' : ''}}
           </div>`;
         if (!dayEvts.length) {{
-          html += '<div class="tl-empty">Nothing yet</div>';
+          html += '<div class="tl-empty">-</div>';
         }} else {{
-          const tlKey = 'tl-' + key;
-          const primary = dayEvts.filter(e => e.primary);
-          const overflow = dayEvts.filter(e => !e.primary);
-          const tlExpanded = expandedDays.has(tlKey);
-          const shown = tlExpanded ? dayEvts : primary;
-          shown.forEach(e => {{
+          dayEvts.slice(0, 6).forEach(e => {{
             const eid = e.id.replace(/'/g, "\\\\'");
-            let timeStr = '';
-            try {{
-              const dt = new Date(e.start);
-              if (dt.getHours() || dt.getMinutes())
-                timeStr = dt.toLocaleTimeString('en-US', {{hour: 'numeric', minute: '2-digit'}});
-            }} catch(x) {{}}
-            html += `<div class="tl-card vibe-${{e.vibe}}${{!e.primary && tlExpanded ? ' tl-overflow' : ''}}" onclick="openModal(EVENTS.find(x=>x.id==='${{eid}}'))">
+            let t = '';
+            try {{ const dt = new Date(e.start); if (dt.getHours()||dt.getMinutes()) t = dt.toLocaleTimeString('en-US',{{hour:'numeric',minute:'2-digit'}}); }} catch(x){{}}
+            html += `<div class="tl-card vibe-${{e.vibe}}" onclick="window.open(&apos;${{e.url||'#'}}&apos;,&apos;_blank&apos;)">
               <div class="tl-title">${{e.title}}</div>
-              ${{timeStr ? '<div class="tl-time">' + timeStr + '</div>' : ''}}
+              ${{t ? '<div class="tl-time">' + t + '</div>' : ''}}
               ${{e.location ? '<div class="tl-loc">' + e.location + '</div>' : ''}}
               <span class="tl-score ${{scoreCls(e.score)}}">${{e.score}}</span>
             </div>`;
           }});
-          if (overflow.length && !tlExpanded)
-            html += `<button class="tl-more-btn" onclick="expandDay('${{tlKey}}');buildTimelineView()">+${{overflow.length}} more</button>`;
-          else if (overflow.length && tlExpanded)
-            html += `<button class="tl-more-btn tl-collapse-btn" onclick="collapseDay('${{tlKey}}');buildTimelineView()">↑ less</button>`;
+          if (dayEvts.length > 6) html += `<div class="tl-empty" style="font-size:11px;color:#888;">+${{dayEvts.length - 6}} more</div>`;
         }}
         html += '</div>';
       }}
       container.innerHTML = html;
     }}
 
-    // --- Heatmap (score overview) view ---
-    function buildHeatmapView() {{
-      const container = document.getElementById('heat-grid');
-      const filtered = getFilteredEvents();
-      const today = new Date(); today.setHours(0,0,0,0);
-      const groups = {{}};
-      filtered.filter(e => e.start).forEach(e => {{
-        const day = e.start.slice(0, 10);
-        if (!groups[day]) groups[day] = [];
-        groups[day].push(e);
-      }});
-      // Color based on top score: green=high, amber=mid, blue=normal, gray=low
-      function dayBg(score) {{
-        if (score >= 75) return 'linear-gradient(135deg,#166534,#16a34a)';
-        if (score >= 60) return 'linear-gradient(135deg,#4338ca,#4f46e5)';
-        if (score >= 45) return 'linear-gradient(135deg,#92400e,#d97706)';
-        return 'linear-gradient(135deg,#374151,#6b7280)';
-      }}
-      let html = '';
-      // Show days that have events, plus next 7 days
-      const dayKeys = new Set();
-      for (let i = 0; i < 7; i++) {{
-        const d = new Date(today); d.setDate(today.getDate() + i);
-        dayKeys.add(d.toISOString().slice(0, 10));
-      }}
-      Object.keys(groups).forEach(k => dayKeys.add(k));
-      [...dayKeys].sort().filter(k => k >= today.toISOString().slice(0, 10)).forEach(key => {{
-        const evts = (groups[key] || []).sort((a, b) => b.score - a.score);
-        const d = new Date(key + 'T00:00:00');
-        const isToday = key === today.toISOString().slice(0, 10);
-        const dayName = isToday ? 'Today' : d.toLocaleDateString('en-US', {{weekday: 'long'}});
-        const dateFmt = d.toLocaleDateString('en-US', {{month: 'short', day: 'numeric'}});
-        const topEvt = evts[0];
-        const topScore = topEvt ? topEvt.score : 0;
-        const highCount = evts.filter(e => e.score >= 60).length;
-        const bg = evts.length ? dayBg(topScore) : 'linear-gradient(135deg,#d1d5db,#e5e7eb)';
-        const textCol = evts.length ? 'white' : '#9ca3af';
-        const hotLabel = highCount >= 4 ? 'Busy day' : highCount >= 2 ? 'Good day' : '';
-        html += `<div class="heat-day">
-          <div class="heat-day-header" style="background:${{bg}}">
-            <div>
-              <div class="hd-name" style="color:${{textCol}}">${{dayName}}${{hotLabel ? ' <span style="font-size:10px;font-weight:600;opacity:.85">'+hotLabel+'</span>' : ''}}</div>
-              <div class="hd-date" style="color:${{evts.length?'rgba(255,255,255,.7)':'#9ca3af'}}">${{dateFmt}} · ${{evts.length}} event${{evts.length!==1?'s':''}}</div>
-            </div>
-            ${{evts.length ? `<div style="background:rgba(0,0,0,.2);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:white;">${{topScore}}</div>` : ''}}
-          </div>`;
-        if (!evts.length) {{
-          html += '<div class="heat-empty">Nothing on the calendar</div>';
-        }} else {{
-          // Show top event as hero
-          const eid = topEvt.id.replace(/'/g, "\\\\'");
-          let timeStr = '';
-          try {{
-            const dt = new Date(topEvt.start);
-            if (dt.getHours() || dt.getMinutes())
-              timeStr = ' · ' + dt.toLocaleTimeString('en-US', {{hour: 'numeric', minute: '2-digit'}});
-          }} catch(x) {{}}
-          const vibeBar = `<div style="width:4px;background:${{VIBE_COLORS[topEvt.vibe]||VIBE_COLORS.mixed}};border-radius:2px;flex-shrink:0;align-self:stretch;"></div>`;
-          html += `<div class="heat-top-event" onclick="openModal(EVENTS.find(x=>x.id==='${{eid}}'))">
-            <div style="display:flex;gap:8px;align-items:flex-start;">
-              ${{vibeBar}}
-              <div style="flex:1;min-width:0;">
-                <div class="he-title">${{topEvt.title}}</div>
-                <div class="he-meta">${{topEvt.location || ''}}${{timeStr}}</div>
-                ${{topEvt.match_reason ? `<div style="font-size:11px;color:#7c3aed;margin-top:4px;line-height:1.35;">${{topEvt.match_reason.slice(0,80)}}${{topEvt.match_reason.length>80?'…':''}}</div>` : ''}}
-              </div>
-            </div>
-          </div>`;
-          // List remaining events (primary first, overflow collapsed)
-          const restPrimary = evts.slice(1).filter(e => e.primary);
-          const heatOverflow = evts.filter(e => !e.primary);
-          const heatKey = 'heat-' + key;
-          const heatExpanded = expandedDays.has(heatKey);
-          const restShown = heatExpanded ? evts.slice(1) : restPrimary;
-          if (restShown.length > 0) {{
-            let moreHtml = '<div style="padding:0 16px 10px;">';
-            restShown.forEach(e => {{
-              const eid2 = e.id.replace(/'/g, "\\\\'");
-              let t2 = '';
-              try {{ const dt2 = new Date(e.start); if (dt2.getHours()||dt2.getMinutes()) t2 = dt2.toLocaleTimeString('en-US',{{hour:'numeric',minute:'2-digit'}}); }} catch(x){{}}
-              moreHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #f3f4f6;cursor:pointer;${{!e.primary && heatExpanded ? 'opacity:.8;' : ''}}" onclick="openModal(EVENTS.find(x=>x.id==='${{eid2}}'))">
-                <div style="width:3px;height:24px;background:${{VIBE_COLORS[e.vibe]||VIBE_COLORS.mixed}};border-radius:2px;flex-shrink:0;"></div>
-                <div style="flex:1;min-width:0;">
-                  <div style="font-size:12px;font-weight:600;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${{e.title}}</div>
-                  <div style="font-size:11px;color:#9ca3af;">${{t2||e.location||''}}</div>
-                </div>
-                <span style="font-size:11px;font-weight:800;color:#6b7280;flex-shrink:0;">${{e.score}}</span>
-              </div>`;
-            }});
-            if (heatOverflow.length && !heatExpanded)
-              moreHtml += `<button onclick="expandDay('${{heatKey}}');buildHeatmapView()" style="margin-top:6px;width:100%;padding:6px;background:#f9fafb;border:1.5px dashed #d1d5db;border-radius:8px;color:#6366f1;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;">+${{heatOverflow.length}} more</button>`;
-            else if (heatOverflow.length && heatExpanded)
-              moreHtml += `<button onclick="collapseDay('${{heatKey}}');buildHeatmapView()" style="margin-top:6px;width:100%;padding:6px;background:transparent;border:1px solid #e5e7eb;border-radius:8px;color:#9ca3af;font-size:11px;cursor:pointer;font-family:inherit;">↑ less</button>`;
-            moreHtml += '</div>';
-            html += moreHtml;
-          }} else if (heatOverflow.length && !heatExpanded) {{
-            html += `<div style="padding:4px 16px 10px;"><button onclick="expandDay('${{heatKey}}');buildHeatmapView()" style="width:100%;padding:6px;background:#f9fafb;border:1.5px dashed #d1d5db;border-radius:8px;color:#6366f1;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;">+${{heatOverflow.length}} more options</button></div>`;
-          }}
-        }}
-        html += '</div>';
-      }});
-      container.innerHTML = html || '<p style="color:#9ca3af;padding:20px">No events to display.</p>';
-    }}
+    // --- Init ---
+    document.addEventListener('DOMContentLoaded', function() {{
+      buildListView();
+      buildTimelineView();
+      const saved = localStorage.getItem('recom-view');
+      switchView(saved || 'list');
+    }});
     </script>
     """ + LAYOUT_FOOT
     resp = HTMLResponse(page_html)
