@@ -27,13 +27,17 @@ TONIGHT_CMD="0 16 * * 5,6 cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_
 # Post-event rating emails (10pm daily)
 RATINGS_CMD="0 22 * * * cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_ratings.py --send >> ${RECOM_DIR}/state/ratings.log 2>&1"
 
+# Admin digest (Sunday 10am — source health, retros, TODOs)
+ADMIN_CMD="0 10 * * 0 cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_admin_digest.py >> ${RECOM_DIR}/state/admin.log 2>&1"
+
 # Remove existing recom cron entries and install all fresh
-(crontab -l 2>/dev/null | grep -v "recom\|send_daily_taste\|send_tonight\|send_ratings\|send_weekend"; \
+(crontab -l 2>/dev/null | grep -v "recom\|send_daily_taste\|send_tonight\|send_ratings\|send_weekend\|send_admin"; \
   echo "$WEEKLY_CMD"; \
   echo "$DAILY_CMD"; \
   echo "$WEEKEND_CMD"; \
   echo "$TONIGHT_CMD"; \
-  echo "$RATINGS_CMD") | crontab -
+  echo "$RATINGS_CMD"; \
+  echo "$ADMIN_CMD") | crontab -
 
 # Ensure log dir exists
 mkdir -p "${RECOM_DIR}/state"

@@ -5,7 +5,7 @@
 # ACTIVE — in progress
 # ============================================================
 
-# TODO: Map view on Discover (in progress)
+# DONE: Map view — Leaflet, stars for top picks, Today/Week/All, clustering
 #   Leaflet map, event pins colored by score. Button added, needs JS.
 
 # ============================================================
@@ -33,7 +33,7 @@
 # ACTIVE — UI/UX
 # ============================================================
 
-# TODO: Web search results should be saveable/RSVPable
+# DONE: Web search results ingested into DB on search
 # TODO: Improve search speed (currently ~6s, consider caching)
 
 # ============================================================
