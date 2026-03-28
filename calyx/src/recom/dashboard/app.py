@@ -1516,14 +1516,34 @@ async def calendar_view(request: Request):
         let label = d.toLocaleDateString('en-US', {{weekday:'long', month:'long', day:'numeric'}});
         if (d.getTime() === today.getTime()) label = 'Today, ' + d.toLocaleDateString('en-US', {{month:'long', day:'numeric'}});
         else if (d.getTime() === tomorrow.getTime()) label = 'Tomorrow, ' + d.toLocaleDateString('en-US', {{month:'long', day:'numeric'}});
-        const dayEvts = [...groups[day]].sort((a,b) => b.score - a.score);
+        // Diversify: pick top 5 with max 2 per vibe to avoid all-jazz etc
+        const allDay = [...groups[day]].sort((a,b) => b.score - a.score);
+        const dayEvts = [];
+        const vibeCounts = {{}};
+        const rest = [];
+        for (const e of allDay) {{
+          const v = e.vibe || 'mixed';
+          if ((vibeCounts[v] || 0) < 2 && dayEvts.length < 5) {{
+            dayEvts.push(e);
+            vibeCounts[v] = (vibeCounts[v] || 0) + 1;
+          }} else {{
+            rest.push(e);
+          }}
+        }}
+        // Fill remaining slots if <5 picked
+        for (const e of rest) {{
+          if (dayEvts.length >= 5) break;
+          dayEvts.push(e);
+        }}
+        // Append overflow for "show more"
+        const fullDay = [...dayEvts, ...rest.filter(e => !dayEvts.includes(e))];
         const MAX_SHOW = 5;
         const isExpanded = _expandedDays.has(day);
-        const shown = isExpanded ? dayEvts : dayEvts.slice(0, MAX_SHOW);
-        const hidden = dayEvts.length - MAX_SHOW;
+        const shown = isExpanded ? fullDay : dayEvts.slice(0, MAX_SHOW);
+        const hidden = fullDay.length - MAX_SHOW;
         html += `<div class="day-group"><div class="day-header">
           <span>${{label}}</span>
-          <span class="day-count">${{dayEvts.length}}</span>
+          <span class="day-count">${{fullDay.length}}</span>
         </div>`;
         shown.forEach(e => {{ html += renderCard(e); }});
         if (hidden > 0 && !isExpanded) {{
