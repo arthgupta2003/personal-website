@@ -62,7 +62,7 @@ def render_nav(user: dict | None = None) -> str:
           <a href="/" class="app-logo">calyx</a>
           <a href="/groups" class="nav-link">Groups</a>
           <a href="/calendar" class="nav-link">Discover</a>
-          <a href="/profile" class="nav-link">Profile</a>
+          <a href="/taste-profile" class="nav-link">You</a>
           <div class="nav-divider"></div>
           <span style="font-size:12px;color:#888;font-weight:500;">{name}</span>
         </div></nav>"""
@@ -1037,7 +1037,7 @@ async def taste_profile_page(request: Request):
   {"<div class='taste-section'><h2>YouTube subscriptions</h2><div class='tags'>" + _tags(youtube_subs, "#c4302b") + "</div></div>" if youtube_subs else ""}
 
   <div style="border-top:1px solid #e0e0e0;padding-top:20px;margin-top:20px;">
-    <a href="/profile" style="font-size:13px;color:#888;">Back to profile</a>
+    <a href="/profile" style="font-size:13px;color:#888;">Account settings</a>
   </div>
 </div>
 """
