@@ -1594,6 +1594,8 @@ async def calendar_view(request: Request):
       .rsvp-btn:hover, .rsvp-btn.active {{ color: #4a6741; border-color: #4a6741; }}
       .rsvp-btn.going:hover, .rsvp-btn.going.active {{ background: #4a6741; color: #fff; border-color: #4a6741; }}
       .rsvp-btn.maybe:hover, .rsvp-btn.maybe.active {{ background: #f4f7f3; color: #4a6741; border-color: #4a6741; }}
+      .filter-chip {{ font-size: 12px; padding: 5px 12px; border: 1px solid #e0e0e0; background: white; cursor: pointer; color: #888; font-weight: 600; transition: all .15s; }}
+      .filter-chip.active {{ border-color: #4a6741; color: #4a6741; background: #f4f7f3; }}
       /* --- Card list view --- */
       #list-view {{ display: none; }}
       .day-group {{ margin-bottom: 28px; }}
@@ -1671,6 +1673,13 @@ async def calendar_view(request: Request):
              onfocus="this.style.borderBottomColor='#4a6741'" onblur="this.style.borderBottomColor='#ccc'">
       <span id="search-spinner" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;font-size:12px;font-weight:600;color:#4a6741;background:#f4f7f3;padding:4px 10px;border:1px solid #4a6741;">Searching the web...</span>
     </div>
+    <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;">
+      <button class="filter-chip active" data-filter="all" onclick="setDateFilter('all',this)">All dates</button>
+      <button class="filter-chip" data-filter="today" onclick="setDateFilter('today',this)">Today</button>
+      <button class="filter-chip" data-filter="tomorrow" onclick="setDateFilter('tomorrow',this)">Tomorrow</button>
+      <button class="filter-chip" data-filter="weekend" onclick="setDateFilter('weekend',this)">This weekend</button>
+      <button class="filter-chip" data-filter="free" onclick="toggleFreeFilter(this)">Free</button>
+    </div>
     <div id="search-results" style="display:none;margin-bottom:24px;"></div>
     <input type="hidden" id="score-slider" value="0">
     <input type="hidden" id="dist-slider" value="50">
@@ -1705,6 +1714,39 @@ async def calendar_view(request: Request):
       return km.toFixed(1) + 'km away';
     }}
     function scoreCls(s) {{ return s >= 70 ? 'score-high' : s >= 50 ? 'score-mid' : 'score-low'; }}
+
+    let _dateFilter = 'all';
+    let _freeOnly = false;
+
+    function setDateFilter(f, btn) {{
+      _dateFilter = f;
+      document.querySelectorAll('.filter-chip[data-filter]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      applyFilters();
+    }}
+
+    function toggleFreeFilter(btn) {{
+      _freeOnly = !_freeOnly;
+      btn.classList.toggle('active', _freeOnly);
+      applyFilters();
+    }}
+
+    function _matchesDateFilter(startStr) {{
+      if (_dateFilter === 'all') return true;
+      const d = new Date(startStr);
+      const today = new Date(); today.setHours(0,0,0,0);
+      const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+      const dayAfter = new Date(tomorrow); dayAfter.setDate(dayAfter.getDate() + 1);
+      if (_dateFilter === 'today') return d >= today && d < tomorrow;
+      if (_dateFilter === 'tomorrow') return d >= tomorrow && d < dayAfter;
+      if (_dateFilter === 'weekend') {{
+        const fri = new Date(today);
+        fri.setDate(today.getDate() + ((5 - today.getDay() + 7) % 7));
+        const mon = new Date(fri); mon.setDate(fri.getDate() + 3);
+        return d >= fri && d < mon;
+      }}
+      return true;
+    }}
 
     let _searchTimeout = null;
     function onSearchInput() {{
@@ -1770,6 +1812,8 @@ async def calendar_view(request: Request):
       const query = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
       return EVENTS.filter(e => {{
         if (!e.start) return false;
+        if (!_matchesDateFilter(e.start)) return false;
+        if (_freeOnly && e.price && !e.price.toLowerCase().includes('free') && e.price !== '$0') return false;
         if (query) {{
           const haystack = (e.title + ' ' + e.location + ' ' + e.description + ' ' + e.match_reason).toLowerCase();
           if (!haystack.includes(query)) return false;
