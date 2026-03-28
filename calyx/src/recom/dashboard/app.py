@@ -1229,9 +1229,11 @@ async def home_redirect(request: Request):
     return RedirectResponse("/landing", status_code=302)
 
 
+_search_cache: dict[str, tuple[float, list]] = {}  # query → (timestamp, web_results)
+
 @app.post("/api/search", response_class=JSONResponse)
 async def api_search(request: Request):
-    """Tiered event search: DB first, then Gemini web search fallback."""
+    """Tiered event search: DB first, then web search fallback (cached 1hr)."""
     current_user = _get_current_user(request)
     if not current_user:
         return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
@@ -1266,9 +1268,14 @@ async def api_search(request: Request):
     if len(db_matches) >= 3:
         return JSONResponse({"ok": True, "results": db_matches[:10], "source": "db"})
 
-    # Tier 2: Web search fallback via Claude with web_search tool
+    # Tier 2: Web search fallback (cached 1hr)
+    import time as _time
     web_results = []
-    if settings.anthropic_api_key and len(db_matches) < 3:
+    cache_key = query.lower().strip()
+    cached = _search_cache.get(cache_key)
+    if cached and _time.time() - cached[0] < 3600:
+        web_results = cached[1]
+    elif settings.anthropic_api_key and len(db_matches) < 3:
         try:
             import anthropic, json as _json, re as _re
             client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
@@ -1334,6 +1341,9 @@ async def api_search(request: Request):
                     })
         except Exception as exc:
             logger.exception("Web search failed for query: %s", query)
+        # Cache web results
+        if web_results:
+            _search_cache[cache_key] = (_time.time(), web_results)
 
     # Merge: DB results first, then web results
     merged = db_matches[:5] + web_results[:5]
