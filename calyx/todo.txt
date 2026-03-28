@@ -12,11 +12,11 @@
 # ACTIVE — broken sources to fix
 # ============================================================
 
-# TODO: Fix Luma — API endpoint returns 404, scrape redirects (301)
-# TODO: Fix Bandsintown — API now requires auth token (403)
-# TODO: Fix Dice.fm — API v2 endpoint returns 404
-# TODO: Fix Songkick — needs API key (RECOM_SONGKICK_API_KEY in .env)
-# TODO: Fix Harvard Art Museums — returns 0 events
+# DONE: Fix Luma — updated API endpoint + date parsing (39 events now)
+# TODO: Bandsintown — dead, 403 on all endpoints. Needs paid API or removal.
+# TODO: Dice.fm — dead, no Boston coverage. Remove or find alt endpoint.
+# TODO: Songkick — just needs RECOM_SONGKICK_API_KEY in .env
+# TODO: Harvard Art Museums — returns 0, investigate scraper
 # TODO: Improve ICA, MFA, Museum of Science — only 1-2 events each
 
 # ============================================================

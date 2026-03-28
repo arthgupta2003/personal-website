@@ -1632,8 +1632,16 @@ async def calendar_view(request: Request):
       <div class="timeline-week" id="tl-week"></div>
     </div>
     <div id="heat-view" style="display:none"></div>
-    <div id="map-view" style="display:none;">
-      <div id="event-map" style="height:70vh;width:100%;border:1px solid #e0e0e0;"></div>
+    <div id="map-view" style="display:none;margin:0 -20px;">
+      <div style="position:relative;">
+        <div id="event-map" style="height:75vh;width:100%;"></div>
+        <div id="map-panel" style="display:none;position:absolute;top:12px;right:12px;width:300px;max-height:calc(75vh - 24px);overflow-y:auto;background:#fff;border:1px solid #e0e0e0;padding:16px;z-index:1000;box-shadow:0 2px 12px rgba(0,0,0,.1);"></div>
+      </div>
+      <div style="padding:8px 20px;font-size:11px;color:#888;">
+        <span style="display:inline-block;width:10px;height:10px;background:#4a6741;margin-right:4px;vertical-align:middle;border-radius:50%;"></span> Score 70+
+        <span style="display:inline-block;width:10px;height:10px;background:#c4734f;margin:0 4px 0 12px;vertical-align:middle;border-radius:50%;"></span> Score 50-69
+        <span style="display:inline-block;width:10px;height:10px;background:#999;margin:0 4px 0 12px;vertical-align:middle;border-radius:50%;"></span> Below 50
+      </div>
     </div>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -2030,48 +2038,67 @@ async def calendar_view(request: Request):
     let _map = null;
     let _mapMarkers = [];
     function buildMapView() {{
-      const mapEl = document.getElementById('event-map');
       if (!_map) {{
-        _map = L.map('event-map').setView([HOME_LAT, HOME_LON], 13);
+        _map = L.map('event-map', {{zoomControl: false}}).setView([HOME_LAT, HOME_LON], 13);
+        L.control.zoom({{position: 'bottomright'}}).addTo(_map);
         L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}@2x.png', {{
-          attribution: '&copy; OpenStreetMap &copy; CARTO',
+          attribution: '&copy; OSM &copy; CARTO',
           maxZoom: 19
         }}).addTo(_map);
         // Home marker
-        L.circleMarker([HOME_LAT, HOME_LON], {{radius:6, color:'#4a6741', fillColor:'#4a6741', fillOpacity:1, weight:2}}).addTo(_map).bindPopup('You');
+        const homeIcon = L.divIcon({{
+          html: '<div style="width:16px;height:16px;background:#4a6741;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.3);"></div>',
+          iconSize: [16, 16], className: ''
+        }});
+        L.marker([HOME_LAT, HOME_LON], {{icon: homeIcon}}).addTo(_map);
       }}
       setTimeout(() => _map.invalidateSize(), 100);
 
-      // Clear old markers
       _mapMarkers.forEach(m => _map.removeLayer(m));
       _mapMarkers = [];
+      const panel = document.getElementById('map-panel');
 
       const filtered = getFilteredEvents();
-      filtered.forEach(e => {{
-        if (!e.lat || !e.lon) return;
+      const withGeo = filtered.filter(e => e.lat && e.lon);
+
+      withGeo.forEach(e => {{
         const score = e.score || 0;
-        const radius = Math.max(5, Math.min(14, score / 8));
-        const color = score >= 70 ? '#4a6741' : score >= 50 ? '#c4734f' : '#999';
+        const size = Math.max(8, Math.min(18, score / 6));
+        const color = score >= 70 ? '#4a6741' : score >= 50 ? '#c4734f' : '#bbb';
 
         const marker = L.circleMarker([e.lat, e.lon], {{
-          radius: radius, color: color, fillColor: color, fillOpacity: 0.7, weight: 1
+          radius: size, color: '#fff', fillColor: color, fillOpacity: 0.85, weight: 2
         }}).addTo(_map);
 
-        let timeStr = '';
-        try {{ const dt = new Date(e.start); if (dt.getHours()||dt.getMinutes()) timeStr = dt.toLocaleTimeString('en-US',{{hour:'numeric',minute:'2-digit'}}); }} catch(x){{}}
-        const dayStr = e.start ? new Date(e.start).toLocaleDateString('en-US',{{weekday:'short',month:'short',day:'numeric'}}) : '';
+        marker.on('click', () => {{
+          let timeStr = '';
+          try {{ const dt = new Date(e.start); if (dt.getHours()||dt.getMinutes()) timeStr = dt.toLocaleTimeString('en-US',{{hour:'numeric',minute:'2-digit'}}); }} catch(x){{}}
+          const dayStr = e.start ? new Date(e.start).toLocaleDateString('en-US',{{weekday:'long',month:'short',day:'numeric'}}) : '';
 
-        marker.bindPopup(`<div style="font-family:Inter,system-ui,sans-serif;min-width:180px;">
-          <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${{e.title}}</div>
-          <div style="font-size:12px;color:#888;">${{[dayStr, timeStr, e.location].filter(Boolean).join(' · ')}}</div>
-          <div style="margin-top:8px;display:flex;gap:8px;">
-            ${{e.url ? '<a href="'+e.url+'" target="_blank" style="font-size:12px;color:#4a6741;font-weight:600;">View event</a>' : ''}}
-            <span style="font-size:12px;font-weight:700;color:'+color+';">${{score}}</span>
-          </div>
-        </div>`, {{maxWidth: 250}});
+          panel.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
+              <span class="score-badge ${{scoreCls(score)}}">${{score}}</span>
+              <button onclick="document.getElementById('map-panel').style.display='none'" style="background:none;border:none;color:#ccc;font-size:18px;cursor:pointer;">&times;</button>
+            </div>
+            <div style="font-weight:800;font-size:16px;color:#1a1a1a;margin-bottom:6px;">${{e.title}}</div>
+            <div style="font-size:13px;color:#888;margin-bottom:4px;">${{dayStr}}${{timeStr ? ' at ' + timeStr : ''}}</div>
+            ${{e.location ? '<div style="font-size:13px;color:#888;margin-bottom:8px;">' + e.location + '</div>' : ''}}
+            ${{e.description ? '<div style="font-size:13px;color:#555;line-height:1.5;margin-bottom:12px;">' + e.description.slice(0,150) + '</div>' : ''}}
+            <div style="display:flex;gap:8px;">
+              ${{e.url ? '<a href="' + e.url + '" target="_blank" class="btn-primary" style="text-decoration:none;padding:8px 16px;font-size:12px;">View event</a>' : ''}}
+            </div>
+          `;
+          panel.style.display = 'block';
+        }});
 
         _mapMarkers.push(marker);
       }});
+
+      // Show count
+      if (!withGeo.length) {{
+        panel.innerHTML = '<p style="color:#888;font-size:13px;">No events with location data.</p>';
+        panel.style.display = 'block';
+      }}
     }}
 
     // --- Init ---
