@@ -1603,12 +1603,9 @@ async def calendar_view(request: Request):
       .see-more-btn:hover {{ background: #f5f5f5; }}
       .see-more-collapse {{ color: #888; }}
       .see-more-collapse:hover {{ background: #f5f5f5; color: #000; }}
-      .evt-card {{ background: white; margin: 0; border-bottom: 1px solid #e0e0e0; border-left: 3px solid; transition: background .15s; cursor: pointer; overflow: hidden; display: flex; }}
+      .evt-card {{ background: white; margin: 0; border-bottom: 1px solid #e0e0e0; transition: background .15s; cursor: pointer; overflow: hidden; display: flex; }}
       .evt-card:hover {{ background: #fafafa; }}
-      .evt-card.vibe-social {{ border-left-color: #c9a227; }}
-      .evt-card.vibe-intellectual {{ border-left-color: #4a6741; }}
-      .evt-card.vibe-mixed {{ border-left-color: #555; }}
-      .evt-card.rsvp-going-card {{ border-left-color: #4a6741; border-left-width: 4px; }}
+      .evt-card.rsvp-going-card {{ border-left: 3px solid #4a6741; }}
       .evt-card.rsvp-maybe-card {{ border-left-color: #888; }}
       .evt-card .card-body {{ flex: 1; padding: 14px 16px; min-width: 0; }}
       .evt-card .card-top {{ display: flex; align-items: flex-start; gap: 8px; }}
@@ -1670,8 +1667,8 @@ async def calendar_view(request: Request):
 
     <div style="position:relative;margin-bottom:20px;">
       <input id="search-input" type="text" placeholder="Try &quot;jazz tonight&quot; or &quot;outdoor things this weekend&quot;" oninput="onSearchInput()" onkeydown="if(event.key==='Enter'){{event.preventDefault();doSearch();}}"
-             style="width:100%;padding:12px 14px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;border-bottom:2px solid transparent;transition:border-color .15s;"
-             onfocus="this.style.borderBottomColor='#4a6741'" onblur="this.style.borderBottomColor='transparent'">
+             style="width:100%;padding:12px 14px;border:1px solid #ccc;border-bottom:2px solid #ccc;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;transition:border-color .15s;"
+             onfocus="this.style.borderBottomColor='#4a6741'" onblur="this.style.borderBottomColor='#ccc'">
       <span id="search-spinner" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;font-size:12px;font-weight:600;color:#4a6741;background:#f4f7f3;padding:4px 10px;border:1px solid #4a6741;">Searching the web...</span>
     </div>
     <div id="search-results" style="display:none;margin-bottom:24px;"></div>
@@ -1931,7 +1928,7 @@ async def calendar_view(request: Request):
         </div>`;
       }}
       const meta = [timeStr, e.location, e.price].filter(Boolean).join(' &middot; ');
-      return `<div class="evt-card vibe-${{e.vibe}}${{e.my_rsvp === 'going' ? ' rsvp-going-card' : ''}}" onclick="if(event.target.tagName!=='BUTTON')window.open(&apos;${{e.url || '#'}}&apos;, &apos;_blank&apos;)">
+      return `<div class="evt-card${{e.my_rsvp === 'going' ? ' rsvp-going-card' : ''}}" onclick="if(event.target.tagName!=='BUTTON')window.open(&apos;${{e.url || '#'}}&apos;, &apos;_blank&apos;)">
         <div class="card-body">
           <div class="card-top">
             <span class="card-title">${{e.title}}</span>
@@ -2703,6 +2700,9 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                     <input name="location" placeholder="Where? (optional)"
                            style="flex:1;min-width:130px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;">
                 </div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#888;margin-bottom:10px;cursor:pointer;">
+                    <input type="checkbox" name="recurring" value="weekly"> Repeat weekly (4 weeks)
+                </label>
                 <button type="submit" class="btn-primary" style="width:100%;">Add Event</button>
             </form>
         </div>'''
@@ -3288,8 +3288,16 @@ async def api_group_add_event(group_id: int, request: Request):
     location = (form.get("location") or "").strip()
     if not title or not date:
         return HTMLResponse("<h1>Title and date required</h1>", status_code=400)
+    recurring = form.get("recurring") == "weekly"
+    from datetime import datetime as _dt, timedelta as _td
     start_time = f"{date}T{time}:00"
     db.add_group_event(group_id, user["id"], title, start_time, location=location)
+    # Create recurring copies
+    if recurring:
+        base_date = _dt.fromisoformat(start_time)
+        for week in range(1, 4):  # 3 more weeks
+            next_dt = base_date + _td(weeks=week)
+            db.add_group_event(group_id, user["id"], title, next_dt.isoformat(), location=location)
     # Notify other group members
     try:
         members = db.get_group_members(group_id)
