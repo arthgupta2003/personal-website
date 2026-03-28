@@ -8,7 +8,7 @@
 # TODO: Location-adaptive event sources
 #   New user from NYC → pipeline detects city → adds NYC scrapers.
 
-# TODO: Onboarding guidance after joining group via invite
+# DONE: Onboarding guidance — welcome toast with action hint
 # TODO: Group availability poll — "who's free this weekend?" (When2Meet-style)
 # TODO: Notification preferences — per-group email frequency control
 # TODO: Recurring events in groups — "Every Tuesday at 7pm"
@@ -21,7 +21,7 @@
 
 # TODO: CalDAV server for real sub-calendar support
 # TODO: Containerize all services (Docker)
-# TODO: Boost limited-time / seasonal / festival events in scoring
+# DONE: Boost limited-time / seasonal / festival events in scoring
 # TODO: Event deduplication quality improvements
 # TODO: Pipeline observability / timing dashboard
 # TODO: Incremental runs / event caching between pipeline runs

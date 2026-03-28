@@ -235,6 +235,54 @@ async def _run_source(
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
+async def _enrich_events(events: list[Event], max_enrich: int = 40) -> None:
+    """Fetch detail pages for events missing description or price."""
+    import httpx
+    from bs4 import BeautifulSoup
+
+    to_enrich = [e for e in events if e.url and (not e.description or not e.price)][:max_enrich]
+    if not to_enrich:
+        return
+
+    logger.info("Enriching %d events missing description/price", len(to_enrich))
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+        for event in to_enrich:
+            try:
+                resp = await client.get(event.url, headers=headers)
+                if resp.status_code != 200:
+                    continue
+                soup = BeautifulSoup(resp.text, "lxml")
+
+                # Description: meta description > first substantial paragraph
+                if not event.description:
+                    meta = soup.find("meta", attrs={"name": "description"})
+                    if meta and meta.get("content"):
+                        event.description = meta["content"][:300]
+                    else:
+                        for p in soup.find_all("p"):
+                            text = p.get_text(strip=True)
+                            if len(text) > 40:
+                                event.description = text[:300]
+                                break
+
+                # Price: look for dollar amounts
+                if not event.price:
+                    price_el = soup.find(class_=lambda c: c and "price" in str(c).lower())
+                    if price_el:
+                        event.price = price_el.get_text(strip=True)[:50]
+                    else:
+                        price_match = re.search(r"\$\d[\d,.]*(?:\s*[-–]\s*\$\d[\d,.]*)?", soup.get_text())
+                        if price_match:
+                            event.price = price_match.group()
+            except Exception:
+                pass
+
+    enriched = sum(1 for e in to_enrich if e.description or e.price)
+    logger.info("Enriched %d/%d events", enriched, len(to_enrich))
+
+
 async def discover_all_events(
     settings: Settings,
     newsletters: list[dict] | None = None,
@@ -369,6 +417,9 @@ async def discover_all_events(
                     error_message=str(exc),
                 )
             )
+
+    # Enrich events missing description/price by fetching detail pages
+    await _enrich_events(all_events)
 
     # Deduplicate
     before = len(all_events)
