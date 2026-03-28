@@ -951,27 +951,48 @@ async def taste_profile_page(request: Request):
                 if kw:
                     paste_keywords.append(kw)
 
-    # 4. Spotify top artists (from latest ingest stats or token)
+    # 4. Spotify top artists — fetch live from token
     spotify_artists = []
-    try:
-        rows = db.conn.execute(
-            """SELECT DISTINCT title FROM (
-                SELECT title FROM events WHERE source='spotify' AND run_id IN (
-                    SELECT id FROM runs WHERE user_id=? ORDER BY id DESC LIMIT 3
-                )
-                UNION
-                SELECT title FROM ingest_stats WHERE source='Spotify' AND run_id IN (
-                    SELECT id FROM runs WHERE user_id=? ORDER BY id DESC LIMIT 1
-                )
-            ) LIMIT 20""",
-            (user_id, user_id),
-        ).fetchall()
-        spotify_artists = [r["title"] for r in rows if r.get("title")]
-    except Exception:
-        pass
-    # If no DB data, try reading from the activity items in the interest profile
-    if not spotify_artists and interests:
-        spotify_artists = [i["topic"] for i in interests if "music" in str(i.get("source_signals", [])).lower() or "spotify" in str(i.get("source_signals", [])).lower()]
+    spotify_token_file = current_user.get("spotify_token_file")
+    if spotify_token_file:
+        try:
+            import httpx as _httpx
+            token_data = _json.loads(Path(spotify_token_file).read_text())
+            refresh_token = token_data.get("refresh_token", "")
+            access_token = token_data.get("access_token", "")
+            # Refresh if we have a refresh token
+            if refresh_token:
+                settings_obj = Settings()
+                r = _httpx.post("https://accounts.spotify.com/api/token", data={
+                    "grant_type": "refresh_token", "refresh_token": refresh_token,
+                    "client_id": settings_obj.spotify_client_id, "client_secret": settings_obj.spotify_client_secret,
+                })
+                if r.status_code == 200:
+                    access_token = r.json().get("access_token", access_token)
+            if access_token:
+                r = _httpx.get("https://api.spotify.com/v1/me/top/artists?limit=20&time_range=medium_term",
+                    headers={"Authorization": f"Bearer {access_token}"})
+                if r.status_code == 200:
+                    for a in r.json().get("items", []):
+                        genres = a.get("genres", [])[:2]
+                        label = a["name"] + (f" ({', '.join(genres)})" if genres else "")
+                        spotify_artists.append(label)
+        except Exception:
+            pass
+
+    # 5. YouTube subscriptions — fetch live from token
+    youtube_subs = []
+    youtube_token_file = current_user.get("youtube_token_file")
+    if youtube_token_file and Path(youtube_token_file).exists():
+        try:
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+            creds = Credentials.from_authorized_user_file(str(Path(youtube_token_file)))
+            yt = build("youtube", "v3", credentials=creds)
+            subs = yt.subscriptions().list(mine=True, part="snippet", maxResults=20).execute()
+            youtube_subs = [item["snippet"]["title"] for item in subs.get("items", [])]
+        except Exception:
+            pass
 
     # Build tag HTML
     def _tags(items: list[str], color: str = "#4a6741") -> str:
@@ -1012,6 +1033,8 @@ async def taste_profile_page(request: Request):
   {"<div class='taste-section'><h2>From your paste</h2><div class='tags'>" + _tags(paste_keywords) + "</div></div>" if paste_keywords else ""}
 
   {"<div class='taste-section'><h2>Music (from Spotify)</h2><div class='tags'>" + _tags(spotify_artists, "#8b6914") + "</div></div>" if spotify_artists else ""}
+
+  {"<div class='taste-section'><h2>YouTube subscriptions</h2><div class='tags'>" + _tags(youtube_subs, "#c4302b") + "</div></div>" if youtube_subs else ""}
 
   <div style="border-top:1px solid #e0e0e0;padding-top:20px;margin-top:20px;">
     <a href="/profile" style="font-size:13px;color:#888;">Back to profile</a>
