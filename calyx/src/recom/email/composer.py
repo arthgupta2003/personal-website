@@ -87,30 +87,30 @@ _DIGEST_TEMPLATE = _env.from_string(
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ subject }}</title>
 </head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#0f0f1a;margin:0;padding:0;color:#1a1a1a;">
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;margin:0;padding:0;color:#1a1a1a;">
 
 <!-- Wrapper -->
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#0f0f1a;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;">
 <tr><td align="center" style="padding:24px 16px 40px;">
 <table width="100%" style="max-width:600px;" cellpadding="0" cellspacing="0">
 
-  <!-- HERO HEADER — Spotify-Wrapped energy -->
-  <tr><td style="background:linear-gradient(160deg,#312e81 0%,#1e1b4b 40%,#0f172a 100%);border-radius:20px 20px 0 0;padding:40px 32px 32px;text-align:center;">
-    <p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#818cf8;">◉ CALYX</p>
-    <h1 style="margin:0 0 8px;font-size:38px;font-weight:800;color:white;line-height:1.1;letter-spacing:-1px;">Your Week<br><span style="color:#818cf8;">in Events</span></h1>
+  <!-- HERO HEADER — Calyx botanical -->
+  <tr><td style="background:linear-gradient(160deg,#4a6741 0%,#3a5334 40%,#ffffff 100%);border-radius:20px 20px 0 0;padding:40px 32px 32px;text-align:center;">
+    <p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.8);">CALYX</p>
+    <h1 style="margin:0 0 8px;font-size:38px;font-weight:800;color:white;line-height:1.1;letter-spacing:-1px;">Your Week<br>in Events</h1>
     <p style="margin:0;font-size:15px;color:rgba(255,255,255,.6);">{{ week_of }}</p>
     {% if top_recs %}
     <!-- Stats pills -->
     <div style="margin-top:24px;display:inline-flex;gap:10px;flex-wrap:wrap;justify-content:center;">
-      <span style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:white;border-radius:20px;padding:6px 16px;font-size:13px;font-weight:600;">{{ top_recs|length }} top picks</span>
+      <span style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#333;border-radius:20px;padding:6px 16px;font-size:13px;font-weight:600;">{{ top_recs|length }} top picks</span>
       {% set social_cnt = top_recs|selectattr("vibe","equalto","social")|list|length %}
       {% set intel_cnt = top_recs|selectattr("vibe","equalto","intellectual")|list|length %}
       {% if social_cnt > 0 %}<span style="background:rgba(245,158,11,.2);border:1px solid rgba(245,158,11,.3);color:#fbbf24;border-radius:20px;padding:6px 16px;font-size:13px;font-weight:600;">{{ social_cnt }} social</span>{% endif %}
-      {% if intel_cnt > 0 %}<span style="background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.3);color:#a78bfa;border-radius:20px;padding:6px 16px;font-size:13px;font-weight:600;">{{ intel_cnt }} brainy</span>{% endif %}
+      {% if intel_cnt > 0 %}<span style="background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.3);color:#6b8f62;border-radius:20px;padding:6px 16px;font-size:13px;font-weight:600;">{{ intel_cnt }} brainy</span>{% endif %}
     </div>
     {% endif %}
     <div style="margin-top:24px;">
-      <a href="{{ dashboard_url }}{% if run_id %}/run/{{ run_id }}{% endif %}" style="display:inline-block;background:#818cf8;color:#1e1b4b;text-decoration:none;font-weight:800;font-size:14px;padding:12px 28px;border-radius:50px;letter-spacing:.3px;">Open calendar &rarr;</a>
+      <a href="{{ dashboard_url }}" style="display:inline-block;background:white;color:#4a6741;text-decoration:none;font-weight:800;font-size:14px;padding:12px 28px;border-radius:50px;letter-spacing:.3px;">Open calendar &rarr;</a>
     </div>
   </td></tr>
 
@@ -120,8 +120,8 @@ _DIGEST_TEMPLATE = _env.from_string(
     {# --- #1 FEATURED PICK --- #}
     {% if top_recs %}
     {% set hero = top_recs[0] %}
-    <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#818cf8;">This week's top pick</p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#eef2ff,#f5f3ff);border-radius:16px;margin-bottom:28px;overflow:hidden;">
+    <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#4a6741;">This week's top pick</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#edf2eb,#f4f7f3);border-radius:16px;margin-bottom:28px;overflow:hidden;">
       <tr>
         {% if hero.event.image_url %}
         <td style="width:100%;">
@@ -133,14 +133,14 @@ _DIGEST_TEMPLATE = _env.from_string(
         <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#6d28d9;letter-spacing:1.5px;text-transform:uppercase;">
           {{ hero.event.start_time | format_dt }}{% if hero.event.location_name %} · {{ hero.event.location_name }}{% endif %}{% if dist_labels.get(hero.event.id) %} · {{ dist_labels[hero.event.id] }}{% endif %}
         </p>
-        <h2 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#1e1b4b;line-height:1.25;">
-          {% if hero.event.url %}<a href="{{ hero.event.url }}" style="color:#1e1b4b;text-decoration:none;">{{ hero.event.title }}</a>{% else %}{{ hero.event.title }}{% endif %}
+        <h2 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#3a5334;line-height:1.25;">
+          {% if hero.event.url %}<a href="{{ hero.event.url }}" style="color:#3a5334;text-decoration:none;">{{ hero.event.title }}</a>{% else %}{{ hero.event.title }}{% endif %}
         </h2>
         {% if hero.match_reason %}<p style="margin:0 0 12px;font-size:14px;color:#4c1d95;line-height:1.5;background:rgba(139,92,246,.1);padding:10px 14px;border-radius:8px;border-left:3px solid #8b5cf6;">{{ hero.match_reason }}</p>{% endif %}
         {% if hero.event.price %}<p style="margin:0;font-size:13px;color:#6b7280;">{{ hero.event.price }}</p>{% endif %}
         <div style="margin-top:14px;">
           {% if user_token %}<a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ hero.event.id }}.ics" style="display:inline-block;background:#16a34a;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:10px 24px;border-radius:50px;">&#128197; Add to my week</a>{% endif %}
-          {% if hero.event.url %}<a href="{{ hero.event.url }}" style="display:inline-block;margin-left:8px;color:#4f46e5;text-decoration:none;font-weight:600;font-size:13px;">Get tickets &rarr;</a>{% endif %}
+          {% if hero.event.url %}<a href="{{ hero.event.url }}" style="display:inline-block;margin-left:8px;color:#4a6741;text-decoration:none;font-weight:600;font-size:13px;">Get tickets &rarr;</a>{% endif %}
           <span style="display:inline-block;margin-left:8px;background:#dcfce7;color:#166534;font-weight:800;font-size:13px;padding:9px 14px;border-radius:50px;">{{ hero.score | int }}</span>
           {% if user_token %}<a href="{{ dashboard_url }}/api/ping-group?event_id={{ hero.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:10px;">Bring friends? &rarr;</a>{% endif %}
         </div>
@@ -231,7 +231,7 @@ _DIGEST_TEMPLATE = _env.from_string(
           <td style="padding:12px 14px;border-left:4px solid #8b5cf6;">
             <p style="margin:0 0 2px;font-size:14px;font-weight:700;line-height:1.3;">
               {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#111827;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
-              <span style="display:inline-block;background:#ede9fe;color:#6d28d9;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;margin-left:4px;text-transform:uppercase;">{{ r.event_type }}</span>
+              <span style="display:inline-block;background:#edf2eb;color:#6d28d9;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;margin-left:4px;text-transform:uppercase;">{{ r.event_type }}</span>
             </p>
             <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} · {{ r.event.location_name }}{% endif %}</p>
             {% if r.match_reason %}<p style="margin:0;font-size:12px;color:#6d28d9;">{{ r.match_reason }}</p>{% endif %}
@@ -270,9 +270,9 @@ _DIGEST_TEMPLATE = _env.from_string(
 
   <!-- FOOTER -->
   <tr><td style="padding:24px 16px;text-align:center;">
-    <a href="{{ dashboard_url }}" style="display:inline-block;margin-bottom:12px;color:#818cf8;text-decoration:none;font-size:14px;font-weight:600;">Open full calendar &rarr;</a><br>
+    <a href="{{ dashboard_url }}" style="display:inline-block;margin-bottom:12px;color:#4a6741;text-decoration:none;font-size:14px;font-weight:600;">Open full calendar &rarr;</a><br>
     <a href="{{ dashboard_url }}/feed.ics" style="color:#6b7280;text-decoration:none;font-size:12px;">Subscribe to iCal feed</a>
-    <p style="margin:12px 0 0;font-size:11px;color:#4b5563;">Curated by <strong style="color:#818cf8;">Calyx</strong> &middot; AI cost: ${{ "%.4f" | format(total_cost) }}</p>
+    <p style="margin:12px 0 0;font-size:11px;color:#4b5563;">Curated by <strong style="color:#4a6741;">Calyx</strong> &middot; AI cost: ${{ "%.4f" | format(total_cost) }}</p>
   </td></tr>
 
 </table>
@@ -450,15 +450,15 @@ _DAILY_TEMPLATE = _env.from_string(
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ subject }}</title>
 </head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#0f0f1a;margin:0;padding:0;color:#1a1a1a;">
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;margin:0;padding:0;color:#1a1a1a;">
 
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#0f0f1a;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;">
 <tr><td align="center" style="padding:20px 16px 32px;">
 <table width="100%" style="max-width:600px;" cellpadding="0" cellspacing="0">
 
   <!-- Header -->
-  <tr><td style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px 16px 0 0;padding:28px 28px 24px;text-align:center;">
-    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">◉ CALYX · Daily</p>
+  <tr><td style="background:linear-gradient(135deg,#3a5334,#4a6741);border-radius:16px 16px 0 0;padding:28px 28px 24px;text-align:center;">
+    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#4a6741;text-transform:uppercase;">◉ CALYX · Daily</p>
     <h1 style="margin:0;font-size:28px;font-weight:800;color:white;letter-spacing:-.5px;">
       <a href="{{ dashboard_url }}" style="color:white;text-decoration:none;">{{ day_label }}</a>
     </h1>
@@ -499,7 +499,7 @@ _DAILY_TEMPLATE = _env.from_string(
             <a href="{{ dashboard_url }}/api/rsvp-link?event_id={{ r.event.id }}&status=maybe&u={{ user_token }}&title={{ r.event.title | urlencode }}" style="display:inline-block;font-size:12px;font-weight:600;color:#92400e;text-decoration:none;border:1.5px solid #fde68a;padding:4px 14px;border-radius:10px;margin-right:6px;">Maybe</a>
             <a href="{{ dashboard_url }}/api/ping-group?event_id={{ r.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:6px;">Bring friends? &rarr;</a>
             {% endif %}
-            {% if r.event.url %}<a href="{{ r.event.url }}" style="display:inline-block;font-size:12px;font-weight:600;color:#4f46e5;text-decoration:none;padding:4px 0;">Get tickets &rarr;</a>{% endif %}
+            {% if r.event.url %}<a href="{{ r.event.url }}" style="display:inline-block;font-size:12px;font-weight:600;color:#4a6741;text-decoration:none;padding:4px 0;">Get tickets &rarr;</a>{% endif %}
           </p>
         </td>
       </tr>
@@ -507,11 +507,11 @@ _DAILY_TEMPLATE = _env.from_string(
     {% endfor %}
 
     {% if not events and not backfill %}
-    <p style="color:#9ca3af;font-style:italic;font-size:14px;text-align:center;padding:20px 0;">Nothing great on the calendar today. Check the <a href="{{ dashboard_url }}" style="color:#4f46e5;">full calendar</a>.</p>
+    <p style="color:#9ca3af;font-style:italic;font-size:14px;text-align:center;padding:20px 0;">Nothing great on the calendar today. Check the <a href="{{ dashboard_url }}" style="color:#4a6741;">full calendar</a>.</p>
     {% endif %}
 
     {% if backfill %}
-    <div style="margin-top:20px;padding:16px;background:#f5f3ff;border-radius:12px;border:1px solid #ddd6fe;">
+    <div style="margin-top:20px;padding:16px;background:#f4f7f3;border-radius:12px;border:1px solid #ddd6fe;">
       <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:1.5px;color:#7c3aed;text-transform:uppercase;">{% if events %}Also worth checking out{% else %}No standout events today &mdash; try these instead{% endif %}</p>
       {% for r in backfill %}
       {% set type_label = "Club" if r.event_type == "club" else ("Class" if r.event_type == "class" else "Anytime") %}
@@ -547,7 +547,7 @@ _DAILY_TEMPLATE = _env.from_string(
 
   <!-- Footer -->
   <tr><td style="padding:20px 16px;text-align:center;">
-    <a href="{{ dashboard_url }}" style="color:#818cf8;text-decoration:none;font-size:13px;font-weight:600;">Full calendar &rarr;</a>
+    <a href="{{ dashboard_url }}" style="color:#4a6741;text-decoration:none;font-size:13px;font-weight:600;">Full calendar &rarr;</a>
     &nbsp;·&nbsp;
     <a href="{{ dashboard_url }}/feed.ics" style="color:#6b7280;text-decoration:none;font-size:12px;">Subscribe to iCal</a>
   </td></tr>
@@ -670,8 +670,8 @@ _WEEKEND_TEMPLATE = _env.from_string(
 <table width="100%" style="max-width:600px;" cellpadding="0" cellspacing="0">
 
   <!-- Header -->
-  <tr><td style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px 16px 0 0;padding:28px 28px 24px;text-align:center;">
-    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">&loz; CALYX &middot; Weekend</p>
+  <tr><td style="background:linear-gradient(135deg,#3a5334,#4a6741);border-radius:16px 16px 0 0;padding:28px 28px 24px;text-align:center;">
+    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#4a6741;text-transform:uppercase;">&loz; CALYX &middot; Weekend</p>
     <h1 style="margin:0;font-size:26px;font-weight:800;color:white;letter-spacing:-.5px;">
       <a href="{{ dashboard_url }}" style="color:white;text-decoration:none;">Your Weekend</a>
     </h1>
@@ -682,7 +682,7 @@ _WEEKEND_TEMPLATE = _env.from_string(
   <tr><td style="background:white;border-radius:0 0 16px 16px;padding:24px 20px;">
 
     {% for day_label, events in days %}
-    <p style="margin:{% if not loop.first %}24px{% else %}0{% endif %} 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#4f46e5;">{{ day_label }}</p>
+    <p style="margin:{% if not loop.first %}24px{% else %}0{% endif %} 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#4a6741;">{{ day_label }}</p>
 
     {% for r in events %}
     {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#8b5cf6" if r.vibe == "intellectual" else "#3b82f6") %}
@@ -708,7 +708,7 @@ _WEEKEND_TEMPLATE = _env.from_string(
     {% endfor %}
 
     {% if not days %}
-    <p style="color:#9ca3af;text-align:center;padding:20px 0;">No weekend events found. Check the <a href="{{ dashboard_url }}" style="color:#4f46e5;">full calendar</a>.</p>
+    <p style="color:#9ca3af;text-align:center;padding:20px 0;">No weekend events found. Check the <a href="{{ dashboard_url }}" style="color:#4a6741;">full calendar</a>.</p>
     {% endif %}
 
     <div style="text-align:center;margin-top:20px;">
@@ -722,7 +722,7 @@ _WEEKEND_TEMPLATE = _env.from_string(
   <!-- Footer -->
   <tr><td style="padding:16px 24px;text-align:center;">
     <p style="margin:0;font-size:12px;color:#9ca3af;">
-      Powered by <a href="{{ dashboard_url }}" style="color:#6366f1;text-decoration:none;">Calyx</a> &middot; Discover Weekly for your real life
+      Powered by <a href="{{ dashboard_url }}" style="color:#4a6741;text-decoration:none;">Calyx</a> &middot; Discover Weekly for your real life
     </p>
   </td></tr>
 
@@ -812,8 +812,8 @@ _WELCOME_TEMPLATE = _env.from_string(
 <table width="100%" style="max-width:600px;" cellpadding="0" cellspacing="0">
 
   <!-- Header -->
-  <tr><td style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:16px 16px 0 0;padding:32px 28px;text-align:center;">
-    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#818cf8;text-transform:uppercase;">&loz; CALYX</p>
+  <tr><td style="background:linear-gradient(135deg,#3a5334,#4a6741);border-radius:16px 16px 0 0;padding:32px 28px;text-align:center;">
+    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#4a6741;text-transform:uppercase;">&loz; CALYX</p>
     <h1 style="margin:0;font-size:26px;font-weight:800;color:white;letter-spacing:-.5px;">Your event calendar is ready</h1>
     <p style="margin:8px 0 0;font-size:15px;color:rgba(255,255,255,.7);">We found {{ event_count }} events this week that match your interests.</p>
   </td></tr>
@@ -829,7 +829,7 @@ _WELCOME_TEMPLATE = _env.from_string(
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
       <tr>
         <td align="center" style="padding:6px;">
-          <a href="{{ webcal_url }}" style="display:block;background:#1e1b4b;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:14px 20px;border-radius:12px;text-align:center;">
+          <a href="{{ webcal_url }}" style="display:block;background:#3a5334;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:14px 20px;border-radius:12px;text-align:center;">
             &#127823; Add to Apple Calendar
           </a>
         </td>
@@ -888,7 +888,7 @@ _WELCOME_TEMPLATE = _env.from_string(
   <!-- Footer -->
   <tr><td style="background:white;border-radius:0 0 16px 16px;border-top:1px solid #f3f4f6;padding:16px 24px;text-align:center;">
     <p style="margin:0;font-size:12px;color:#9ca3af;">
-      Powered by <a href="{{ dashboard_url }}" style="color:#6366f1;text-decoration:none;">Calyx</a> &middot; Discover Weekly for your real life
+      Powered by <a href="{{ dashboard_url }}" style="color:#4a6741;text-decoration:none;">Calyx</a> &middot; Discover Weekly for your real life
     </p>
   </td></tr>
 
