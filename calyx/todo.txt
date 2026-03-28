@@ -2912,3 +2912,83 @@
 #     for YouTube (current is "Desktop app" type, only supports localhost)
 #   - Pipeline last ran March 19 — 9 days stale. Cron paths fixed.
 #     Fresh run kicked off 2026-03-28. Work hours filter keeps 9am-5pm.
+
+# ============================================================
+# [2026-03-28] ACTIVE WORK QUEUE — IN PRIORITY ORDER
+# ============================================================
+#
+# 1. TASTE PROFILE PAGE (/taste-profile) — IN PROGRESS, NOT STARTED
+#    Show users what Calyx learned about them. Makes the system transparent.
+#    Data: InterestProfile JSON, Spotify artists, YouTube subs, paste keywords.
+#    UI: MoMA-style page, keyword tags, editable (remove unwanted tags).
+#    Link from Profile page: "View your taste profile →"
+#    Files: src/recom/dashboard/app.py (new route + HTML)
+#    Status: NOT STARTED
+#
+# 2. SELF-IMPROVING RETRO SYSTEM — NOT STARTED
+#    When web search finds events DB didn't have, Claude diagnoses the gap.
+#    Auto-appends improvement tasks to todo.txt.
+#    Tracks: missing sources, broken scrapers, seasonal gaps.
+#    See full spec at line 2404.
+#    Status: NOT STARTED
+#
+# 3. SPOTIFY PERIODIC POLLING — NOT STARTED
+#    For existing users, poll Spotify periodically (not just one-time connect).
+#    Catch evolving tastes (e.g. user's Magdalena Bay phase).
+#    Could run as part of weekly pipeline or separate cron.
+#    Status: NOT STARTED
+#
+# 4. LOCATION-ADAPTIVE SOURCES — NOT STARTED
+#    When new user joins from NYC, add NYC event sources automatically.
+#    Pipeline detects user city, adds relevant local scrapers.
+#    Status: NOT STARTED
+#
+# 5. GOOGLE CLOUD CONSOLE: WEB APPLICATION OAUTH CLIENT — DONE
+#    Created web client for YouTube OAuth (redirect to calyx.arthgupta.dev).
+#    Client ID added to .env. Redirect URI configured.
+#    Status: DONE (2026-03-28)
+
+# ============================================================
+# [2026-03-28] COMPLETED THIS SESSION — RECORD
+# ============================================================
+#
+# DESIGN & SIMPLIFICATION:
+#   DONE: Simplified app to 3 features: Groups, Discover, Profile
+#   DONE: Deleted 5000+ lines of dead code (taste, venues, travel, budget,
+#         bucket-list, search page, attended, variants, 8 admin sub-pages)
+#   DONE: MoMA-inspired redesign — white nav, monochrome base, sharp edges
+#   DONE: Sage green (#4a6741) botanical accent color — logo, nav, buttons,
+#         badges, links, RSVP states, toggle switches, score indicators
+#   DONE: Nav simplified to Groups | Discover | Profile (was 5+ items)
+#   DONE: Profile page stripped to: name, email digest toggle, connected services,
+#         paste-to-profile interests box, admin link at bottom
+#   DONE: Discover page stripped: removed modal popups, images, vibe filters,
+#         top-picks toggle, heatmap view, FullCalendar grid. Events link directly.
+#   DONE: Groups page: removed "Upcoming with Friends" noise, replaced with
+#         "Friends are going" (only events with actual RSVPs)
+#   DONE: Group detail: one cohesive page (members as inline avatars, events
+#         flow naturally, invite/calendar as footer links)
+#   DONE: Fixed inconsistent card padding on profile page
+#   DONE: Discover list view: max 5 per day with "show more" toggle
+#   DONE: Discover diversity: max 2 per vibe within top 5 to avoid all-jazz
+#
+# FEATURES:
+#   DONE: YouTube web OAuth (/auth/youtube + /callback/youtube)
+#   DONE: Spotify shows "Connected" state on profile
+#   DONE: YouTube shows "Connected" state on profile
+#   DONE: "Tell us about yourself" paste box — Claude Haiku extracts interests
+#   DONE: YouTube upload accepts .html files from Google Takeout
+#   DONE: Email digest opt-in/out toggle (new DB column: email_digest)
+#   DONE: Tiered search API: DB text match → Gemini web search fallback
+#   DONE: Smart search bar with NL hint, auto-fires web search if <3 local results
+#   DONE: Admin link at bottom of profile (admin users only)
+#
+# INFRASTRUCTURE:
+#   DONE: Removed telegram bot (code, tmux pane, dependency)
+#   DONE: Updated start.sh for --dangerously-skip-permissions + /remote-control
+#   DONE: Fixed cron paths for monorepo (calyx/ subdirectory)
+#   DONE: Fixed discover showing 0 events during pipeline run
+#   DONE: Simplified event query — no more run-finding logic, just latest scored
+#   DONE: Added get_latest_scored_events() DB method
+#   DONE: Updated smoke_test.sh and browser_test.py for new routes
+#   DONE: Kicked off fresh pipeline run (last was 9 days stale)
