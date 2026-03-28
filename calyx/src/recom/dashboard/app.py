@@ -1684,13 +1684,6 @@ async def calendar_view(request: Request):
              onfocus="this.style.borderBottomColor='#4a6741'" onblur="this.style.borderBottomColor='#ccc'">
       <span id="search-spinner" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;font-size:12px;font-weight:600;color:#4a6741;background:#f4f7f3;padding:4px 10px;border:1px solid #4a6741;">Searching the web...</span>
     </div>
-    <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;">
-      <button class="filter-chip active" data-filter="all" onclick="setDateFilter('all',this)">All dates</button>
-      <button class="filter-chip" data-filter="today" onclick="setDateFilter('today',this)">Today</button>
-      <button class="filter-chip" data-filter="tomorrow" onclick="setDateFilter('tomorrow',this)">Tomorrow</button>
-      <button class="filter-chip" data-filter="weekend" onclick="setDateFilter('weekend',this)">This weekend</button>
-      <button class="filter-chip" data-filter="free" onclick="toggleFreeFilter(this)">Free</button>
-    </div>
     <div id="search-results" style="display:none;margin-bottom:24px;"></div>
     <input type="hidden" id="score-slider" value="0">
     <input type="hidden" id="dist-slider" value="50">
