@@ -1413,13 +1413,11 @@ async def api_search(request: Request):
             client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
             resp = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=1000,
-                tools=[{"type": "web_search_20250305", "name": "web_search"}],
+                max_tokens=600,
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 1}],
                 messages=[{"role": "user", "content":
-                    f"Find places and events in Boston/Cambridge area for: {query}. "
-                    f"Include studios, venues, classes, and workshops — not just one-off events. "
-                    f"Return a JSON array: [{{\"title\":\"\",\"date\":\"\",\"location\":\"\",\"url\":\"\",\"description\":\"\"}}]. "
-                    f"Max 6 results. Include real URLs."}],
+                    f"Search: {query} Boston Cambridge MA. "
+                    f"Return JSON array only, no explanation: [{{\"title\":\"\",\"date\":\"\",\"location\":\"\",\"url\":\"\",\"description\":\"\"}}]"}],
             )
             # Extract text from response
             text = ""
