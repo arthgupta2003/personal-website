@@ -5,34 +5,15 @@
 # ACTIVE — in priority order
 # ============================================================
 
-# DONE: Taste profile page (/taste-profile) — 2026-03-28
-#   Shows pipeline interests, manual keywords, paste-box, Spotify artists.
-#   Linked from profile page. Future: make tags editable/removable.
-
-# DONE: Self-improving retro system — 2026-03-28
-#   Fires after web search fallback. Claude Haiku diagnoses gap.
-#   Saves to search_retros table. Auto-appends TODO to todo.txt.
-
-# DONE: Spotify periodic polling — already handled
-#   Weekly pipeline re-fetches per-user tokens. Taste profile fetches live.
-
 # TODO: Location-adaptive event sources
 #   New user from NYC → pipeline detects city → adds NYC scrapers.
-#   Currently hardcoded to Boston/Cambridge.
 
-# DONE: Delete group (creator-only, with confirmation) — already implemented
-# TODO: Remove member from group (creator can kick)
-# DONE: Notify group members when new event added — already implemented
 # TODO: Onboarding guidance after joining group via invite
-# TODO: Event detail pages — shareable URL per event (Partiful-style)
-# TODO: Shareable event links — non-users can view + RSVP without account
 # TODO: Group availability poll — "who's free this weekend?" (When2Meet-style)
 # TODO: Notification preferences — per-group email frequency control
 # TODO: Recurring events in groups — "Every Tuesday at 7pm"
-# TODO: Mobile PWA — manifest.json + service worker for add-to-homescreen
 # TODO: Music genre tags — extract genre from Spotify for music events
 # TODO: Search: category/date/price filters on Discover
-# TODO: Confirm dialog before deleting group events
 
 # ============================================================
 # BACKLOG — nice to have, low priority
@@ -46,53 +27,39 @@
 # TODO: Incremental runs / event caching between pipeline runs
 
 # ============================================================
+# AUTO-RETRO — search gaps detected by the system
+# ============================================================
+
+# TODO: [auto-retro] Add outdoor recreation sources (AllTrails, AMC, DCR)
+# TODO: [auto-retro] Add niche music venue/promoter sources for hyperpop etc.
+
+# ============================================================
 # DONE — 2026-03-28 session
 # ============================================================
 
-# DONE: Simplified app to 3 features: Groups, Discover, Profile
-# DONE: Deleted 5000+ lines (taste, venues, travel, budget, bucket-list,
-#       search page, attended, variants, 8 admin sub-pages)
-# DONE: MoMA-inspired redesign — white nav, sharp edges, Inter font
-# DONE: Sage green (#4a6741) botanical accent — logo, nav, buttons, badges
-# DONE: Nav: Groups | Discover | Profile (was 5+ items with overflow)
-# DONE: Profile: name, email digest toggle, connected services, paste box
-# DONE: Discover: no modal, no images, no vibe filters, direct event links
-# DONE: Discover: 5/day cap with show more, diversity (max 2/vibe)
-# DONE: Discover: smart search bar — local filter + Gemini web fallback
-# DONE: Groups page: "Friends are going" (only actual RSVPs)
-# DONE: Group detail: cohesive page, inline member avatars, footer actions
+# DONE: Simplified app to 3 features: Groups, Discover, You
+# DONE: Deleted 5000+ lines of dead code
+# DONE: MoMA-inspired redesign + sage green (#4a6741) accent
+# DONE: Nav: Groups | Discover | You
+# DONE: Tabbed "You" page (Taste | Settings)
+# DONE: Taste profile: live Spotify artists, YouTube subs, pipeline interests
+# DONE: Paste-to-profile interests box (Claude Haiku extraction)
 # DONE: YouTube web OAuth (/auth/youtube + /callback/youtube)
-# DONE: Spotify + YouTube show "Connected" state on profile
-# DONE: "Tell us about yourself" paste box — Haiku extracts interests
-# DONE: YouTube upload accepts .html from Google Takeout
-# DONE: Email digest opt-in/out toggle (email_digest DB column)
-# DONE: Tiered search API (DB → Gemini web fallback)
-# DONE: Removed telegram bot, replaced with Claude Code remote control
-# DONE: Fixed cron paths for monorepo (calyx/ subdirectory)
-# DONE: Fixed discover showing 0 events during pipeline run
-# DONE: Simplified event query — get_latest_scored_events(), no run logic
-# DONE: Updated smoke_test.sh + browser_test.py for new routes
-# DONE: Google Cloud Console web OAuth client for YouTube
+# DONE: Spotify/YouTube "Connected" state on profile
+# DONE: Email digest toggle
+# DONE: Tiered search API (DB → Claude web search fallback)
+# DONE: Self-improving retro (auto-diagnoses search gaps, emails admin)
+# DONE: Discover: 5/day cap, vibe diversity, no modal, direct links
+# DONE: Smart search bar with auto-fire web search
+# DONE: Event dedup at DB level (GROUP BY event_id)
+# DONE: Shareable event pages (/e/{event_id}) — works without login
+# DONE: Remove member from group (creator kick)
+# DONE: Mobile PWA (manifest.json + service worker)
+# DONE: Removed telegram bot → Claude Code remote control
+# DONE: Fixed cron paths, pipeline run, event persistence
+# DONE: Groups: "Friends are going", cohesive group detail page
 
-# ============================================================
 # DONE — earlier sessions (summary)
-# ============================================================
-
-# DONE: Core pipeline (ingest → extract → discover → rank → email)
-# DONE: 13+ event sources (Eventbrite, Meetup, Ticketmaster, MIT, Harvard, etc.)
-# DONE: Two-pass ranking (Haiku prefilter + Sonnet full scoring)
-# DONE: Cookie auth + magic links
-# DONE: Group system (create, invite, join, RSVP, plan, iCal feed)
-# DONE: Per-user iCal feeds (recommendations + RSVPs)
-# DONE: Google Calendar sync
-# DONE: Email templates (weekly digest, daily picks, tonight, weekend preview)
-# DONE: Post-event rating emails
-# DONE: Steering directives (block/more/less per keyword)
-# DONE: Multi-user support
-# DONE: Onboarding flow (join page, welcome email, Spotify/YouTube connect)
-# DONE: Admin dashboard (run history, source health)
-# DONE: Cost tracking per pipeline run
-# DONE: Monorepo setup (calyx/ + site/)
-# DONE: Cloudflare tunnel (calyx.arthgupta.dev)
-# DONE: tmux service management (start.sh)
-# DONE: Cron jobs (weekly pipeline, daily digest, tonight, ratings)
+# DONE: Core pipeline, 13+ sources, two-pass ranking, auth, groups, iCal
+# DONE: Email templates, post-event ratings, steering, multi-user
+# DONE: Admin dashboard, cost tracking, monorepo, Cloudflare, tmux, crons

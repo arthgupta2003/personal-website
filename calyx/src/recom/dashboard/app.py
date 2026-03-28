@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Calyx Dashboard")
 
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path as _Path
+_static_dir = _Path(__file__).parent.parent.parent.parent / "static"
+if _static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
 _db: Database | None = None
 
 
@@ -100,6 +106,7 @@ LAYOUT_STYLE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#4a6741">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/static/manifest.json">
 __OG_TAGS__
 <title>Calyx — __TITLE__</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -222,6 +229,7 @@ function showToast(msg, type) {
   if (s) showToast(s, 'success');
   else if (i) showToast(i, 'info');
 })();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js').catch(() => {});
 </script>
 </div><!-- .app-content -->
 </body></html>"""
@@ -1469,12 +1477,22 @@ In 2-3 sentences: Why did our database miss these? What event sources or scraper
         )
         db.conn.commit()
 
-        # Append to todo.txt if actionable
+        # Append clean one-liner to todo.txt
         if "add" in diagnosis.lower() or "scraper" in diagnosis.lower() or "source" in diagnosis.lower():
+            # Extract a short actionable summary
+            short = diagnosis.split(".")[0].strip()[:100]
             todo_path = Path("todo.txt")
             with open(todo_path, "a") as f:
-                f.write(f"\n# TODO: [auto-retro] {diagnosis[:120]}\n")
-                f.write(f"#   Query: \"{query}\" — {len(web_results)} web results vs {len(db_results)} DB results\n")
+                f.write(f"\n# TODO: [auto-retro] {short} (query: {query})\n")
+
+        # Email the retro to admin
+        try:
+            from recom.email.sender import send_email as _send
+            subject = f"[Calyx Retro] Search gap: {query}"
+            html = f"<h3>Search Gap Detected</h3><p><strong>Query:</strong> {query}</p><p><strong>DB:</strong> {len(db_results)} results | <strong>Web:</strong> {len(web_results)} results</p><p>{diagnosis}</p>"
+            _send(subject, html, settings)
+        except Exception:
+            pass
 
         logger.info("Search retro for '%s': %s", query, diagnosis[:100])
     except Exception:
@@ -1654,7 +1672,7 @@ async def calendar_view(request: Request):
       <input id="search-input" type="text" placeholder="Try &quot;jazz tonight&quot; or &quot;outdoor things this weekend&quot;" oninput="onSearchInput()" onkeydown="if(event.key==='Enter'){{event.preventDefault();doSearch();}}"
              style="width:100%;padding:12px 14px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;border-bottom:2px solid transparent;transition:border-color .15s;"
              onfocus="this.style.borderBottomColor='#4a6741'" onblur="this.style.borderBottomColor='transparent'">
-      <span id="search-spinner" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:12px;color:#4a6741;">searching the web...</span>
+      <span id="search-spinner" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;font-size:12px;font-weight:600;color:#4a6741;background:#f4f7f3;padding:4px 10px;border:1px solid #4a6741;">Searching the web...</span>
     </div>
     <div id="search-results" style="display:none;margin-bottom:24px;"></div>
     <input type="hidden" id="score-slider" value="0">
@@ -2520,6 +2538,7 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
 
     members = db.get_group_members(group["id"])
     is_member = current_user and any(m["id"] == current_user["id"] for m in members)
+    is_creator = current_user and group.get("created_by") == current_user["id"]
     group_name = db.get_group_display_name(group)
 
     # --- Members list ---
@@ -2799,6 +2818,16 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     .grp-rsvp-btn.maybe:hover, .grp-rsvp-btn.maybe.active {{ background:#f5f5f5; color:#000; border-color:#000; }}
     </style>
     <script>
+    async function kickMember(groupId, userId, btn) {{
+        if (!confirm('Remove this member from the group?')) return;
+        const resp = await fetch('/api/group/' + groupId + '/kick', {{
+            method: 'POST',
+            headers: {{'Content-Type': 'application/json'}},
+            body: JSON.stringify({{user_id: userId}})
+        }});
+        if (resp.ok) location.reload();
+    }}
+
     async function rsvpGroupEvent(groupId, eventId, status, btn) {{
         const container = btn.parentElement;
         const buttons = container.querySelectorAll('.grp-rsvp-btn');
@@ -2820,6 +2849,17 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     """
 
     member_count = len(members)
+    # Build members HTML with kick button for creator
+    _members_html = ""
+    for m in members:
+        initial = ((m.get("name") or m.get("email") or "?")[0]).upper()
+        mname = m.get("name") or m.get("email", "").split("@")[0]
+        me_cls = " me" if current_user and m["id"] == current_user["id"] else ""
+        kick = ""
+        if is_creator and current_user and m["id"] != current_user["id"]:
+            kick = f'<button onclick="kickMember({group_id},{m["id"]},this)" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:14px;padding:0 2px;margin-left:4px;" title="Remove">&times;</button>'
+        _members_html += f'<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 4px;border:1px solid #e0e0e0;font-size:13px;"><div class="member-avatar{me_cls}" style="width:26px;height:26px;font-size:11px;margin:0">{initial}</div><span>{mname}</span>{kick}</div>'
+
     og = _og_override or {
         "title": group_name,
         "description": f"{member_count} members \u00b7 Upcoming events",
@@ -2837,11 +2877,10 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     <div class="group-page">
     {name_html}
 
-    <div style="display:flex;align-items:center;margin-bottom:32px;">
-        <div class="member-row">
-            {"".join(f'<div class="member-avatar{" me" if current_user and m["id"] == current_user["id"] else ""}" title="{m.get("name") or m.get("email","")}">{((m.get("name") or m.get("email") or "?")[0]).upper()}</div>' for m in members)}
+    <div style="margin-bottom:32px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            {_members_html}
         </div>
-        <span class="member-names">{", ".join((m.get("name") or m.get("email","").split("@")[0]) for m in members[:4])}{f" +{len(members)-4}" if len(members) > 4 else ""}</span>
     </div>
 
     {join_cta}
@@ -3316,6 +3355,24 @@ async def api_group_leave(group_id: int, request: Request):
         return HTMLResponse("<h1>Not a member</h1>", status_code=403)
     db.leave_group(group_id, user["id"])
     return RedirectResponse("/groups?success=Left+group", status_code=303)
+
+
+@app.post("/api/group/{group_id:int}/kick")
+async def api_group_kick(group_id: int, request: Request):
+    """Creator can remove a member from the group."""
+    user = _get_current_user(request)
+    db = get_db()
+    if not user:
+        return JSONResponse({"ok": False, "error": "Unauthorized"}, status_code=401)
+    group = db.get_group_by_id(group_id)
+    if not group or group["created_by"] != user["id"]:
+        return JSONResponse({"ok": False, "error": "Only the group creator can remove members"}, status_code=403)
+    body = await request.json()
+    member_id = body.get("user_id")
+    if not member_id or member_id == user["id"]:
+        return JSONResponse({"ok": False, "error": "Invalid"})
+    db.leave_group(group_id, member_id)
+    return JSONResponse({"ok": True})
 
 
 @app.post("/api/group/{group_id:int}/delete")
@@ -4369,6 +4426,66 @@ def _find_event(db, event_id: str) -> dict | None:
         (event_id,),
     ).fetchone()
     return dict(row) if row else None
+
+
+@app.get("/e/{event_id}", response_class=HTMLResponse)
+async def public_event_page(event_id: str, request: Request):
+    """Public shareable event detail page — works without login."""
+    db = get_db()
+    current_user = _get_current_user(request)
+    event = _find_event(db, event_id)
+    if not event:
+        return HTMLResponse(_layout("Event Not Found", "<h1>Event not found</h1><p>This event may have expired.</p>", current_user), status_code=404)
+
+    title = event.get("title", "Event")
+    desc = event.get("description", "")
+    location = event.get("location_name", "")
+    url = event.get("url", "")
+    score = int(event.get("score") or 0)
+    vibe = event.get("vibe", "")
+    reason = event.get("match_reason", "")
+
+    time_str = ""
+    if event.get("start_time"):
+        try:
+            from datetime import datetime as _dt
+            d = _dt.fromisoformat(event["start_time"])
+            time_str = d.strftime("%A, %B %-d at %-I:%M %p")
+        except (ValueError, TypeError):
+            time_str = event["start_time"][:16]
+
+    # RSVP info
+    rsvps = db.get_rsvps_for_events([event_id]).get(event_id, [])
+    going = [r for r in rsvps if r["status"] == "going"]
+    maybe = [r for r in rsvps if r["status"] == "maybe"]
+    social_html = ""
+    if going or maybe:
+        names = ", ".join(r["user_name"] for r in (going + maybe)[:5])
+        social_html = f'<div style="margin-top:16px;padding:12px;background:#f4f7f3;border:1px solid #e0e0e0;font-size:13px;"><strong>{len(going)} going</strong>{f", {len(maybe)} maybe" if maybe else ""} &mdash; {names}</div>'
+
+    og = {
+        "title": title,
+        "description": (desc or reason)[:200],
+        "image": event.get("image_url", ""),
+        "url": f"https://calyx.arthgupta.dev/e/{event_id}",
+    }
+
+    body = f"""
+<div style="max-width:560px;margin:0 auto;padding:40px 0;">
+  <h1 style="margin-bottom:8px;">{title}</h1>
+  <div style="font-size:15px;color:#555;margin-bottom:4px;">{time_str}</div>
+  {"<div style='font-size:14px;color:#888;margin-bottom:16px;'>" + location + "</div>" if location else ""}
+  {f'<div style="font-size:14px;color:#555;line-height:1.6;margin-bottom:16px;">{desc[:500]}</div>' if desc else ""}
+  {f'<div style="font-size:13px;color:#4a6741;font-style:italic;margin-bottom:16px;">{reason}</div>' if reason else ""}
+  {social_html}
+  <div style="display:flex;gap:10px;margin-top:20px;">
+    {f'<a href="{url}" target="_blank" class="btn-primary" style="text-decoration:none;">View event</a>' if url else ""}
+    <a href="/event/{event_id}.ics" class="btn-secondary" style="text-decoration:none;">Add to calendar</a>
+  </div>
+  {f'<div style="margin-top:24px;"><a href="/join" style="font-size:13px;">Join Calyx to RSVP and get personalized picks</a></div>' if not current_user else ""}
+</div>
+"""
+    return HTMLResponse(_layout(title, body, current_user, og))
 
 
 @app.get("/event/{event_id}.ics")

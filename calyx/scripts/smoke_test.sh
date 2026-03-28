@@ -55,7 +55,7 @@ if [ -n "$SAMPLE_EID" ]; then
 fi
 
 # Auth-required pages (redirect without cookie)
-check "/profile" "307" "/profile (unauth→307)"
+check "/taste-profile" "307" "/taste-profile (unauth→307)"
 
 # Authenticated flow (requires --email arg)
 TEST_EMAIL="${1:-}"
@@ -78,7 +78,7 @@ print(user['user_token'])
     ((FAIL++))
   else
     echo "  INFO token=${TOKEN}"
-    check "/profile" "200" "/profile (authed)" "$TOKEN"
+    check "/taste-profile" "200" "/taste-profile (authed)" "$TOKEN"
     check "/groups" "200" "/groups (authed)" "$TOKEN"
     check "/calendar" "200" "/calendar (authed)" "$TOKEN"
 
