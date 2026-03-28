@@ -69,16 +69,16 @@ def render_nav(user: dict | None = None) -> str:
         name = user.get("name") or user.get("email", "")
         return f"""<nav class="app-nav"><div class="app-nav-inner">
           <a href="/" class="app-logo">{_LOGO_SVG} calyx</a>
-          <a href="/groups" class="nav-link">Groups</a>
           <a href="/calendar" class="nav-link">Discover</a>
+          <a href="/groups" class="nav-link">Groups</a>
           <a href="/taste-profile" class="nav-link">You</a>
           <div class="nav-divider"></div>
           <span style="font-size:12px;color:#888;font-weight:500;">{name}</span>
         </div></nav>"""
     return f"""<nav class="app-nav"><div class="app-nav-inner">
       <a href="/" class="app-logo">{_LOGO_SVG} calyx</a>
-      <a href="/groups" class="nav-link">Groups</a>
       <a href="/calendar" class="nav-link">Discover</a>
+      <a href="/groups" class="nav-link">Groups</a>
       <a href="/login" class="nav-link">Log in</a>
     </div></nav>"""
 
