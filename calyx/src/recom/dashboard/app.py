@@ -61,19 +61,22 @@ def _maybe_set_cookie(request: Request, response: Response, user: dict | None) -
     return response
 
 
+_LOGO_SVG = '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C9 6 4 8 4 13c0 4 3.5 7 8 7s8-3 8-7c0-5-5-7-8-11z" fill="#4a6741" opacity=".15"/><path d="M12 5c-2 3-5.5 4.5-5.5 8.5 0 3 2.5 5.5 5.5 5.5s5.5-2.5 5.5-5.5c0-4-3.5-5.5-5.5-8.5z" fill="#4a6741" opacity=".3"/><path d="M12 8c-1.5 2-3.5 3-3.5 5.5 0 2 1.5 3.5 3.5 3.5s3.5-1.5 3.5-3.5c0-2.5-2-3.5-3.5-5.5z" fill="#4a6741"/><path d="M12 12v6" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/><path d="M10.5 14.5c.5-.5 1.5-.5 1.5-.5" stroke="#fff" stroke-width=".8" stroke-linecap="round"/></svg>'
+
+
 def render_nav(user: dict | None = None) -> str:
     if user:
         name = user.get("name") or user.get("email", "")
         return f"""<nav class="app-nav"><div class="app-nav-inner">
-          <a href="/" class="app-logo">calyx</a>
+          <a href="/" class="app-logo">{_LOGO_SVG} calyx</a>
           <a href="/groups" class="nav-link">Groups</a>
           <a href="/calendar" class="nav-link">Discover</a>
           <a href="/taste-profile" class="nav-link">You</a>
           <div class="nav-divider"></div>
           <span style="font-size:12px;color:#888;font-weight:500;">{name}</span>
         </div></nav>"""
-    return """<nav class="app-nav"><div class="app-nav-inner">
-      <a href="/" class="app-logo">calyx</a>
+    return f"""<nav class="app-nav"><div class="app-nav-inner">
+      <a href="/" class="app-logo">{_LOGO_SVG} calyx</a>
       <a href="/groups" class="nav-link">Groups</a>
       <a href="/calendar" class="nav-link">Discover</a>
       <a href="/login" class="nav-link">Log in</a>
@@ -119,16 +122,18 @@ __OG_TAGS__
   /* --- App shell --- */
   .app-nav { background: #fff; padding: 0 20px; position: sticky; top: 0; z-index: 100; border-bottom: 2px solid #4a6741; }
   .app-nav-inner { display: flex; align-items: center; max-width: 960px; margin: 0 auto; height: 56px; gap: 4px; }
-  .app-logo { font-size: 20px; font-weight: 800; color: #4a6741; text-decoration: none; letter-spacing: -.8px; margin-right: auto; text-transform: lowercase; }
-  .app-logo:hover { text-decoration: none; opacity: .8; }
+  .app-logo { font-size: 20px; font-weight: 800; color: #4a6741; text-decoration: none; letter-spacing: -.8px; margin-right: auto; text-transform: lowercase; display: flex; align-items: center; gap: 6px; }
+  .app-logo svg { width: 22px; height: 22px; }
+  .app-logo:hover { text-decoration: none; opacity: .85; }
   .app-nav a.nav-link { font-size: 13px; font-weight: 500; color: #666; text-decoration: none; padding: 8px 14px; letter-spacing: .3px; text-transform: uppercase; transition: color .15s; }
   .app-nav a.nav-link:hover { color: #4a6741; text-decoration: none; }
   .app-nav a.nav-link.active { color: #4a6741; font-weight: 700; border-bottom: 2px solid #4a6741; margin-bottom: -2px; }
   .nav-divider { width: 1px; height: 20px; background: #ddd; margin: 0 8px; }
   .app-content { max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }
   /* --- Shared components --- */
+  /* --- Botanical color system: sage (#4a6741) + terracotta (#c4734f) --- */
   h1 { margin-bottom: 24px; color: #1a1a1a; font-size: 2rem; font-weight: 800; letter-spacing: -.5px; }
-  h2 { margin: 28px 0 16px; color: #000; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
+  h2 { margin: 28px 0 16px; color: #4a6741; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
   a { color: #4a6741; text-decoration: underline; text-underline-offset: 2px; }
   a:hover { text-decoration-thickness: 2px; color: #3a5334; }
   .card { background: #fff; border: 1px solid #e0e0e0; padding: 24px; margin-bottom: 24px; }
@@ -1010,13 +1015,15 @@ async def taste_profile_page(request: Request):
             pass
 
     # Build tag HTML
-    def _tags(items: list[str], color: str = "#4a6741") -> str:
+    _tag_colors = ["#4a6741", "#c4734f", "#5b7fa5", "#8b6b47", "#7a5c8a", "#5a8a6e"]
+    def _tags(items: list[str], color: str = "") -> str:
         if not items:
             return '<span style="color:#ccc;font-size:13px;">Nothing yet</span>'
-        return " ".join(
-            f'<span style="display:inline-block;padding:4px 12px;margin:3px;background:#f4f7f3;color:{color};font-size:13px;font-weight:500;border:1px solid #e0e0e0;">{item}</span>'
-            for item in items[:30]
-        )
+        tags = []
+        for i, item in enumerate(items[:30]):
+            c = color or _tag_colors[i % len(_tag_colors)]
+            tags.append(f'<span style="display:inline-block;padding:5px 14px;margin:3px;background:{c}10;color:{c};font-size:13px;font-weight:600;border-left:3px solid {c};">{item}</span>')
+        return " ".join(tags)
 
     # Build interest tags grouped by source
     algo_interests = [i for i in interests if "manual" not in str(i.get("source_signals", []))]
@@ -1060,7 +1067,10 @@ async def taste_profile_page(request: Request):
 .svc-row+.svc-row{{border-top:1px solid #e0e0e0}}
 </style>
 <div class="you-page">
-  <h1>You</h1>
+  <div style="position:relative;overflow:hidden;">
+    <svg style="position:absolute;right:-20px;top:-10px;opacity:.07;pointer-events:none;" width="180" height="180" viewBox="0 0 100 100"><path d="M50 5C35 25 10 35 10 60c0 22 18 35 40 35s40-13 40-35C90 35 65 25 50 5z" fill="#4a6741"/><path d="M50 20C40 35 20 42 20 58c0 17 13 27 30 27s30-10 30-27C80 42 60 35 50 20z" fill="#4a6741"/></svg>
+    <h1 style="position:relative;">You</h1>
+  </div>
 
   <div class="you-tabs">
     <button class="you-tab active" onclick="switchYouTab('taste')">Taste</button>
@@ -1600,10 +1610,10 @@ async def calendar_view(request: Request):
       /* --- Card list view --- */
       #list-view {{ display: none; }}
       .day-group {{ margin-bottom: 28px; }}
-      .day-header {{ position: sticky; top: 56px; background: #fff; padding: 12px 0 8px; font-size: 11px; font-weight: 700; color: #000; z-index: 10; border-bottom: 1px solid #000; display: flex; justify-content: space-between; align-items: baseline; text-transform: uppercase; letter-spacing: 1.5px; }}
+      .day-header {{ position: sticky; top: 56px; background: #fff; padding: 12px 0 8px; font-size: 11px; font-weight: 700; color: #4a6741; z-index: 10; border-bottom: 2px solid #4a6741; display: flex; justify-content: space-between; align-items: baseline; text-transform: uppercase; letter-spacing: 1.5px; }}
       .day-header .day-count {{ font-size: 11px; font-weight: 500; color: #888; text-transform: none; letter-spacing: 0; }}
-      .see-more-btn {{ display: block; width: 100%; margin: 6px 0 10px; padding: 10px; background: #fff; border: 1px solid #e0e0e0; color: #000; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: center; transition: all .15s; text-transform: uppercase; letter-spacing: .5px; }}
-      .see-more-btn:hover {{ background: #f5f5f5; }}
+      .see-more-btn {{ display: block; width: 100%; margin: 6px 0 10px; padding: 10px; background: #fff; border: 1px solid #e0e0e0; color: #c4734f; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: center; transition: all .15s; text-transform: uppercase; letter-spacing: .5px; }}
+      .see-more-btn:hover {{ background: #fdf5f2; border-color: #c4734f; }}
       .see-more-collapse {{ color: #888; }}
       .see-more-collapse:hover {{ background: #f5f5f5; color: #000; }}
       .evt-card {{ background: white; margin: 0; border-bottom: 1px solid #e0e0e0; transition: background .15s; cursor: pointer; overflow: hidden; display: flex; }}
@@ -2911,16 +2921,23 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     """
 
     member_count = len(members)
-    # Build members HTML with kick button for creator
+    # Build members HTML
+    _colors = ["#4a6741", "#c4734f", "#5b7fa5", "#8b6b47", "#7a5c8a", "#5a8a6e"]
     _members_html = ""
-    for m in members:
+    for i, m in enumerate(members):
         initial = ((m.get("name") or m.get("email") or "?")[0]).upper()
         mname = m.get("name") or m.get("email", "").split("@")[0]
-        me_cls = " me" if current_user and m["id"] == current_user["id"] else ""
+        is_me = current_user and m["id"] == current_user["id"]
+        color = _colors[i % len(_colors)]
         kick = ""
         if is_creator and current_user and m["id"] != current_user["id"]:
-            kick = f'<button onclick="kickMember({group_id},{m["id"]},this)" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:14px;padding:0 2px;margin-left:4px;" title="Remove">&times;</button>'
-        _members_html += f'<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 4px;border:1px solid #e0e0e0;font-size:13px;"><div class="member-avatar{me_cls}" style="width:26px;height:26px;font-size:11px;margin:0">{initial}</div><span>{mname}</span>{kick}</div>'
+            kick = f'<button onclick="kickMember({group_id},{m["id"]},this)" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:16px;padding:0 4px;margin-left:auto;" title="Remove">&times;</button>'
+        border = f"border:2px solid {color};" if is_me else ""
+        _members_html += f'''<div style="display:flex;align-items:center;gap:10px;padding:8px 0;{"border-bottom:1px solid #f0f0f0;" if i < len(members)-1 else ""}">
+            <div style="width:36px;height:36px;background:{color}15;color:{color};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;flex-shrink:0;{border}">{initial}</div>
+            <span style="font-size:14px;font-weight:{"700" if is_me else "500"};color:#1a1a1a;">{mname}{"  (you)" if is_me else ""}</span>
+            {kick}
+        </div>'''
 
     og = _og_override or {
         "title": group_name,
@@ -2939,10 +2956,9 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     <div class="group-page">
     {name_html}
 
-    <div style="margin-bottom:32px;">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            {_members_html}
-        </div>
+    <div style="margin-bottom:28px;">
+        <h2 style="margin:0 0 8px;">{len(members)} member{"s" if len(members) != 1 else ""}</h2>
+        {_members_html}
     </div>
 
     {join_cta}

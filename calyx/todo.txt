@@ -2,64 +2,52 @@
 # grep "TODO:" to see active items. grep "DONE:" for history.
 
 # ============================================================
-# ACTIVE — in priority order
+# ACTIVE
 # ============================================================
 
 # TODO: Location-adaptive event sources
 #   New user from NYC → pipeline detects city → adds NYC scrapers.
 
-# DONE: Onboarding guidance — welcome toast with action hint
-# TODO: Group availability poll — "who's free this weekend?" (When2Meet-style)
-# DONE: Notification preferences — per-group mute toggle
-# DONE: Recurring events in groups — "Every Tuesday at 7pm"
-# DONE: Music genre tags — vibe colors removed as confusing; Spotify artists show on taste profile — extract genre from Spotify for music events
-# DONE: Search: date/free filters on Discover
+# TODO: Auto-spawn Claude Code to fix retro-detected gaps
+#   When retro finds missing sources, trigger a Claude Code session
+#   to write the scraper. Full self-improvement loop.
+
+# TODO: Add outdoor recreation sources (AllTrails, AMC, DCR) [auto-retro]
+# TODO: Add niche music venue/promoter sources [auto-retro]
 
 # ============================================================
-# BACKLOG — nice to have, low priority
+# BACKLOG
 # ============================================================
 
 # TODO: CalDAV server for real sub-calendar support
 # TODO: Containerize all services (Docker)
-# DONE: Boost limited-time / seasonal / festival events in scoring
-# DONE: Event dedup — GROUP BY event_id in DB + 3-pass aggregator dedup
 # TODO: Pipeline observability / timing dashboard
 # TODO: Incremental runs / event caching between pipeline runs
-
-# ============================================================
-# AUTO-RETRO — search gaps detected by the system
-# ============================================================
-
-# TODO: [auto-retro] Add outdoor recreation sources (AllTrails, AMC, DCR)
-# TODO: [auto-retro] Add niche music venue/promoter sources for hyperpop etc.
 
 # ============================================================
 # DONE — 2026-03-28 session
 # ============================================================
 
-# DONE: Simplified app to 3 features: Groups, Discover, You
+# DONE: Simplified to 3 features: Groups, Discover, You
 # DONE: Deleted 5000+ lines of dead code
-# DONE: MoMA-inspired redesign + sage green (#4a6741) accent
-# DONE: Nav: Groups | Discover | You
-# DONE: Tabbed "You" page (Taste | Settings)
-# DONE: Taste profile: live Spotify artists, YouTube subs, pipeline interests
-# DONE: Paste-to-profile interests box (Claude Haiku extraction)
-# DONE: YouTube web OAuth (/auth/youtube + /callback/youtube)
-# DONE: Spotify/YouTube "Connected" state on profile
-# DONE: Email digest toggle
-# DONE: Tiered search API (DB → Claude web search fallback)
-# DONE: Self-improving retro (auto-diagnoses search gaps, emails admin)
-# DONE: Discover: 5/day cap, vibe diversity, no modal, direct links
-# DONE: Smart search bar with auto-fire web search
-# DONE: Event dedup at DB level (GROUP BY event_id)
-# DONE: Shareable event pages (/e/{event_id}) — works without login
-# DONE: Remove member from group (creator kick)
-# DONE: Mobile PWA (manifest.json + service worker)
+# DONE: Botanical design — sage green (#4a6741) + terracotta (#c4734f) accents
+# DONE: Leaf logo SVG, decorative botanical elements on You page
+# DONE: Multi-color tag system for taste profile
+# DONE: Colorful member avatars on group pages
+# DONE: Nav: Groups | Discover | You (sharp, green accent underline)
+# DONE: Tabbed You page (Taste | Settings), paste-to-profile box
+# DONE: Live Spotify artists + YouTube subs on taste profile
+# DONE: YouTube web OAuth + Spotify connected state
+# DONE: Tiered search: DB → Claude web_search fallback, auto-fires
+# DONE: Date/free filter chips on Discover
+# DONE: Event dedup (GROUP BY), diversity (max 2/vibe per day)
+# DONE: Self-improving retro (diagnoses gaps, emails admin, appends TODO)
+# DONE: Shareable event pages (/e/{event_id}) with OG tags
+# DONE: Group features: kick member, mute notifications, recurring events
+# DONE: Group availability poll ("Who's free?") with heatmap
+# DONE: Email rethemed to match dashboard (purple → green)
+# DONE: Mobile PWA (manifest + service worker)
+# DONE: Generic event enrichment (fetch detail pages for desc/price)
+# DONE: Seasonal boost (+10 for festivals, parades, holidays)
+# DONE: Fixed: crons, pipeline persistence, event dedup, search, You page crash
 # DONE: Removed telegram bot → Claude Code remote control
-# DONE: Fixed cron paths, pipeline run, event persistence
-# DONE: Groups: "Friends are going", cohesive group detail page
-
-# DONE — earlier sessions (summary)
-# DONE: Core pipeline, 13+ sources, two-pass ranking, auth, groups, iCal
-# DONE: Email templates, post-event ratings, steering, multi-user
-# DONE: Admin dashboard, cost tracking, monorepo, Cloudflare, tmux, crons
