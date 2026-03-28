@@ -1852,13 +1852,17 @@ async def calendar_view(request: Request):
         webResults.forEach(r => {{
           let timeStr = '';
           if (r.start_time) {{
-            try {{ const dt = new Date(r.start_time); timeStr = dt.toLocaleDateString('en-US', {{weekday:'short', month:'short', day:'numeric'}}); }} catch(e) {{}}
+            try {{
+              const dt = new Date(r.start_time);
+              if (!isNaN(dt.getTime())) timeStr = dt.toLocaleDateString('en-US', {{weekday:'short', month:'short', day:'numeric'}});
+            }} catch(e) {{}}
           }}
           const safeUrl = (r.url || '#').replace(/'/g, '');
+          const meta = [timeStr, r.location].filter(Boolean).join(' · ');
           html += `<div style="padding:10px 0;border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="window.open('${{safeUrl}}','_blank')">
-            <div style="font-weight:700;font-size:14px;color:#1a1a1a;">${{r.title}}</div>
-            <div style="font-size:12px;color:#888;margin-top:2px;">${{[timeStr, r.location].filter(Boolean).join(' · ')}}</div>
-            ${{r.match_reason ? '<div style="font-size:12px;color:#555;margin-top:4px;">' + r.match_reason.slice(0,100) + '</div>' : ''}}
+            <div style="font-weight:700;font-size:14px;color:#1a1a1a;">${{r.title}}${{safeUrl !== '#' ? ' <span style="font-size:11px;color:#c4734f;">↗</span>' : ''}}</div>
+            ${{meta ? '<div style="font-size:12px;color:#888;margin-top:2px;">' + meta + '</div>' : ''}}
+            ${{r.match_reason ? '<div style="font-size:12px;color:#555;margin-top:4px;">' + r.match_reason.slice(0,120) + '</div>' : ''}}
           </div>`;
         }});
         webList.innerHTML = html;
