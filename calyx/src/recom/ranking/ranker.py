@@ -676,6 +676,21 @@ def rank_events(
             ranked_ev.score = min(100.0, ranked_ev.score + 10)
             logger.debug("Seasonal boost for %s: +10 (%s -> %s)", ranked_ev.event.title, old, ranked_ev.score)
 
+    # Spotify artist boost — if an event title matches a user's top artist, big boost
+    if spotify_artists:
+        _artist_names_lower = [a.lower() for a in spotify_artists]
+        for ranked_ev in all_ranked:
+            if not ranked_ev.keep:
+                continue
+            title_lower = ranked_ev.event.title.lower()
+            for artist in _artist_names_lower:
+                if artist in title_lower:
+                    old = ranked_ev.score
+                    ranked_ev.score = min(100.0, ranked_ev.score + 15)
+                    ranked_ev.match_reason = f"🎵 {artist.title()} is in your Spotify top artists! " + ranked_ev.match_reason
+                    logger.debug("Spotify artist boost for %s: +15 (%s -> %s)", ranked_ev.event.title, old, ranked_ev.score)
+                    break
+
     # Apply steering directives
     if steering:
         steer_map: dict[str, str] = {}
