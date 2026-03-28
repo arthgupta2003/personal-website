@@ -1679,9 +1679,12 @@ async def calendar_view(request: Request):
       <input id="search-input" type="text" placeholder="Try &quot;jazz tonight&quot; or &quot;outdoor things this weekend&quot;" oninput="onSearchInput()" onkeydown="if(event.key==='Enter'){{event.preventDefault();doSearch();}}"
              style="width:100%;padding:12px 14px;border:1px solid #ccc;border-bottom:2px solid #ccc;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;transition:border-color .15s;"
              onfocus="this.style.borderBottomColor='#4a6741'" onblur="this.style.borderBottomColor='#ccc'">
-      <span id="search-spinner" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;font-size:12px;font-weight:600;color:#4a6741;background:#f4f7f3;padding:4px 10px;border:1px solid #4a6741;">Searching the web...</span>
+      <div id="search-progress" style="position:absolute;left:0;bottom:0;height:2px;background:#4a6741;width:0;transition:width .3s;"></div>
     </div>
-    <div id="search-results" style="display:none;margin-bottom:24px;"></div>
+    <div id="web-results-section" style="display:none;margin-bottom:16px;border-left:3px solid #c4734f;padding-left:16px;">
+      <div style="font-size:11px;font-weight:700;color:#c4734f;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Also found on the web</div>
+      <div id="web-results-list"></div>
+    </div>
     <input type="hidden" id="score-slider" value="0">
     <input type="hidden" id="dist-slider" value="50">
     <span id="score-label" style="display:none">0</span>
@@ -1757,14 +1760,14 @@ async def calendar_view(request: Request):
     }}
 
     let _searchTimeout = null;
+    let _searchAbort = null;
+
     function onSearchInput() {{
       const query = document.getElementById('search-input').value.trim();
       applyFilters();
-      if (!query) {{
-        document.getElementById('search-results').style.display = 'none';
-        return;
-      }}
-      // Auto-search the web after 600ms of no typing
+      // Hide web results when query changes
+      document.getElementById('web-results-section').style.display = 'none';
+      if (!query) return;
       clearTimeout(_searchTimeout);
       if (query.length >= 3) {{
         _searchTimeout = setTimeout(() => doSearch(), 600);
@@ -1774,45 +1777,62 @@ async def calendar_view(request: Request):
     function doSearch() {{
       const query = document.getElementById('search-input').value.trim();
       if (!query) return;
-      const spinner = document.getElementById('search-spinner');
-      const container = document.getElementById('search-results');
-      spinner.style.display = 'inline';
+
+      // Cancel previous search
+      if (_searchAbort) _searchAbort.abort();
+      _searchAbort = new AbortController();
+
+      // Start progress bar animation
+      const bar = document.getElementById('search-progress');
+      bar.style.transition = 'none';
+      bar.style.width = '0';
+      requestAnimationFrame(() => {{
+        bar.style.transition = 'width 8s cubic-bezier(0.1, 0.5, 0.1, 1)';
+        bar.style.width = '90%';
+      }});
+
       fetch('/api/search', {{
         method: 'POST',
         headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{query}})
+        body: JSON.stringify({{query}}),
+        signal: _searchAbort.signal,
       }}).then(r => r.json()).then(d => {{
-        spinner.style.display = 'none';
-        if (!d.ok || !d.results || !d.results.length) {{
-          container.innerHTML = '<p style="color:#888;font-size:13px;">Nothing found for that query.</p>';
-          container.style.display = 'block';
+        // Complete progress bar
+        bar.style.transition = 'width .2s';
+        bar.style.width = '100%';
+        setTimeout(() => {{ bar.style.transition = 'width .3s'; bar.style.width = '0'; }}, 400);
+
+        const webSection = document.getElementById('web-results-section');
+        const webList = document.getElementById('web-results-list');
+
+        if (!d.ok || !d.results) return;
+
+        const webResults = d.results.filter(r => r.source === 'web');
+        if (!webResults.length) {{
+          webSection.style.display = 'none';
           return;
         }}
-        const webCount = d.web_count || 0;
+
         let html = '';
-        if (webCount > 0) {{
-          html += `<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Also found on the web</div>`;
-        }}
-        d.results.filter(r => r.source === 'web').forEach(r => {{
+        webResults.forEach(r => {{
           let timeStr = '';
           if (r.start_time) {{
             try {{ const dt = new Date(r.start_time); timeStr = dt.toLocaleDateString('en-US', {{weekday:'short', month:'short', day:'numeric'}}); }} catch(e) {{}}
           }}
-          html += `<div class="evt-card" style="cursor:pointer;" onclick="window.open(&apos;${{(r.url||'#').replace(/'/g, '')}}&apos;,&apos;_blank&apos;)">
-            <div class="card-body">
-              <div class="card-top">
-                <span class="card-title">${{r.title}}</span>
-                <span style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;">Web</span>
-              </div>
-              <div class="card-meta">${{[timeStr, r.location].filter(Boolean).join(' &middot; ')}}</div>
-              ${{r.match_reason ? '<div class="card-reason">' + r.match_reason + '</div>' : ''}}
-            </div>
+          const safeUrl = (r.url || '#').replace(/'/g, '');
+          html += `<div style="padding:10px 0;border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="window.open('${{safeUrl}}','_blank')">
+            <div style="font-weight:700;font-size:14px;color:#1a1a1a;">${{r.title}}</div>
+            <div style="font-size:12px;color:#888;margin-top:2px;">${{[timeStr, r.location].filter(Boolean).join(' · ')}}</div>
+            ${{r.match_reason ? '<div style="font-size:12px;color:#555;margin-top:4px;">' + r.match_reason.slice(0,100) + '</div>' : ''}}
           </div>`;
         }});
-        container.innerHTML = html || '';
-        container.style.display = html ? 'block' : 'none';
-      }}).catch(() => {{
-        spinner.style.display = 'none';
+        webList.innerHTML = html;
+        webSection.style.display = 'block';
+      }}).catch(e => {{
+        if (e.name !== 'AbortError') {{
+          bar.style.transition = 'width .2s';
+          bar.style.width = '0';
+        }}
       }});
     }}
 
