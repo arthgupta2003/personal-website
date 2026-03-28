@@ -1636,13 +1636,18 @@ async def calendar_view(request: Request):
     <div id="heat-view" style="display:none"></div>
     <div id="map-view" style="display:none;margin:0 -20px;">
       <div style="position:relative;">
-        <div id="event-map" style="height:75vh;width:100%;"></div>
-        <div id="map-panel" style="display:none;position:absolute;top:12px;right:12px;width:300px;max-height:calc(75vh - 24px);overflow-y:auto;background:#fff;border:1px solid #e0e0e0;padding:16px;z-index:1000;box-shadow:0 2px 12px rgba(0,0,0,.1);"></div>
+        <div id="event-map" style="height:70vh;width:100%;"></div>
+        <div id="map-panel" style="display:none;position:absolute;top:12px;right:12px;width:300px;max-height:calc(70vh - 24px);overflow-y:auto;background:#fff;border:1px solid #e0e0e0;padding:16px;z-index:1000;box-shadow:0 2px 12px rgba(0,0,0,.1);"></div>
       </div>
-      <div style="padding:8px 20px;font-size:11px;color:#888;">
-        <span style="display:inline-block;width:10px;height:10px;background:#4a6741;margin-right:4px;vertical-align:middle;border-radius:50%;"></span> Score 70+
-        <span style="display:inline-block;width:10px;height:10px;background:#c4734f;margin:0 4px 0 12px;vertical-align:middle;border-radius:50%;"></span> Score 50-69
-        <span style="display:inline-block;width:10px;height:10px;background:#999;margin:0 4px 0 12px;vertical-align:middle;border-radius:50%;"></span> Below 50
+      <!-- Time slider -->
+      <div style="padding:12px 20px;background:#fff;border-top:1px solid #eee;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span id="map-time-label" style="font-size:14px;font-weight:800;color:#4a6741;min-width:160px;"></span>
+          <input type="range" id="map-time-slider" min="0" max="13" value="0" step="1"
+                 style="flex:1;accent-color:#4a6741;cursor:pointer;height:6px;" oninput="onMapTimeSlide(this.value)">
+          <button onclick="playMapTime()" id="map-play-btn" style="background:#4a6741;color:#fff;border:none;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">Play</button>
+        </div>
+        <div id="map-time-ticks" style="display:flex;justify-content:space-between;padding:4px 0;font-size:10px;color:#aaa;"></div>
       </div>
     </div>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -2004,46 +2009,85 @@ async def calendar_view(request: Request):
       container.innerHTML = html;
     }}
 
-    // --- Map view ---
+    // --- Map view with time slider ---
     let _map = null;
-    let _mapMarkers = [];
+    let _allMapEvents = [];
+    let _mapMarkerLayer = null;
+    let _mapDays = [];
+    let _mapPlaying = false;
+
     function buildMapView() {{
       if (!_map) {{
         _map = L.map('event-map', {{zoomControl: false}}).setView([HOME_LAT, HOME_LON], 13);
         L.control.zoom({{position: 'bottomright'}}).addTo(_map);
         L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}@2x.png', {{
-          attribution: '&copy; OSM &copy; CARTO',
-          maxZoom: 19
+          attribution: '&copy; OSM &copy; CARTO', maxZoom: 19
         }}).addTo(_map);
-        // Home marker
         const homeIcon = L.divIcon({{
-          html: '<div style="width:16px;height:16px;background:#4a6741;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.3);"></div>',
-          iconSize: [16, 16], className: ''
+          html: '<div style="width:14px;height:14px;background:#4a6741;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.3);"></div>',
+          iconSize: [14, 14], className: ''
         }});
         L.marker([HOME_LAT, HOME_LON], {{icon: homeIcon}}).addTo(_map);
+        _mapMarkerLayer = L.layerGroup().addTo(_map);
       }}
       setTimeout(() => _map.invalidateSize(), 100);
 
-      _mapMarkers.forEach(m => _map.removeLayer(m));
-      _mapMarkers = [];
+      // Build day list from events
+      _allMapEvents = getFilteredEvents().filter(e => e.lat && e.lon);
+      const daySet = new Set();
+      _allMapEvents.forEach(e => {{ if (e.start) daySet.add(e.start.slice(0,10)); }});
+      _mapDays = [...daySet].sort();
+
+      // Set slider range
+      const slider = document.getElementById('map-time-slider');
+      slider.max = Math.max(0, _mapDays.length - 1);
+      slider.value = 0;
+
+      // Build tick labels
+      const ticks = document.getElementById('map-time-ticks');
+      ticks.innerHTML = '';
+      _mapDays.forEach((day, i) => {{
+        const d = new Date(day + 'T00:00:00');
+        const label = d.toLocaleDateString('en-US', {{weekday:'short', month:'numeric', day:'numeric'}});
+        if (i % Math.max(1, Math.floor(_mapDays.length / 7)) === 0 || i === _mapDays.length - 1) {{
+          ticks.innerHTML += `<span>${{label}}</span>`;
+        }}
+      }});
+
+      onMapTimeSlide(0);
+    }}
+
+    function onMapTimeSlide(val) {{
+      const idx = parseInt(val);
+      const day = _mapDays[idx];
+      if (!day) return;
+
+      const d = new Date(day + 'T00:00:00');
+      const today = new Date(); today.setHours(0,0,0,0);
+      const isToday = d.getTime() === today.getTime();
+      const label = isToday ? 'Today' : d.toLocaleDateString('en-US', {{weekday:'long', month:'long', day:'numeric'}});
+      document.getElementById('map-time-label').textContent = label;
+
+      // Filter events to this day
+      const dayEvents = _allMapEvents.filter(e => e.start && e.start.slice(0,10) === day);
+
+      _mapMarkerLayer.clearLayers();
       const panel = document.getElementById('map-panel');
 
-      const filtered = getFilteredEvents();
-      const withGeo = filtered.filter(e => e.lat && e.lon);
-
-      withGeo.forEach(e => {{
+      dayEvents.forEach(e => {{
         const score = e.score || 0;
-        const size = Math.max(8, Math.min(18, score / 6));
+        // Size encodes score: high-score events are bigger and more visible
+        const size = Math.max(6, Math.min(20, score / 5));
         const color = score >= 70 ? '#4a6741' : score >= 50 ? '#c4734f' : '#bbb';
+        const opacity = score >= 50 ? 0.85 : 0.5;
 
         const marker = L.circleMarker([e.lat, e.lon], {{
-          radius: size, color: '#fff', fillColor: color, fillOpacity: 0.85, weight: 2
-        }}).addTo(_map);
+          radius: size, color: '#fff', fillColor: color, fillOpacity: opacity, weight: 2
+        }});
 
         marker.on('click', () => {{
           let timeStr = '';
           try {{ const dt = new Date(e.start); if (dt.getHours()||dt.getMinutes()) timeStr = dt.toLocaleTimeString('en-US',{{hour:'numeric',minute:'2-digit'}}); }} catch(x){{}}
-          const dayStr = e.start ? new Date(e.start).toLocaleDateString('en-US',{{weekday:'long',month:'short',day:'numeric'}}) : '';
 
           panel.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
@@ -2051,24 +2095,42 @@ async def calendar_view(request: Request):
               <button onclick="document.getElementById('map-panel').style.display='none'" style="background:none;border:none;color:#ccc;font-size:18px;cursor:pointer;">&times;</button>
             </div>
             <div style="font-weight:800;font-size:16px;color:#1a1a1a;margin-bottom:6px;">${{e.title}}</div>
-            <div style="font-size:13px;color:#888;margin-bottom:4px;">${{dayStr}}${{timeStr ? ' at ' + timeStr : ''}}</div>
-            ${{e.location ? '<div style="font-size:13px;color:#888;margin-bottom:8px;">' + e.location + '</div>' : ''}}
-            ${{e.description ? '<div style="font-size:13px;color:#555;line-height:1.5;margin-bottom:12px;">' + e.description.slice(0,150) + '</div>' : ''}}
+            <div style="font-size:13px;color:#888;margin-bottom:4px;">${{timeStr || ''}} ${{e.location || ''}}</div>
+            ${{e.price ? '<div style="font-size:13px;font-weight:600;color:#c4734f;margin-bottom:8px;">' + e.price + '</div>' : ''}}
+            ${{e.description ? '<div style="font-size:13px;color:#555;line-height:1.5;margin-bottom:12px;">' + e.description.slice(0,200) + '</div>' : ''}}
             <div style="display:flex;gap:8px;">
-              ${{e.url ? '<a href="' + e.url + '" target="_blank" class="btn-primary" style="text-decoration:none;padding:8px 16px;font-size:12px;">View event</a>' : ''}}
-            </div>
-          `;
+              ${{e.url ? '<a href="'+e.url+'" target="_blank" class="btn-primary" style="text-decoration:none;padding:8px 16px;font-size:12px;">View</a>' : ''}}
+            </div>`;
           panel.style.display = 'block';
         }});
 
-        _mapMarkers.push(marker);
+        _mapMarkerLayer.addLayer(marker);
       }});
 
-      // Show count
-      if (!withGeo.length) {{
-        panel.innerHTML = '<p style="color:#888;font-size:13px;">No events with location data.</p>';
+      if (!dayEvents.length) {{
+        panel.innerHTML = '<p style="color:#aaa;font-size:13px;text-align:center;padding:20px 0;">No events with locations on this day</p>';
         panel.style.display = 'block';
       }}
+    }}
+
+    function playMapTime() {{
+      if (_mapPlaying) {{ _mapPlaying = false; document.getElementById('map-play-btn').textContent = 'Play'; return; }}
+      _mapPlaying = true;
+      document.getElementById('map-play-btn').textContent = 'Stop';
+      const slider = document.getElementById('map-time-slider');
+      let idx = 0;
+      const step = () => {{
+        if (!_mapPlaying || idx > _mapDays.length - 1) {{
+          _mapPlaying = false;
+          document.getElementById('map-play-btn').textContent = 'Play';
+          return;
+        }}
+        slider.value = idx;
+        onMapTimeSlide(idx);
+        idx++;
+        setTimeout(step, 800);
+      }};
+      step();
     }}
 
     // --- Init ---
