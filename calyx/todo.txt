@@ -13,10 +13,8 @@
 #   Fires after web search fallback. Claude Haiku diagnoses gap.
 #   Saves to search_retros table. Auto-appends TODO to todo.txt.
 
-# TODO: Spotify periodic polling
-#   Existing users: re-fetch top artists/genres periodically.
-#   Catch evolving tastes (e.g. Magdalena Bay phase).
-#   Run as part of weekly pipeline or separate cron.
+# DONE: Spotify periodic polling — already handled
+#   Weekly pipeline re-fetches per-user tokens. Taste profile fetches live.
 
 # TODO: Location-adaptive event sources
 #   New user from NYC → pipeline detects city → adds NYC scrapers.

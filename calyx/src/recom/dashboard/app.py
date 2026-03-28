@@ -546,9 +546,14 @@ async def source_health(request: Request):
     return HTMLResponse(_layout("Source Health", body, current_user))
 
 
-@app.get("/profile", response_class=HTMLResponse)
-async def profile_page(request: Request, response: Response):
-    """User profile — name, email digest toggle, connected services."""
+@app.get("/profile")
+async def profile_redirect():
+    return RedirectResponse("/taste-profile#settings")
+
+
+@app.get("/profile-old", response_class=HTMLResponse)
+async def profile_page_old(request: Request, response: Response):
+    """Old profile page — kept for API endpoints. Redirects to /taste-profile#settings."""
     db = get_db()
     current_user = _get_current_user(request)
     if not current_user:
@@ -1007,41 +1012,180 @@ async def taste_profile_page(request: Request):
     algo_interests = [i for i in interests if "manual" not in str(i.get("source_signals", []))]
     algo_tags = [i["topic"] for i in sorted(algo_interests, key=lambda x: -x.get("confidence", 0))]
 
+    # Settings data
+    name = current_user.get("name") or ""
+    email = current_user.get("email") or ""
+    email_digest = current_user.get("email_digest", 1)
+    digest_checked = "checked" if email_digest else ""
+    is_admin = current_user.get("id") == 1
+    admin_html = '<div style="margin-top:20px;"><a href="/admin" style="font-size:12px;color:#888;">Admin</a> &middot; <a href="/admin/sources" style="font-size:12px;color:#888;">Sources</a></div>' if is_admin else ""
+
     body = f"""
 <style>
-.taste-page{{max-width:620px;margin:0 auto;padding:40px 0 80px}}
-.taste-page h1{{font-size:2rem;font-weight:800;color:#000;margin-bottom:8px;letter-spacing:-.5px}}
-.taste-page .sub{{font-size:14px;color:#888;margin-bottom:32px}}
-.taste-section{{margin-bottom:32px}}
+.you-page{{max-width:620px;margin:0 auto;padding:40px 0 80px}}
+.you-page h1{{font-size:2rem;font-weight:800;color:#000;margin-bottom:16px;letter-spacing:-.5px}}
+.you-tabs{{display:flex;gap:0;border-bottom:2px solid #e0e0e0;margin-bottom:28px}}
+.you-tab{{padding:10px 20px;font-size:13px;font-weight:600;color:#888;cursor:pointer;border:none;background:none;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}}
+.you-tab:hover{{color:#000}}
+.you-tab.active{{color:#4a6741;border-bottom-color:#4a6741}}
+.you-panel{{display:none}}
+.you-panel.active{{display:block}}
+.taste-section{{margin-bottom:28px}}
 .taste-section h2{{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px}}
-.taste-section .tags{{line-height:2}}
+.taste-section .tags{{line-height:2.2}}
+.field{{margin-bottom:14px}}
+.field label{{display:block;font-size:12px;font-weight:600;color:#333;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}}
+.field input[type=text]{{width:100%;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none}}
+.field input[type=text]:focus{{border-color:#4a6741}}
+.toggle-row{{display:flex;align-items:center;justify-content:space-between;padding:4px 0}}
+.toggle-label div:first-child{{font-weight:700;font-size:14px;color:#000}}
+.toggle-label div:last-child{{font-size:12px;color:#888;margin-top:2px}}
+.toggle{{position:relative;width:44px;height:24px;flex-shrink:0}}
+.toggle input{{opacity:0;width:0;height:0}}
+.toggle .slider{{position:absolute;inset:0;background:#ccc;border-radius:24px;cursor:pointer;transition:.2s}}
+.toggle .slider::before{{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:white;border-radius:50%;transition:.2s}}
+.toggle input:checked+.slider{{background:#4a6741}}
+.toggle input:checked+.slider::before{{transform:translateX(20px)}}
+.svc-row{{display:flex;align-items:center;justify-content:space-between;padding:14px 20px}}
+.svc-row+.svc-row{{border-top:1px solid #e0e0e0}}
 </style>
-<div class="taste-page">
-  <h1>Your Taste Profile</h1>
-  <p class="sub">This is what Calyx knows about you. It shapes your event recommendations.</p>
+<div class="you-page">
+  <h1>You</h1>
 
-  <div class="taste-section">
-    <h2>Interests (from pipeline analysis)</h2>
-    <div class="tags">{_tags(algo_tags)}</div>
+  <div class="you-tabs">
+    <button class="you-tab active" onclick="switchYouTab('taste')">Taste</button>
+    <button class="you-tab" onclick="switchYouTab('settings')">Settings</button>
   </div>
 
-  <div class="taste-section">
-    <h2>Manual interests</h2>
-    <div class="tags">{_tags(manual)}</div>
+  <!-- Taste tab -->
+  <div id="you-taste" class="you-panel active">
+    <div class="taste-section">
+      <h2>Your interests</h2>
+      <div class="tags">{_tags(algo_tags)}</div>
+    </div>
+
+    {"<div class='taste-section'><h2>Music (from Spotify)</h2><div class='tags'>" + _tags(spotify_artists, "#8b6914") + "</div></div>" if spotify_artists else ""}
+
+    {"<div class='taste-section'><h2>YouTube</h2><div class='tags'>" + _tags(youtube_subs, "#c4302b") + "</div></div>" if youtube_subs else ""}
+
+    {"<div class='taste-section'><h2>Your words</h2><div class='tags'>" + _tags(paste_keywords) + "</div></div>" if paste_keywords else ""}
+
+    {"<div class='taste-section'><h2>Manual</h2><div class='tags'>" + _tags(manual) + "</div></div>" if manual else ""}
+
+    <div class="taste-section">
+      <h2>Tell us more</h2>
+      <p style="font-size:13px;color:#888;margin-bottom:10px;">Paste anything — your YouTube feed, bands you like, hobbies. We'll figure it out.</p>
+      <textarea id="paste-box" placeholder="e.g. I love indie rock, just saw Magdalena Bay, really into climbing and art museums lately..." style="width:100%;min-height:80px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box;"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+        <span id="paste-status" style="font-size:12px;color:#888;"></span>
+        <button onclick="submitPaste()" class="btn-primary" id="paste-btn" style="padding:8px 16px;">Save</button>
+      </div>
+    </div>
   </div>
 
-  {"<div class='taste-section'><h2>From your paste</h2><div class='tags'>" + _tags(paste_keywords) + "</div></div>" if paste_keywords else ""}
+  <!-- Settings tab -->
+  <div id="you-settings" class="you-panel">
+    <div style="border:1px solid #e0e0e0;padding:20px;margin-bottom:20px;">
+      <div class="field"><label>Name</label><input type="text" id="name" value="{name}"></div>
+      <div class="field"><label>Email</label><input type="text" id="email" value="{email}" disabled style="background:#f9fafb;color:#999"></div>
+      <button onclick="save()" class="btn-primary" style="padding:8px 16px;">Save</button>
+      <div id="success" style="display:none;border:1px solid #4a6741;color:#4a6741;padding:10px 14px;font-size:13px;margin-top:12px;">Saved!</div>
+    </div>
 
-  {"<div class='taste-section'><h2>Music (from Spotify)</h2><div class='tags'>" + _tags(spotify_artists, "#8b6914") + "</div></div>" if spotify_artists else ""}
+    <div style="border:1px solid #e0e0e0;padding:20px;margin-bottom:20px;">
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <div>Weekly email digest</div>
+          <div>Personalized event picks in your inbox</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="digest-toggle" {digest_checked} onchange="toggleDigest(this.checked)"><span class="slider"></span></label>
+      </div>
+    </div>
 
-  {"<div class='taste-section'><h2>YouTube subscriptions</h2><div class='tags'>" + _tags(youtube_subs, "#c4302b") + "</div></div>" if youtube_subs else ""}
+    <div style="border:1px solid #e0e0e0;overflow:hidden;margin-bottom:20px;">
+      <div style="padding:20px 20px 12px;"><h2 style="margin:0 0 8px;">Connected Services</h2></div>
+      <div class="svc-row" style="border-top:1px solid #e0e0e0;">
+        <div><span style="font-weight:700;font-size:14px;color:#000;">Spotify</span><br><span style="font-size:12px;color:#888;">{"Connected" if spotify_connected else "Top artists and listening history"}</span></div>
+        {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if spotify_connected else '<a href="/auth/spotify" style="padding:6px 14px;background:#4a6741;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
+      </div>
+      <div class="svc-row">
+        <div><span style="font-weight:700;font-size:14px;color:#000;">YouTube</span><br><span style="font-size:12px;color:#888;">{"Connected" if youtube_connected else "Subscriptions and liked videos"}</span></div>
+        {"<span style='font-size:12px;color:#888;font-weight:600;'>Connected</span>" if youtube_connected else '<a href="/auth/youtube" style="padding:6px 14px;background:#4a6741;color:#fff;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;">Connect</a>'}
+      </div>
+    </div>
 
-  <div style="margin-top:32px;">
-    <a href="/profile" class="btn-secondary" style="display:inline-block;text-decoration:none;">Account settings</a>
+    {admin_html}
   </div>
 </div>
+
+<script>
+function switchYouTab(tab) {{
+  document.querySelectorAll('.you-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.you-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('you-' + tab).classList.add('active');
+  event.target.classList.add('active');
+  history.replaceState(null, '', '#' + tab);
+}}
+(function() {{
+  const h = window.location.hash.slice(1);
+  if (h === 'settings') {{
+    document.querySelectorAll('.you-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.you-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('you-settings').classList.add('active');
+    document.querySelectorAll('.you-tab')[1].classList.add('active');
+  }}
+}})();
+
+function save() {{
+  fetch('/api/profile/update', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{ name: document.getElementById('name').value.trim() }}),
+  }}).then(r => r.json()).then(d => {{
+    if (d.ok) {{
+      const s = document.getElementById('success');
+      s.style.display = 'block';
+      setTimeout(() => s.style.display = 'none', 3000);
+    }}
+  }});
+}}
+
+function toggleDigest(on) {{
+  fetch('/api/profile/update', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{ email_digest: on ? 1 : 0 }}),
+  }});
+}}
+
+function submitPaste() {{
+  const text = document.getElementById('paste-box').value.trim();
+  if (!text) return;
+  const btn = document.getElementById('paste-btn');
+  const status = document.getElementById('paste-status');
+  btn.disabled = true; btn.textContent = 'Processing...'; status.textContent = '';
+  fetch('/api/profile/paste-interests', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{ text: text }}),
+  }}).then(r => r.json()).then(d => {{
+    btn.disabled = false; btn.textContent = 'Save';
+    if (d.ok) {{
+      status.textContent = d.summary || 'Saved!';
+      status.style.color = '#4a6741';
+      document.getElementById('paste-box').value = '';
+      setTimeout(() => location.reload(), 1500);
+    }} else {{
+      status.textContent = d.error || 'Failed'; status.style.color = '#d00';
+    }}
+  }}).catch(() => {{
+    btn.disabled = false; btn.textContent = 'Save';
+    status.textContent = 'Network error'; status.style.color = '#d00';
+  }});
+}}
+</script>
 """
-    return HTMLResponse(_layout("Your Taste Profile", body, current_user))
+    return HTMLResponse(_layout("You", body, current_user))
 
 
 @app.get("/landing", response_class=HTMLResponse)
@@ -1773,7 +1917,7 @@ async def calendar_view(request: Request):
             <span class="card-score ${{scoreCls(e.score)}}">${{e.score}}</span>
           </div>
           <div class="card-meta">${{meta}}</div>
-          ${{e.match_reason ? '<div class="card-reason">' + e.match_reason + '</div>' : ''}}
+          ${{e.description ? '<div class="card-reason">' + e.description + '</div>' : ''}}
           ${{rsvpBtns}}
         </div>
       </div>`;
