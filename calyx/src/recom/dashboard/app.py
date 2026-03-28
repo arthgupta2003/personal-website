@@ -557,6 +557,8 @@ async def profile_page(request: Request, response: Response):
     email = current_user.get("email") or ""
     email_digest = current_user.get("email_digest", 1)
     digest_checked = "checked" if email_digest else ""
+    is_admin = current_user.get("id") == 1
+    admin_html = '<div style="margin-top:40px;padding-top:20px;border-top:1px solid #e0e0e0;"><a href="/admin" style="font-size:12px;color:#888;">Admin</a> &middot; <a href="/admin/sources" style="font-size:12px;color:#888;">Sources</a></div>' if is_admin else ""
 
     resp = HTMLResponse(_layout("Profile", f"""
 <style>
@@ -627,6 +629,7 @@ async def profile_page(request: Request, response: Response):
       </div>
     </div>
   </div>
+  {admin_html}
 </div>
 
 <script>
