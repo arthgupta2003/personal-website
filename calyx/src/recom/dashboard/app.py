@@ -1231,7 +1231,7 @@ async def landing_page(request: Request):
 async def home_redirect(request: Request):
     user = _get_current_user(request)
     if user:
-        resp = RedirectResponse("/groups", status_code=302)
+        resp = RedirectResponse("/calendar", status_code=302)
         return _maybe_set_cookie(request, resp, user)
     return RedirectResponse("/landing", status_code=302)
 
