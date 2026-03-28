@@ -1521,12 +1521,8 @@ In 2-3 sentences: Why did our database miss these? What event sources or scraper
         db.conn.commit()
 
         # Append clean one-liner to todo.txt
-        if "add" in diagnosis.lower() or "scraper" in diagnosis.lower() or "source" in diagnosis.lower():
-            # Extract a short actionable summary
-            short = diagnosis.split(".")[0].strip()[:100]
-            todo_path = Path("todo.txt")
-            with open(todo_path, "a") as f:
-                f.write(f"\n# TODO: [auto-retro] {short} (query: {query})\n")
+        # Don't auto-append to todo — it writes garbage. Just log to DB.
+        # Admin can review search_retros table and add TODOs manually.
 
         # Email the retro to admin
         try:
@@ -1705,6 +1701,7 @@ async def calendar_view(request: Request):
       <div class="view-toggle">
         <button id="btn-list" onclick="switchView('list')">List</button>
         <button id="btn-timeline" onclick="switchView('timeline')">Week</button>
+        <button id="btn-map" onclick="switchView('map')">Map</button>
       </div>
     </div>
 
@@ -1737,6 +1734,11 @@ async def calendar_view(request: Request):
       <div class="timeline-week" id="tl-week"></div>
     </div>
     <div id="heat-view" style="display:none"></div>
+    <div id="map-view" style="display:none;">
+      <div id="event-map" style="height:70vh;width:100%;border:1px solid #e0e0e0;"></div>
+    </div>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
     const EVENTS = {events_json_str};
@@ -1945,15 +1947,14 @@ async def calendar_view(request: Request):
     // --- View toggle ---
     function switchView(view) {{
       localStorage.setItem('recom-view', view);
-      document.getElementById('list-view').style.display = view === 'list' ? 'block' : 'none';
-      document.getElementById('timeline-view').style.display = view === 'timeline' ? 'block' : 'none';
-      document.getElementById('cal-view').style.display = 'none';
-      document.getElementById('heat-view').style.display = 'none';
-      ['list','timeline'].forEach(v => {{
+      ['list','timeline','cal','heat','map'].forEach(v => {{
+        const el = document.getElementById(v + '-view');
+        if (el) el.style.display = v === view ? 'block' : 'none';
         const btn = document.getElementById('btn-' + v);
         if (btn) btn.classList.toggle('active', v === view);
       }});
       if (view === 'timeline') buildTimelineView();
+      if (view === 'map') buildMapView();
     }}
 
     const _expandedDays = new Set();
