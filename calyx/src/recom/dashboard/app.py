@@ -1630,20 +1630,17 @@ async def calendar_view(request: Request):
       .evt-card .card-actions {{ display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }}
       .source-badge {{ font-size: 10px; font-weight: 600; padding: 1px 7px; background: #f5f5f5; color: #888; text-transform: capitalize; }}
       /* --- Timeline view --- */
-      #timeline-view {{ display: none; overflow-x: auto; padding-bottom: 8px; }}
-      .timeline-week {{ display: flex; gap: 1px; min-width: max-content; padding: 4px 0 12px; background: #e0e0e0; }}
-      .timeline-col {{ width: 220px; flex-shrink: 0; background: #fff; }}
-      .timeline-col-header {{ background: #fff; padding: 10px 14px 8px; border-bottom: 2px solid #e0e0e0; margin-bottom: 0; }}
-      .timeline-col-header .col-day {{ font-size: 11px; font-weight: 700; color: #000; text-transform: uppercase; letter-spacing: 1px; }}
-      .timeline-col-header .col-date {{ font-size: 11px; color: #888; margin-top: 2px; }}
-      .timeline-col-header .col-count {{ font-size: 10px; font-weight: 600; background: #f5f5f5; color: #888; padding: 1px 6px; display: inline-block; margin-top: 4px; }}
-      .timeline-col-header.today {{ border-bottom-color: #000; }}
-      .timeline-col-header.today .col-day {{ color: #000; }}
-      .tl-card {{ background: white; padding: 10px 12px; margin: 0; border-bottom: 1px solid #e0e0e0; border-left: 3px solid; cursor: pointer; transition: background .15s; }}
-      .tl-card:hover {{ background: #fafafa; }}
-      .tl-card.vibe-social {{ border-left-color: #c9a227; }}
-      .tl-card.vibe-intellectual {{ border-left-color: #4a6741; }}
-      .tl-card.vibe-mixed {{ border-left-color: #555; }}
+      #timeline-view {{ display: none; padding-bottom: 8px; margin: 0 -20px; padding: 0 20px; }}
+      @media (min-width: 1100px) {{ #timeline-view {{ margin: 0 calc(-50vw + 480px); padding: 0 calc(50vw - 480px); }} }}
+      .timeline-week {{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: #e0e0e0; }}
+      .timeline-col {{ background: #fff; min-width: 0; }}
+      .timeline-col-header {{ background: #fff; padding: 10px 10px 8px; border-bottom: 2px solid #e0e0e0; text-align: center; }}
+      .timeline-col-header .col-day {{ font-size: 10px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }}
+      .timeline-col-header .col-count {{ font-size: 10px; font-weight: 600; background: #edf2eb; color: #4a6741; padding: 1px 6px; display: inline-block; margin-top: 4px; }}
+      .timeline-col-header.today {{ border-bottom-color: #4a6741; background: #f8faf7; }}
+      .timeline-col-header.today .col-day {{ color: #4a6741; }}
+      .tl-card {{ background: white; padding: 8px 10px; margin: 0; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background .15s; }}
+      .tl-card:hover {{ background: #f8faf7; }}
       .tl-card .tl-title {{ font-size: 13px; font-weight: 600; color: #000; line-height: 1.3; margin-bottom: 5px; }}
       .tl-card .tl-time {{ font-size: 11px; color: #888; margin-bottom: 3px; }}
       .tl-card .tl-loc {{ font-size: 11px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
@@ -1692,7 +1689,14 @@ async def calendar_view(request: Request):
 
     <div id="cal-view" style="display:none"><div id="fc-container"></div></div>
     <div id="list-view"></div>
-    <div id="timeline-view"><div class="timeline-week" id="tl-week"></div></div>
+    <div id="timeline-view">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <button onclick="_weekOffset--;buildTimelineView()" style="background:none;border:1px solid #e0e0e0;padding:6px 14px;cursor:pointer;font-size:13px;font-weight:600;color:#4a6741;">&larr; Prev</button>
+        <span id="tl-week-label" style="font-size:13px;font-weight:700;color:#4a6741;text-transform:uppercase;letter-spacing:1px;"></span>
+        <button onclick="_weekOffset++;buildTimelineView()" style="background:none;border:1px solid #e0e0e0;padding:6px 14px;cursor:pointer;font-size:13px;font-weight:600;color:#4a6741;">Next &rarr;</button>
+      </div>
+      <div class="timeline-week" id="tl-week"></div>
+    </div>
     <div id="heat-view" style="display:none"></div>
 
     <script>
@@ -2006,45 +2010,61 @@ async def calendar_view(request: Request):
     }}
 
     // --- Timeline (week columns) view ---
+    let _weekOffset = 0;
     function buildTimelineView() {{
       const container = document.getElementById('tl-week');
+      const label = document.getElementById('tl-week-label');
       const filtered = getFilteredEvents();
       const today = new Date(); today.setHours(0,0,0,0);
+      const todayStr = today.toISOString().slice(0,10);
+
+      // Find Sunday of the target week
+      const refDate = new Date(today);
+      refDate.setDate(refDate.getDate() + (_weekOffset * 7));
+      const sunday = new Date(refDate);
+      sunday.setDate(sunday.getDate() - sunday.getDay()); // back to Sunday
+
+      const saturday = new Date(sunday);
+      saturday.setDate(saturday.getDate() + 6);
+      label.textContent = sunday.toLocaleDateString('en-US', {{month:'short', day:'numeric'}}) + ' — ' + saturday.toLocaleDateString('en-US', {{month:'short', day:'numeric', year:'numeric'}});
+
       const groups = {{}};
       filtered.forEach(e => {{
         const day = e.start.slice(0, 10);
         if (!groups[day]) groups[day] = [];
         groups[day].push(e);
       }});
+
       let html = '';
       for (let i = 0; i < 7; i++) {{
-        const d = new Date(today); d.setDate(today.getDate() + i);
+        const d = new Date(sunday); d.setDate(sunday.getDate() + i);
         const key = d.toISOString().slice(0, 10);
         const dayEvts = (groups[key] || []).sort((a, b) => b.score - a.score);
-        const isToday = i === 0;
-        const dayName = isToday ? 'Today' : d.toLocaleDateString('en-US', {{weekday: 'short'}});
-        const dateFmt = d.toLocaleDateString('en-US', {{month: 'short', day: 'numeric'}});
-        html += `<div class="timeline-col">
+        const isToday = key === todayStr;
+        const isPast = key < todayStr;
+        const dayName = d.toLocaleDateString('en-US', {{weekday: 'short'}});
+        const dateNum = d.getDate();
+
+        html += `<div class="timeline-col" style="${{isPast ? 'opacity:.5;' : ''}}">
           <div class="timeline-col-header ${{isToday ? 'today' : ''}}">
             <div class="col-day">${{dayName}}</div>
-            <div class="col-date">${{dateFmt}}</div>
+            <div style="font-size:22px;font-weight:800;color:${{isToday ? '#4a6741' : '#1a1a1a'}};margin:2px 0;">${{dateNum}}</div>
             ${{dayEvts.length ? '<span class="col-count">' + dayEvts.length + '</span>' : ''}}
           </div>`;
         if (!dayEvts.length) {{
-          html += '<div class="tl-empty">-</div>';
+          html += '<div class="tl-empty" style="padding:20px 0;color:#ddd;">—</div>';
         }} else {{
-          dayEvts.slice(0, 6).forEach(e => {{
-            const eid = e.id.replace(/'/g, "\\\\'");
+          dayEvts.slice(0, 5).forEach(e => {{
             let t = '';
             try {{ const dt = new Date(e.start); if (dt.getHours()||dt.getMinutes()) t = dt.toLocaleTimeString('en-US',{{hour:'numeric',minute:'2-digit'}}); }} catch(x){{}}
-            html += `<div class="tl-card vibe-${{e.vibe}}" onclick="window.open(&apos;${{e.url||'#'}}&apos;,&apos;_blank&apos;)">
+            html += `<div class="tl-card" onclick="window.open(&apos;${{(e.url||'#').replace(/'/g,'')}}&apos;,&apos;_blank&apos;)">
               <div class="tl-title">${{e.title}}</div>
               ${{t ? '<div class="tl-time">' + t + '</div>' : ''}}
               ${{e.location ? '<div class="tl-loc">' + e.location + '</div>' : ''}}
               <span class="tl-score ${{scoreCls(e.score)}}">${{e.score}}</span>
             </div>`;
           }});
-          if (dayEvts.length > 6) html += `<div class="tl-empty" style="font-size:11px;color:#888;">+${{dayEvts.length - 6}} more</div>`;
+          if (dayEvts.length > 5) html += `<div class="tl-empty" style="font-size:11px;color:#c4734f;font-weight:600;padding:8px 0;">+${{dayEvts.length - 5}} more</div>`;
         }}
         html += '</div>';
       }}
