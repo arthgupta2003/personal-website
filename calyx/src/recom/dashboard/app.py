@@ -633,6 +633,10 @@ async def profile_page(request: Request, response: Response):
     </div>
   </div>
 
+  <div style="text-align:center;margin-top:24px;">
+    <a href="/taste-profile" style="font-size:13px;color:#4a6741;font-weight:600;">View your taste profile &rarr;</a>
+  </div>
+
   {admin_html}
 </div>
 
@@ -899,6 +903,122 @@ def _radar_svg(axes: list[str], values: list[float], colors: list[str] | None = 
         f'{rings_svg}{axes_svg}{data_svg}{dots_svg}{labels_svg}'
         f'</svg>'
     )
+
+
+@app.get("/taste-profile", response_class=HTMLResponse)
+async def taste_profile_page(request: Request):
+    """Show users what Calyx knows about them — transparent interest profile."""
+    db = get_db()
+    current_user = _get_current_user(request)
+    if not current_user:
+        return RedirectResponse("/login")
+    user_id = current_user["id"]
+
+    # 1. Interest profile from latest pipeline run
+    import json as _json
+    interests = []
+    run = db.get_user_latest_run(user_id)
+    if not run:
+        # Fall back to any run
+        runs = db.get_runs()
+        if runs:
+            run = runs[0]
+    if run and run.get("interest_profile_json"):
+        try:
+            profile = _json.loads(run["interest_profile_json"])
+            interests = profile.get("interests", [])
+        except (ValueError, TypeError):
+            pass
+
+    # 2. Manual interests from file
+    from pathlib import Path
+    manual = []
+    settings = Settings()
+    interests_path = Path(settings.interests_file)
+    if interests_path.exists():
+        for line in interests_path.read_text().splitlines():
+            word = line.strip().split("\t")[-1].strip() if "\t" in line else line.strip()
+            if word:
+                manual.append(word)
+
+    # 3. Paste-box interests
+    paste_keywords = []
+    paste_file = Path(f"state/interests/user_{user_id}_paste.txt")
+    if paste_file.exists():
+        for line in paste_file.read_text().splitlines():
+            for kw in line.split(","):
+                kw = kw.strip()
+                if kw:
+                    paste_keywords.append(kw)
+
+    # 4. Spotify top artists (from latest ingest stats or token)
+    spotify_artists = []
+    try:
+        rows = db.conn.execute(
+            """SELECT DISTINCT title FROM (
+                SELECT title FROM events WHERE source='spotify' AND run_id IN (
+                    SELECT id FROM runs WHERE user_id=? ORDER BY id DESC LIMIT 3
+                )
+                UNION
+                SELECT title FROM ingest_stats WHERE source='Spotify' AND run_id IN (
+                    SELECT id FROM runs WHERE user_id=? ORDER BY id DESC LIMIT 1
+                )
+            ) LIMIT 20""",
+            (user_id, user_id),
+        ).fetchall()
+        spotify_artists = [r["title"] for r in rows if r.get("title")]
+    except Exception:
+        pass
+    # If no DB data, try reading from the activity items in the interest profile
+    if not spotify_artists and interests:
+        spotify_artists = [i["topic"] for i in interests if "music" in str(i.get("source_signals", [])).lower() or "spotify" in str(i.get("source_signals", [])).lower()]
+
+    # Build tag HTML
+    def _tags(items: list[str], color: str = "#4a6741") -> str:
+        if not items:
+            return '<span style="color:#ccc;font-size:13px;">Nothing yet</span>'
+        return " ".join(
+            f'<span style="display:inline-block;padding:4px 12px;margin:3px;background:#f4f7f3;color:{color};font-size:13px;font-weight:500;border:1px solid #e0e0e0;">{item}</span>'
+            for item in items[:30]
+        )
+
+    # Build interest tags grouped by source
+    algo_interests = [i for i in interests if "manual" not in str(i.get("source_signals", []))]
+    algo_tags = [i["topic"] for i in sorted(algo_interests, key=lambda x: -x.get("confidence", 0))]
+
+    body = f"""
+<style>
+.taste-page{{max-width:620px;margin:0 auto;padding:40px 0 80px}}
+.taste-page h1{{font-size:2rem;font-weight:800;color:#000;margin-bottom:8px;letter-spacing:-.5px}}
+.taste-page .sub{{font-size:14px;color:#888;margin-bottom:32px}}
+.taste-section{{margin-bottom:32px}}
+.taste-section h2{{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px}}
+.taste-section .tags{{line-height:2}}
+</style>
+<div class="taste-page">
+  <h1>Your Taste Profile</h1>
+  <p class="sub">This is what Calyx knows about you. It shapes your event recommendations.</p>
+
+  <div class="taste-section">
+    <h2>Interests (from pipeline analysis)</h2>
+    <div class="tags">{_tags(algo_tags)}</div>
+  </div>
+
+  <div class="taste-section">
+    <h2>Manual interests</h2>
+    <div class="tags">{_tags(manual)}</div>
+  </div>
+
+  {"<div class='taste-section'><h2>From your paste</h2><div class='tags'>" + _tags(paste_keywords) + "</div></div>" if paste_keywords else ""}
+
+  {"<div class='taste-section'><h2>Music (from Spotify)</h2><div class='tags'>" + _tags(spotify_artists, "#8b6914") + "</div></div>" if spotify_artists else ""}
+
+  <div style="border-top:1px solid #e0e0e0;padding-top:20px;margin-top:20px;">
+    <a href="/profile" style="font-size:13px;color:#888;">Back to profile</a>
+  </div>
+</div>
+"""
+    return HTMLResponse(_layout("Your Taste Profile", body, current_user))
 
 
 @app.get("/landing", response_class=HTMLResponse)
