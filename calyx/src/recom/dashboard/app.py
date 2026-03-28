@@ -1311,12 +1311,12 @@ async def calendar_view(request: Request):
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:20px;">
-      <input id="search-input" type="text" placeholder="Search events..." oninput="applyFilters()" onkeydown="if(event.key==='Enter')searchWeb()"
-             style="flex:1;padding:10px 14px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none;">
-      <button id="web-search-btn" onclick="searchWeb()" class="btn-primary" style="white-space:nowrap;padding:10px 16px;">Search web</button>
+    <div style="position:relative;margin-bottom:20px;">
+      <input id="search-input" type="text" placeholder="Try &quot;jazz tonight&quot; or &quot;outdoor things this weekend&quot;" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()"
+             style="width:100%;padding:12px 14px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+      <span id="search-spinner" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:12px;color:#888;">searching...</span>
     </div>
-    <div id="web-results" style="display:none;margin-bottom:20px;"></div>
+    <div id="search-results" style="display:none;margin-bottom:24px;"></div>
     <input type="hidden" id="score-slider" value="0">
     <input type="hidden" id="dist-slider" value="50">
     <span id="score-label" style="display:none">0</span>
@@ -1351,49 +1351,66 @@ async def calendar_view(request: Request):
     }}
     function scoreCls(s) {{ return s >= 70 ? 'score-high' : s >= 50 ? 'score-mid' : 'score-low'; }}
 
-    function searchWeb() {{
+    let _searchTimeout = null;
+    function onSearchInput() {{
+      const query = document.getElementById('search-input').value.trim();
+      // Instant local filter
+      applyFilters();
+      // Clear previous search results if query is empty
+      if (!query) {{
+        document.getElementById('search-results').style.display = 'none';
+        return;
+      }}
+      // Debounce: if user stops typing for 600ms with few visible results, auto-search
+      clearTimeout(_searchTimeout);
+      _searchTimeout = setTimeout(() => {{
+        const visible = document.querySelectorAll('.evt-card:not([style*="display: none"])').length;
+        if (visible < 3 && query.length >= 3) doSearch();
+      }}, 800);
+    }}
+
+    function doSearch() {{
       const query = document.getElementById('search-input').value.trim();
       if (!query) return;
-      const btn = document.getElementById('web-search-btn');
-      const container = document.getElementById('web-results');
-      btn.disabled = true;
-      btn.textContent = 'Searching...';
-      container.style.display = 'none';
+      const spinner = document.getElementById('search-spinner');
+      const container = document.getElementById('search-results');
+      spinner.style.display = 'inline';
       fetch('/api/search', {{
         method: 'POST',
         headers: {{'Content-Type': 'application/json'}},
         body: JSON.stringify({{query}})
       }}).then(r => r.json()).then(d => {{
-        btn.disabled = false;
-        btn.textContent = 'Search web';
+        spinner.style.display = 'none';
         if (!d.ok || !d.results || !d.results.length) {{
-          container.innerHTML = '<p style="color:#888;font-size:13px;">No results found.</p>';
+          container.innerHTML = '<p style="color:#888;font-size:13px;">Nothing found for that query.</p>';
           container.style.display = 'block';
           return;
         }}
-        let html = `<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">${{d.db_count || 0}} from DB, ${{d.web_count || 0}} from web</div>`;
-        d.results.forEach(r => {{
-          const badge = r.source === 'web' ? '<span style="font-size:10px;font-weight:700;background:#f5f5f5;padding:2px 6px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Web</span>' : '';
+        const webCount = d.web_count || 0;
+        let html = '';
+        if (webCount > 0) {{
+          html += `<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Also found on the web</div>`;
+        }}
+        d.results.filter(r => r.source === 'web').forEach(r => {{
           let timeStr = '';
           if (r.start_time) {{
             try {{ const dt = new Date(r.start_time); timeStr = dt.toLocaleDateString('en-US', {{weekday:'short', month:'short', day:'numeric'}}); }} catch(e) {{}}
           }}
-          html += `<div class="evt-card" style="cursor:pointer;" onclick="window.open(&apos;${{r.url||'#'}}&apos;,&apos;_blank&apos;)">
+          html += `<div class="evt-card" style="cursor:pointer;" onclick="window.open(&apos;${{(r.url||'#').replace(/'/g, '')}}&apos;,&apos;_blank&apos;)">
             <div class="card-body">
               <div class="card-top">
                 <span class="card-title">${{r.title}}</span>
-                ${{r.score ? '<span class="card-score ' + scoreCls(r.score) + '">' + r.score + '</span>' : badge}}
+                <span style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;">Web</span>
               </div>
               <div class="card-meta">${{[timeStr, r.location].filter(Boolean).join(' &middot; ')}}</div>
               ${{r.match_reason ? '<div class="card-reason">' + r.match_reason + '</div>' : ''}}
             </div>
           </div>`;
         }});
-        container.innerHTML = html;
-        container.style.display = 'block';
+        container.innerHTML = html || '';
+        container.style.display = html ? 'block' : 'none';
       }}).catch(() => {{
-        btn.disabled = false;
-        btn.textContent = 'Search web';
+        spinner.style.display = 'none';
       }});
     }}
 
@@ -1479,6 +1496,7 @@ async def calendar_view(request: Request):
       if (view === 'timeline') buildTimelineView();
     }}
 
+    const _expandedDays = new Set();
     function buildListView() {{
       const container = document.getElementById('list-view');
       const filtered = getFilteredEvents();
@@ -1499,11 +1517,20 @@ async def calendar_view(request: Request):
         if (d.getTime() === today.getTime()) label = 'Today, ' + d.toLocaleDateString('en-US', {{month:'long', day:'numeric'}});
         else if (d.getTime() === tomorrow.getTime()) label = 'Tomorrow, ' + d.toLocaleDateString('en-US', {{month:'long', day:'numeric'}});
         const dayEvts = [...groups[day]].sort((a,b) => b.score - a.score);
+        const MAX_SHOW = 5;
+        const isExpanded = _expandedDays.has(day);
+        const shown = isExpanded ? dayEvts : dayEvts.slice(0, MAX_SHOW);
+        const hidden = dayEvts.length - MAX_SHOW;
         html += `<div class="day-group"><div class="day-header">
           <span>${{label}}</span>
           <span class="day-count">${{dayEvts.length}}</span>
         </div>`;
-        dayEvts.forEach(e => {{ html += renderCard(e); }});
+        shown.forEach(e => {{ html += renderCard(e); }});
+        if (hidden > 0 && !isExpanded) {{
+          html += `<button class="see-more-btn" onclick="_expandedDays.add(&apos;${{day}}&apos;);buildListView()">+ ${{hidden}} more</button>`;
+        }} else if (hidden > 0 && isExpanded) {{
+          html += `<button class="see-more-btn" onclick="_expandedDays.delete(&apos;${{day}}&apos;);buildListView()">Show less</button>`;
+        }}
         html += '</div>';
       }});
       container.innerHTML = html || '<p style="color:#888">No events to display.</p>';
