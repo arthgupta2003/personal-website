@@ -3604,7 +3604,10 @@ async def api_group_add_event(group_id: int, request: Request):
     repeat_weeks = int(form.get("recurring") or "0")
     from datetime import datetime as _dt, timedelta as _td
     start_time = f"{date}T{time}:00"
-    db.add_group_event(group_id, user["id"], title, start_time, location=location)
+    event_row_id = db.add_group_event(group_id, user["id"], title, start_time, location=location)
+    # Auto-RSVP "going" for the person who added it
+    ue_eid = f"grp_evt_{event_row_id}"
+    db.set_rsvp(user["id"], ue_eid, 0, "going")
     if repeat_weeks > 1:
         base_date = _dt.fromisoformat(start_time)
         for week in range(1, repeat_weeks):
