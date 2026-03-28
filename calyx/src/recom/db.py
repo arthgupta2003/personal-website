@@ -852,7 +852,7 @@ class Database:
         all_events = []
         for rr in run_rows:
             all_events.extend(self.get_run_events(rr["id"]))
-        # Dedupe: keep highest score per event_id
+        # Dedupe pass 1: keep highest score per event_id
         best: dict[str, dict] = {}
         for e in all_events:
             eid = e.get("event_id", "")
@@ -860,7 +860,35 @@ class Database:
                 continue
             if eid not in best or (e.get("score") or 0) > (best[eid].get("score") or 0):
                 best[eid] = e
-        return sorted(best.values(), key=lambda x: -(x.get("score") or 0))
+        # Dedupe pass 2: fuzzy merge events with similar titles on the same day
+        import re, difflib
+        def _norm(title: str) -> str:
+            t = re.sub(r"[^\w\s]", "", title.lower().strip())
+            return re.sub(r"\s+", " ", t)
+        # Group by day, then fuzzy-match within each day
+        from collections import defaultdict
+        by_day: dict[str, list[tuple[str, dict]]] = defaultdict(list)
+        for eid, e in best.items():
+            day = (e.get("start_time") or "")[:10]
+            by_day[day].append((eid, e))
+        final: dict[str, dict] = {}
+        for day, day_events in by_day.items():
+            # Sort by score desc so we keep the best version
+            day_events.sort(key=lambda x: -(x[1].get("score") or 0))
+            kept_norms: list[str] = []
+            for eid, e in day_events:
+                norm = _norm(e.get("title", ""))
+                # Check if this title is too similar to any already-kept title
+                is_dupe = False
+                for kept in kept_norms:
+                    ratio = difflib.SequenceMatcher(None, norm, kept).ratio()
+                    if ratio > 0.55:
+                        is_dupe = True
+                        break
+                if not is_dupe:
+                    kept_norms.append(norm)
+                    final[eid] = e
+        return sorted(final.values(), key=lambda x: -(x.get("score") or 0))
 
     def get_run_events(self, run_id: int) -> list[dict]:
         rows = self.conn.execute(
