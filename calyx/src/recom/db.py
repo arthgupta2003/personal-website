@@ -827,6 +827,27 @@ class Database:
         row = self.conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
         return dict(row) if row else None
 
+    def get_latest_scored_events(self, user_id: int | None = None) -> list[dict]:
+        """Get all kept events from the most recent scored run for this user (or any user).
+        Dedupes by event_id, keeping highest score."""
+        if user_id:
+            run_row = self.conn.execute(
+                """SELECT r.id FROM runs r
+                   JOIN rankings rk ON rk.run_id = r.id AND rk.keep = 1
+                   WHERE r.user_id = ?
+                   GROUP BY r.id ORDER BY r.id DESC LIMIT 1""",
+                (user_id,),
+            ).fetchone()
+        else:
+            run_row = self.conn.execute(
+                """SELECT r.id FROM runs r
+                   JOIN rankings rk ON rk.run_id = r.id AND rk.keep = 1
+                   GROUP BY r.id ORDER BY r.id DESC LIMIT 1""",
+            ).fetchone()
+        if not run_row:
+            return []
+        return self.get_run_events(run_row["id"])
+
     def get_run_events(self, run_id: int) -> list[dict]:
         rows = self.conn.execute(
             """SELECT e.*, rk.score, rk.interest_score, rk.social_score,

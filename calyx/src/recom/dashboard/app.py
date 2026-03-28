@@ -1062,98 +1062,32 @@ async def home_redirect(request: Request):
 
 
 @app.get("/calendar", response_class=HTMLResponse)
-@app.get("/calendar/{run_id}", response_class=HTMLResponse)
-async def calendar_view(request: Request, run_id: int | None = None):
+async def calendar_view(request: Request):
     import re as _re
 
     db = get_db()
     settings = Settings()
-
-    # Resolve user from token cookie or ?u= param
     current_user = _get_current_user(request)
 
-    # Per-user home coords (fall back to settings defaults)
     home_lat = float(current_user["home_lat"]) if current_user and current_user.get("home_lat") else settings.latitude
     home_lon = float(current_user["home_lon"]) if current_user and current_user.get("home_lon") else settings.longitude
 
-    # Default to current user's latest COMPLETED run (skip in-progress runs with 0 events)
-    if run_id is None:
-        # Find most recent run that has scored (kept) events — skip in-progress runs
-        def _run_has_scored_events(rid: int) -> bool:
-            evts = db.get_run_events(rid)
-            return any(e.get("keep") for e in evts)
+    # Get latest scored events — simple, no run-finding logic
+    user_id = current_user["id"] if current_user else None
+    all_events = db.get_latest_scored_events(user_id)
+    kept = [e for e in all_events if e.get("keep") and e.get("start_time")]
+    if not kept:
+        return HTMLResponse(_layout("Discover", "<h1>Discover</h1><div class='card'><p>No scored events yet. Pipeline may still be running.</p></div>", current_user))
 
-        if current_user:
-            latest = db.get_user_latest_run(current_user["id"])
-            if latest and _run_has_scored_events(latest["id"]):
-                run_id = latest["id"]
-        if run_id is None:
-            runs = db.get_runs()
-            if not runs:
-                return HTMLResponse(_layout("Discover", "<h1>Discover</h1><div class='card'><p>No runs yet. Run the pipeline first.</p></div>", current_user))
-            for r in runs:
-                if _run_has_scored_events(r["id"]):
-                    run_id = r["id"]
-                    break
-            if run_id is None:
-                return HTMLResponse(_layout("Discover", "<h1>Discover</h1><div class='card'><p>Pipeline is running... check back in a few minutes.</p></div>", current_user))
+    # Find run_id for RSVP API calls
+    run_id = kept[0].get("run_id", 0)
 
-    events = db.get_run_events(run_id)
-    all_kept = [e for e in events if e.get("keep")]
-
-    # Diverse pick: top 5 per day, max 2 per vibe
-    from collections import defaultdict
-    from datetime import datetime as dt
-
-    day_groups: dict[str, list] = defaultdict(list)
-    undated = []
-    for e in all_kept:
-        if e.get("start_time"):
-            try:
-                d = dt.fromisoformat(e["start_time"])
-                day_groups[d.strftime("%Y-%m-%d")].append(e)
-            except (ValueError, TypeError):
-                undated.append(e)
-        else:
-            undated.append(e)
-
-    # Mark primary (curated top 5/day with vibe + category diversity) vs overflow
-    primary_ids: set[str] = set()
-    kept = []
-    for day_str in sorted(day_groups):
-        day_evts = sorted(day_groups[day_str], key=lambda x: -(x.get("score") or 0))
-        picked = []
-        vibe_counts: dict[str, int] = defaultdict(int)
-        music_count = 0
-        for e in day_evts:
-            if len(picked) >= 5:
-                break
-            vibe = e.get("vibe", "mixed")
-            if vibe_counts[vibe] >= 2:
-                continue
-            # Category diversity: max 2 music events per day
-            cat = (e.get("category") or "").lower()
-            is_music = "music" in cat or "concert" in cat
-            if is_music and music_count >= 2:
-                continue
-            picked.append(e)
-            vibe_counts[vibe] += 1
-            if is_music:
-                music_count += 1
-        for e in picked:
-            primary_ids.add(e.get("event_id", ""))
-        kept.extend(day_evts)  # ALL events for the day, not just picked
-    undated_all = sorted(undated, key=lambda x: -(x.get("score") or 0))
-    for e in undated_all[:5]:
-        primary_ids.add(e.get("event_id", ""))
-    kept.extend(undated_all)
-
-    # Fetch RSVPs for all kept events
+    # Fetch RSVPs
     all_event_ids = [e.get("event_id", "") for e in kept if e.get("event_id")]
     rsvps_map = db.get_rsvps_for_events(all_event_ids)
     user_token = current_user["user_token"] if current_user else ""
 
-    # Build JSON event array for JS consumption
+    # Build JSON event array for JS
     events_json = []
     for e in kept:
         eid = e.get("event_id", "")
@@ -1183,7 +1117,7 @@ async def calendar_view(request: Request, run_id: int | None = None):
             "event_type": e.get("event_type", "event"),
             "rsvps": rsvp_list,
             "my_rsvp": my_rsvp,
-            "primary": eid in primary_ids,
+            "primary": True,
             "source": (e.get("source") or "").replace("_", " "),
             "image_url": e.get("image_url") or "",
             "lat": e.get("lat"),
