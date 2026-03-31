@@ -70,7 +70,7 @@ async def _fetch_via_api(settings: Settings) -> list[Event]:
                 source=EventSource.LUMA,
                 title=title,
                 description=(ev.get("description") or "")[:500],
-                url=f"https://lu.ma/{ev['api_id']}" if ev.get("api_id") else ev.get("url", ""),
+                url=f"https://lu.ma/{ev['url']}" if ev.get("url") else (f"https://lu.ma/{ev['api_id']}" if ev.get("api_id") else ""),
                 start_time=parse_event_dt(start_raw),
                 end_time=parse_event_dt(end_raw),
                 location_name=location_name or geo.get("city_state", ""),

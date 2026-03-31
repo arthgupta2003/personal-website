@@ -110,7 +110,7 @@ _DIGEST_TEMPLATE = _env.from_string(
     </div>
     {% endif %}
     <div style="margin-top:24px;">
-      <a href="{{ dashboard_url }}" style="display:inline-block;background:white;color:#4a6741;text-decoration:none;font-weight:800;font-size:14px;padding:12px 28px;border-radius:50px;letter-spacing:.3px;">Open calendar &rarr;</a>
+      <a href="{{ dashboard_url }}" style="display:inline-block;background:white;color:#4a6741;text-decoration:none;font-weight:800;font-size:14px;padding:12px 28px;border-radius:0;letter-spacing:.3px;">Open calendar &rarr;</a>
     </div>
   </td></tr>
 
@@ -121,27 +121,27 @@ _DIGEST_TEMPLATE = _env.from_string(
     {% if top_recs %}
     {% set hero = top_recs[0] %}
     <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#4a6741;">This week's top pick</p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#edf2eb,#f4f7f3);border-radius:16px;margin-bottom:28px;overflow:hidden;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#edf2eb,#f4f7f3);border-radius:0;margin-bottom:28px;overflow:hidden;">
       <tr>
         {% if hero.event.image_url %}
         <td style="width:100%;">
-          <img src="{{ hero.event.image_url }}" alt="" width="100%" style="width:100%;height:180px;object-fit:cover;display:block;border-radius:16px 16px 0 0;">
+          <img src="{{ hero.event.image_url }}" alt="" width="100%" style="width:100%;height:180px;object-fit:cover;display:block;border-radius:0 16px 0 0;">
         </td>
         {% endif %}
       </tr>
       <tr><td style="padding:20px 20px 24px;">
-        <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#6d28d9;letter-spacing:1.5px;text-transform:uppercase;">
+        <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#4a6741;letter-spacing:1.5px;text-transform:uppercase;">
           {{ hero.event.start_time | format_dt }}{% if hero.event.location_name %} · {{ hero.event.location_name }}{% endif %}{% if dist_labels.get(hero.event.id) %} · {{ dist_labels[hero.event.id] }}{% endif %}
         </p>
         <h2 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#3a5334;line-height:1.25;">
           {% if hero.event.url %}<a href="{{ hero.event.url }}" style="color:#3a5334;text-decoration:none;">{{ hero.event.title }}</a>{% else %}{{ hero.event.title }}{% endif %}
         </h2>
-        {% if hero.match_reason %}<p style="margin:0 0 12px;font-size:14px;color:#4c1d95;line-height:1.5;background:rgba(139,92,246,.1);padding:10px 14px;border-radius:8px;border-left:3px solid #8b5cf6;">{{ hero.match_reason }}</p>{% endif %}
+        {% if hero.match_reason %}<p style="margin:0 0 12px;font-size:14px;color:#3a5334;line-height:1.5;background:rgba(74,103,65,.1);padding:10px 14px;border-radius:0;border-left:3px solid #6b8f62;">{{ hero.match_reason }}</p>{% endif %}
         {% if hero.event.price %}<p style="margin:0;font-size:13px;color:#6b7280;">{{ hero.event.price }}</p>{% endif %}
         <div style="margin-top:14px;">
-          {% if user_token %}<a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ hero.event.id }}.ics" style="display:inline-block;background:#16a34a;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:10px 24px;border-radius:50px;">&#128197; Add to my week</a>{% endif %}
+          {% if user_token %}<a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ hero.event.id }}.ics" style="display:inline-block;background:#4a6741;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:10px 24px;border-radius:0;">&#128197; Add to my week</a>{% endif %}
           {% if hero.event.url %}<a href="{{ hero.event.url }}" style="display:inline-block;margin-left:8px;color:#4a6741;text-decoration:none;font-weight:600;font-size:13px;">Get tickets &rarr;</a>{% endif %}
-          <span style="display:inline-block;margin-left:8px;background:#dcfce7;color:#166534;font-weight:800;font-size:13px;padding:9px 14px;border-radius:50px;">{{ hero.score | int }}</span>
+          <span style="display:inline-block;margin-left:8px;background:#edf2eb;color:#3a5334;font-weight:800;font-size:13px;padding:9px 14px;border-radius:0;">{{ hero.score | int }}</span>
           {% if user_token %}<a href="{{ dashboard_url }}/api/ping-group?event_id={{ hero.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:10px;">Bring friends? &rarr;</a>{% endif %}
         </div>
       </td></tr>
@@ -149,8 +149,8 @@ _DIGEST_TEMPLATE = _env.from_string(
 
     {# --- FEEDBACK SECTION --- #}
     {% if feedback_items %}
-    <div style="margin:20px 0;padding:16px 20px;background:#faf5ff;border-radius:14px;border:1px solid #e9d5ff;">
-      <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#7c3aed;">Your feedback is working</p>
+    <div style="margin:20px 0;padding:16px 20px;background:#f4f7f3;border-radius:0;border:1px solid #e8ede7;">
+      <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#4a6741;">Your feedback is working</p>
       {% for fb in feedback_items %}
       {% if fb.rating >= 4 %}
       <p style="margin:0 0 4px;font-size:14px;color:#1e293b;">
@@ -158,7 +158,7 @@ _DIGEST_TEMPLATE = _env.from_string(
         {% if fb.similar_picks %}&mdash; here are {{ fb.similar_picks | length }} more like it:{% endif %}
       </p>
       {% if fb.similar_picks %}
-      <p style="margin:0 0 12px;font-size:13px;color:#6d28d9;">
+      <p style="margin:0 0 12px;font-size:13px;color:#4a6741;">
         {% for pick in fb.similar_picks %}{{ pick.event.title }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
       </p>
       {% endif %}
@@ -174,23 +174,23 @@ _DIGEST_TEMPLATE = _env.from_string(
     {# --- TOP PICKS 2-10 --- #}
     <p style="margin:0 0 14px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#9ca3af;">More top picks</p>
     {% for r in top_recs[1:] %}
-    {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#8b5cf6" if r.vibe == "intellectual" else "#3b82f6") %}
-    {% set score_bg = "#dcfce7" if r.score >= 70 else ("#fef3c7" if r.score >= 50 else "#f3f4f6") %}
-    {% set score_color = "#166534" if r.score >= 70 else ("#92400e" if r.score >= 50 else "#6b7280") %}
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border-radius:12px;border:1px solid #f3f4f6;overflow:hidden;">
+    {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#6b8f62" if r.vibe == "intellectual" else "#3b82f6") %}
+    {% set score_bg = "#edf2eb" if r.score >= 70 else ("#fef3c7" if r.score >= 50 else "#f3f4f6") %}
+    {% set score_color = "#3a5334" if r.score >= 70 else ("#92400e" if r.score >= 50 else "#6b7280") %}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border-radius:0;border:1px solid #f3f4f6;overflow:hidden;">
       <tr>
         {% if r.event.image_url %}
         <td style="width:72px;vertical-align:top;">
-          <img src="{{ r.event.image_url }}" alt="" width="72" height="72" style="display:block;object-fit:cover;width:72px;height:72px;border-radius:12px 0 0 12px;">
+          <img src="{{ r.event.image_url }}" alt="" width="72" height="72" style="display:block;object-fit:cover;width:72px;height:72px;border-radius:0 0 0 12px;">
         </td>
         {% endif %}
         <td style="padding:12px 14px;vertical-align:top;border-left:4px solid {{ vibe_color }};">
           <p style="margin:0 0 2px;font-size:14px;font-weight:700;line-height:1.3;">
             {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#111827;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
-            <span style="display:inline-block;background:{{ score_bg }};color:{{ score_color }};font-size:11px;font-weight:800;padding:1px 8px;border-radius:8px;margin-left:6px;">{{ r.score | int }}</span>
+            <span style="display:inline-block;background:{{ score_bg }};color:{{ score_color }};font-size:11px;font-weight:800;padding:1px 8px;border-radius:0;margin-left:6px;">{{ r.score | int }}</span>
           </p>
           <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} · {{ r.event.location_name }}{% endif %}{% if r.event.price %} · {{ r.event.price }}{% endif %}{% if dist_labels.get(r.event.id) %} · <span style="color:#059669;">{{ dist_labels[r.event.id] }}</span>{% endif %}</p>
-          {% if r.match_reason %}<p style="margin:0;font-size:12px;color:#6d28d9;line-height:1.35;">{{ r.match_reason }}</p>{% endif %}
+          {% if r.match_reason %}<p style="margin:0;font-size:12px;color:#4a6741;line-height:1.35;">{{ r.match_reason }}</p>{% endif %}
         </td>
       </tr>
     </table>
@@ -199,7 +199,7 @@ _DIGEST_TEMPLATE = _env.from_string(
 
     {# --- FREE PICKS --- #}
     {% if free_picks %}
-    <div style="margin:28px 0 0;padding:16px 20px;background:#f0fdf4;border-radius:14px;border:1px solid #bbf7d0;">
+    <div style="margin:28px 0 0;padding:16px 20px;background:#f0fdf4;border-radius:0;border:1px solid #bbf7d0;">
       <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#059669;">Free this week</p>
       {% for r in free_picks %}
       <p style="margin:0 0 3px;font-size:14px;font-weight:600;color:#065f46;">
@@ -212,7 +212,7 @@ _DIGEST_TEMPLATE = _env.from_string(
 
     {# --- BUCKET LIST --- #}
     {% if bucket_suggestions %}
-    <div style="margin:28px 0 0;padding:20px;background:#f0fdf4;border-radius:14px;border:1px solid #bbf7d0;">
+    <div style="margin:28px 0 0;padding:20px;background:#f0fdf4;border-radius:0;border:1px solid #bbf7d0;">
       <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#059669;">This week you could also...</p>
       {% for s in bucket_suggestions %}
       <p style="margin:0 0 8px;font-size:14px;color:#065f46;"><strong>{{ s.activity }}</strong>{% if s.best_day %} — {{ s.best_day }}{% endif %}</p>
@@ -226,15 +226,15 @@ _DIGEST_TEMPLATE = _env.from_string(
     <div style="margin-top:28px;">
       <p style="margin:0 0 14px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#9ca3af;">Clubs, Classes & Memberships</p>
       {% for r in clubs_classes %}
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border-radius:12px;border:1px solid #f3f4f6;overflow:hidden;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border-radius:0;border:1px solid #f3f4f6;overflow:hidden;">
         <tr>
-          <td style="padding:12px 14px;border-left:4px solid #8b5cf6;">
+          <td style="padding:12px 14px;border-left:4px solid #6b8f62;">
             <p style="margin:0 0 2px;font-size:14px;font-weight:700;line-height:1.3;">
               {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#111827;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
-              <span style="display:inline-block;background:#edf2eb;color:#6d28d9;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;margin-left:4px;text-transform:uppercase;">{{ r.event_type }}</span>
+              <span style="display:inline-block;background:#edf2eb;color:#4a6741;font-size:10px;font-weight:700;padding:1px 7px;border-radius:0;margin-left:4px;text-transform:uppercase;">{{ r.event_type }}</span>
             </p>
             <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} · {{ r.event.location_name }}{% endif %}</p>
-            {% if r.match_reason %}<p style="margin:0;font-size:12px;color:#6d28d9;">{{ r.match_reason }}</p>{% endif %}
+            {% if r.match_reason %}<p style="margin:0;font-size:12px;color:#4a6741;">{{ r.match_reason }}</p>{% endif %}
           </td>
         </tr>
       </table>
@@ -249,15 +249,15 @@ _DIGEST_TEMPLATE = _env.from_string(
       {% for day_label, day_events in by_day %}
       <p style="margin:20px 0 8px;font-size:14px;font-weight:700;color:#1e40af;padding:4px 0;border-bottom:1px solid #dbeafe;">{{ day_label }}</p>
       {% for r in day_events %}
-      {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#8b5cf6" if r.vibe == "intellectual" else "#3b82f6") %}
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;border-radius:10px;background:#fafafa;overflow:hidden;">
+      {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#6b8f62" if r.vibe == "intellectual" else "#3b82f6") %}
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;border-radius:0;background:#fafafa;overflow:hidden;">
         <tr>
           <td style="padding:10px 14px;border-left:3px solid {{ vibe_color }};">
             <p style="margin:0 0 2px;font-size:13px;font-weight:700;">
               {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#1a1a1a;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
             </p>
             <p style="margin:0;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} · {{ r.event.location_name }}{% endif %}{% if r.event.price %} · {{ r.event.price }}{% endif %}</p>
-            {% if r.match_reason %}<p style="margin:4px 0 0;font-size:11px;color:#7c3aed;">{{ r.match_reason }}</p>{% endif %}
+            {% if r.match_reason %}<p style="margin:4px 0 0;font-size:11px;color:#4a6741;">{{ r.match_reason }}</p>{% endif %}
           </td>
         </tr>
       </table>
@@ -457,7 +457,7 @@ _DAILY_TEMPLATE = _env.from_string(
 <table width="100%" style="max-width:600px;" cellpadding="0" cellspacing="0">
 
   <!-- Header -->
-  <tr><td style="background:linear-gradient(135deg,#3a5334,#4a6741);border-radius:16px 16px 0 0;padding:28px 28px 24px;text-align:center;">
+  <tr><td style="background:linear-gradient(135deg,#3a5334,#4a6741);border-radius:0 16px 0 0;padding:28px 28px 24px;text-align:center;">
     <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#4a6741;text-transform:uppercase;">◉ CALYX · Daily</p>
     <h1 style="margin:0;font-size:28px;font-weight:800;color:white;letter-spacing:-.5px;">
       <a href="{{ dashboard_url }}" style="color:white;text-decoration:none;">{{ day_label }}</a>
@@ -469,34 +469,34 @@ _DAILY_TEMPLATE = _env.from_string(
   <tr><td style="background:white;border-radius:0 0 16px 16px;padding:24px 20px;">
 
     {% for r in events %}
-    {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#8b5cf6" if r.vibe == "intellectual" else "#3b82f6") %}
-    {% set score_bg = "#dcfce7" if r.score >= 70 else ("#fef3c7" if r.score >= 50 else "#f3f4f6") %}
-    {% set score_color = "#166534" if r.score >= 70 else ("#92400e" if r.score >= 50 else "#6b7280") %}
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;border-radius:12px;border:1px solid #f3f4f6;overflow:hidden;">
+    {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#6b8f62" if r.vibe == "intellectual" else "#3b82f6") %}
+    {% set score_bg = "#edf2eb" if r.score >= 70 else ("#fef3c7" if r.score >= 50 else "#f3f4f6") %}
+    {% set score_color = "#3a5334" if r.score >= 70 else ("#92400e" if r.score >= 50 else "#6b7280") %}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;border-radius:0;border:1px solid #f3f4f6;overflow:hidden;">
       {% if r.event.image_url %}
-      <tr><td><img src="{{ r.event.image_url }}" alt="" width="100%" style="width:100%;height:140px;object-fit:cover;display:block;border-radius:12px 12px 0 0;"></td></tr>
+      <tr><td><img src="{{ r.event.image_url }}" alt="" width="100%" style="width:100%;height:140px;object-fit:cover;display:block;border-radius:0 12px 0 0;"></td></tr>
       {% endif %}
       <tr>
         <td style="padding:14px 16px;border-left:4px solid {{ vibe_color }};">
           <p style="margin:0 0 3px;font-size:15px;font-weight:700;line-height:1.3;">
             {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#111827;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
-            <span style="display:inline-block;background:{{ score_bg }};color:{{ score_color }};font-size:11px;font-weight:800;padding:1px 8px;border-radius:8px;margin-left:6px;">{{ r.score | int }}</span>
+            <span style="display:inline-block;background:{{ score_bg }};color:{{ score_color }};font-size:11px;font-weight:800;padding:1px 8px;border-radius:0;margin-left:6px;">{{ r.score | int }}</span>
           </p>
           <p style="margin:0 0 6px;font-size:12px;color:#6b7280;">
             {{ r.event.start_time | format_dt }}{% if r.event.location_name %} · {{ r.event.location_name }}{% endif %}{% if r.event.price %} · {{ r.event.price }}{% endif %}
           </p>
-          {% if r.match_reason %}<p style="margin:0 0 8px;font-size:13px;color:#6d28d9;background:#faf5ff;padding:7px 10px;border-radius:7px;line-height:1.4;">{{ r.match_reason }}</p>{% endif %}
+          {% if r.match_reason %}<p style="margin:0 0 8px;font-size:13px;color:#4a6741;background:#f4f7f3;padding:7px 10px;border-radius:7px;line-height:1.4;">{{ r.match_reason }}</p>{% endif %}
           {% if friend_rsvps and r.event.id in friend_rsvps %}
           <p style="margin:0 0 8px;">
             {% for rv in friend_rsvps[r.event.id] %}
-            <span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600;margin-right:3px;{% if rv.status == 'going' %}background:#dcfce7;color:#166534;{% elif rv.status == 'maybe' %}background:#fef3c7;color:#92400e;{% else %}background:#fee2e2;color:#991b1b;{% endif %}">{{ rv.user_name }} {{ 'going' if rv.status == 'going' else ('maybe' if rv.status == 'maybe' else "can't") }}</span>
+            <span style="display:inline-block;padding:2px 10px;border-radius:0;font-size:11px;font-weight:600;margin-right:3px;{% if rv.status == 'going' %}background:#edf2eb;color:#3a5334;{% elif rv.status == 'maybe' %}background:#fef3c7;color:#92400e;{% else %}background:#fee2e2;color:#991b1b;{% endif %}">{{ rv.user_name }} {{ 'going' if rv.status == 'going' else ('maybe' if rv.status == 'maybe' else "can't") }}</span>
             {% endfor %}
           </p>
           {% endif %}
           <p style="margin:0;">
             {% if user_token %}
-            <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#16a34a;text-decoration:none;padding:5px 16px;border-radius:10px;margin-right:6px;">&#128197; Add to my week</a>
-            <a href="{{ dashboard_url }}/api/rsvp-link?event_id={{ r.event.id }}&status=maybe&u={{ user_token }}&title={{ r.event.title | urlencode }}" style="display:inline-block;font-size:12px;font-weight:600;color:#92400e;text-decoration:none;border:1.5px solid #fde68a;padding:4px 14px;border-radius:10px;margin-right:6px;">Maybe</a>
+            <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#4a6741;text-decoration:none;padding:5px 16px;border-radius:0;margin-right:6px;">&#128197; Add to my week</a>
+            <a href="{{ dashboard_url }}/api/rsvp-link?event_id={{ r.event.id }}&status=maybe&u={{ user_token }}&title={{ r.event.title | urlencode }}" style="display:inline-block;font-size:12px;font-weight:600;color:#92400e;text-decoration:none;border:1.5px solid #fde68a;padding:4px 14px;border-radius:0;margin-right:6px;">Maybe</a>
             <a href="{{ dashboard_url }}/api/ping-group?event_id={{ r.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:6px;">Bring friends? &rarr;</a>
             {% endif %}
             {% if r.event.url %}<a href="{{ r.event.url }}" style="display:inline-block;font-size:12px;font-weight:600;color:#4a6741;text-decoration:none;padding:4px 0;">Get tickets &rarr;</a>{% endif %}
@@ -511,14 +511,14 @@ _DAILY_TEMPLATE = _env.from_string(
     {% endif %}
 
     {% if backfill %}
-    <div style="margin-top:20px;padding:16px;background:#f4f7f3;border-radius:12px;border:1px solid #ddd6fe;">
-      <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:1.5px;color:#7c3aed;text-transform:uppercase;">{% if events %}Also worth checking out{% else %}No standout events today &mdash; try these instead{% endif %}</p>
+    <div style="margin-top:20px;padding:16px;background:#f4f7f3;border-radius:0;border:1px solid #ddd6fe;">
+      <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:1.5px;color:#4a6741;text-transform:uppercase;">{% if events %}Also worth checking out{% else %}No standout events today &mdash; try these instead{% endif %}</p>
       {% for r in backfill %}
       {% set type_label = "Club" if r.event_type == "club" else ("Class" if r.event_type == "class" else "Anytime") %}
       {% set type_bg = "#e0e7ff" if r.event_type == "club" else ("#fce7f3" if r.event_type == "class" else "#ecfdf5") %}
       {% set type_color = "#3730a3" if r.event_type == "club" else ("#9d174d" if r.event_type == "class" else "#065f46") %}
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
-        <tr><td style="padding:10px 12px;background:white;border-radius:8px;">
+        <tr><td style="padding:10px 12px;background:white;border-radius:0;">
           <p style="margin:0 0 3px;font-size:14px;font-weight:700;">
             {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#111827;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
             <span style="display:inline-block;background:{{ type_bg }};color:{{ type_color }};font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;margin-left:4px;">{{ type_label }}</span>
@@ -526,7 +526,7 @@ _DAILY_TEMPLATE = _env.from_string(
           <p style="margin:0;font-size:12px;color:#6b7280;">
             {% if r.event.location_name %}{{ r.event.location_name }}{% endif %}{% if r.event.price %} · {{ r.event.price }}{% endif %}
           </p>
-          {% if r.match_reason %}<p style="margin:4px 0 0;font-size:12px;color:#6d28d9;">{{ r.match_reason }}</p>{% endif %}
+          {% if r.match_reason %}<p style="margin:4px 0 0;font-size:12px;color:#4a6741;">{{ r.match_reason }}</p>{% endif %}
         </td></tr>
       </table>
       {% endfor %}
@@ -534,7 +534,7 @@ _DAILY_TEMPLATE = _env.from_string(
     {% endif %}
 
     {% if bucket_suggestions %}
-    <div style="margin-top:20px;padding:16px;background:#f0fdf4;border-radius:12px;border:1px solid #bbf7d0;">
+    <div style="margin-top:20px;padding:16px;background:#f0fdf4;border-radius:0;border:1px solid #bbf7d0;">
       <p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:1.5px;color:#059669;text-transform:uppercase;">You could also today...</p>
       {% for s in bucket_suggestions %}
       <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#065f46;">{{ s.activity }}</p>
@@ -670,7 +670,7 @@ _WEEKEND_TEMPLATE = _env.from_string(
 <table width="100%" style="max-width:600px;" cellpadding="0" cellspacing="0">
 
   <!-- Header -->
-  <tr><td style="background:linear-gradient(135deg,#3a5334,#4a6741);border-radius:16px 16px 0 0;padding:28px 28px 24px;text-align:center;">
+  <tr><td style="background:linear-gradient(135deg,#3a5334,#4a6741);border-radius:0 16px 0 0;padding:28px 28px 24px;text-align:center;">
     <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#4a6741;text-transform:uppercase;">&loz; CALYX &middot; Weekend</p>
     <h1 style="margin:0;font-size:26px;font-weight:800;color:white;letter-spacing:-.5px;">
       <a href="{{ dashboard_url }}" style="color:white;text-decoration:none;">Your Weekend</a>
@@ -685,20 +685,20 @@ _WEEKEND_TEMPLATE = _env.from_string(
     <p style="margin:{% if not loop.first %}24px{% else %}0{% endif %} 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#4a6741;">{{ day_label }}</p>
 
     {% for r in events %}
-    {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#8b5cf6" if r.vibe == "intellectual" else "#3b82f6") %}
-    {% set score_bg = "#dcfce7" if r.score >= 70 else ("#fef3c7" if r.score >= 50 else "#f3f4f6") %}
-    {% set score_color = "#166534" if r.score >= 70 else ("#92400e" if r.score >= 50 else "#6b7280") %}
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;border-radius:10px;border:1px solid #f3f4f6;overflow:hidden;">
+    {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#6b8f62" if r.vibe == "intellectual" else "#3b82f6") %}
+    {% set score_bg = "#edf2eb" if r.score >= 70 else ("#fef3c7" if r.score >= 50 else "#f3f4f6") %}
+    {% set score_color = "#3a5334" if r.score >= 70 else ("#92400e" if r.score >= 50 else "#6b7280") %}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;border-radius:0;border:1px solid #f3f4f6;overflow:hidden;">
       <tr>
         <td style="padding:12px 14px;border-left:4px solid {{ vibe_color }};">
           <p style="margin:0 0 2px;font-size:14px;font-weight:700;line-height:1.3;">
             {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#111827;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
-            <span style="display:inline-block;background:{{ score_bg }};color:{{ score_color }};font-size:11px;font-weight:800;padding:1px 8px;border-radius:8px;margin-left:6px;">{{ r.score | int }}</span>
+            <span style="display:inline-block;background:{{ score_bg }};color:{{ score_color }};font-size:11px;font-weight:800;padding:1px 8px;border-radius:0;margin-left:6px;">{{ r.score | int }}</span>
           </p>
           <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} &middot; {{ r.event.location_name }}{% endif %}{% if r.event.price %} &middot; {{ r.event.price }}{% endif %}</p>
-          {% if r.match_reason %}<p style="margin:0 0 6px;font-size:12px;color:#6d28d9;">{{ r.match_reason }}</p>{% endif %}
+          {% if r.match_reason %}<p style="margin:0 0 6px;font-size:12px;color:#4a6741;">{{ r.match_reason }}</p>{% endif %}
           {% if user_token %}
-          <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#16a34a;text-decoration:none;padding:4px 14px;border-radius:8px;">&#128197; Add to my week</a>
+          <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#4a6741;text-decoration:none;padding:4px 14px;border-radius:0;">&#128197; Add to my week</a>
           <a href="{{ dashboard_url }}/api/ping-group?event_id={{ r.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:10px;">Bring friends? &rarr;</a>
           {% endif %}
         </td>
@@ -712,7 +712,7 @@ _WEEKEND_TEMPLATE = _env.from_string(
     {% endif %}
 
     <div style="text-align:center;margin-top:20px;">
-      <a href="{{ dashboard_url }}/?u={{ user_token }}" style="display:inline-block;background:#f1f5f9;color:#374151;text-decoration:none;font-weight:600;font-size:14px;padding:12px 28px;border-radius:50px;">
+      <a href="{{ dashboard_url }}/?u={{ user_token }}" style="display:inline-block;background:#f1f5f9;color:#374151;text-decoration:none;font-weight:600;font-size:14px;padding:12px 28px;border-radius:0;">
         See all events &rarr;
       </a>
     </div>
@@ -812,7 +812,7 @@ _WELCOME_TEMPLATE = _env.from_string(
 <table width="100%" style="max-width:600px;" cellpadding="0" cellspacing="0">
 
   <!-- Header -->
-  <tr><td style="background:linear-gradient(135deg,#3a5334,#4a6741);border-radius:16px 16px 0 0;padding:32px 28px;text-align:center;">
+  <tr><td style="background:linear-gradient(135deg,#3a5334,#4a6741);border-radius:0 16px 0 0;padding:32px 28px;text-align:center;">
     <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:3px;color:#4a6741;text-transform:uppercase;">&loz; CALYX</p>
     <h1 style="margin:0;font-size:26px;font-weight:800;color:white;letter-spacing:-.5px;">Your event calendar is ready</h1>
     <p style="margin:8px 0 0;font-size:15px;color:rgba(255,255,255,.7);">We found {{ event_count }} events this week that match your interests.</p>
@@ -829,21 +829,21 @@ _WELCOME_TEMPLATE = _env.from_string(
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
       <tr>
         <td align="center" style="padding:6px;">
-          <a href="{{ webcal_url }}" style="display:block;background:#3a5334;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:14px 20px;border-radius:12px;text-align:center;">
+          <a href="{{ webcal_url }}" style="display:block;background:#3a5334;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:14px 20px;border-radius:0;text-align:center;">
             &#127823; Add to Apple Calendar
           </a>
         </td>
       </tr>
       <tr>
         <td align="center" style="padding:6px;">
-          <a href="{{ gcal_url }}" style="display:block;background:#4285f4;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:14px 20px;border-radius:12px;text-align:center;">
+          <a href="{{ gcal_url }}" style="display:block;background:#4285f4;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:14px 20px;border-radius:0;text-align:center;">
             &#128197; Add to Google Calendar
           </a>
         </td>
       </tr>
       <tr>
         <td align="center" style="padding:6px;">
-          <a href="{{ outlook_url }}" style="display:block;background:#0078d4;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:14px 20px;border-radius:12px;text-align:center;">
+          <a href="{{ outlook_url }}" style="display:block;background:#0078d4;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:14px 20px;border-radius:0;text-align:center;">
             &#128233; Add to Outlook
           </a>
         </td>
@@ -858,8 +858,8 @@ _WELCOME_TEMPLATE = _env.from_string(
     <div style="border-top:1px solid #e5e7eb;padding-top:20px;margin-top:4px;">
       <p style="margin:0 0 14px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#9ca3af;">Preview: this week&apos;s top picks</p>
       {% for r in top_events %}
-      {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#8b5cf6" if r.vibe == "intellectual" else "#3b82f6") %}
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border-radius:10px;border:1px solid #f3f4f6;overflow:hidden;">
+      {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#6b8f62" if r.vibe == "intellectual" else "#3b82f6") %}
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border-radius:0;border:1px solid #f3f4f6;overflow:hidden;">
         <tr>
           <td style="padding:12px 14px;border-left:4px solid {{ vibe_color }};">
             <p style="margin:0 0 2px;font-size:14px;font-weight:700;line-height:1.3;">
@@ -867,7 +867,7 @@ _WELCOME_TEMPLATE = _env.from_string(
             </p>
             <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} &middot; {{ r.event.location_name }}{% endif %}</p>
             {% if user_token %}
-            <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#16a34a;text-decoration:none;padding:4px 14px;border-radius:8px;margin-top:4px;">&#128197; Add to my week</a>
+            <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#4a6741;text-decoration:none;padding:4px 14px;border-radius:0;margin-top:4px;">&#128197; Add to my week</a>
             <a href="{{ dashboard_url }}/api/ping-group?event_id={{ r.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:10px;">Bring friends? &rarr;</a>
             {% endif %}
           </td>
@@ -878,7 +878,7 @@ _WELCOME_TEMPLATE = _env.from_string(
     {% endif %}
 
     <div style="text-align:center;margin-top:20px;">
-      <a href="{{ dashboard_url }}/?u={{ user_token }}" style="display:inline-block;background:#f1f5f9;color:#374151;text-decoration:none;font-weight:600;font-size:14px;padding:12px 28px;border-radius:50px;">
+      <a href="{{ dashboard_url }}/?u={{ user_token }}" style="display:inline-block;background:#f1f5f9;color:#374151;text-decoration:none;font-weight:600;font-size:14px;padding:12px 28px;border-radius:0;">
         See all {{ event_count }} events &rarr;
       </a>
     </div>
