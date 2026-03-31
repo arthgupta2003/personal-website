@@ -95,18 +95,14 @@ _DIGEST_TEMPLATE = _env.from_string(
 <table width="100%" style="max-width:600px;" cellpadding="0" cellspacing="0">
 
   <!-- HERO HEADER — Calyx botanical -->
-  <tr><td style="background:linear-gradient(160deg,#4a6741 0%,#3a5334 40%,#ffffff 100%);border-radius:20px 20px 0 0;padding:40px 32px 32px;text-align:center;">
+  <tr><td style="background:linear-gradient(160deg,#4a6741 0%,#3a5334 60%,#2d3f27 100%);padding:40px 32px 32px;text-align:center;">
     <p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.8);">CALYX</p>
     <h1 style="margin:0 0 8px;font-size:38px;font-weight:800;color:white;line-height:1.1;letter-spacing:-1px;">Your Week<br>in Events</h1>
     <p style="margin:0;font-size:15px;color:rgba(255,255,255,.6);">{{ week_of }}</p>
     {% if top_recs %}
     <!-- Stats pills -->
     <div style="margin-top:24px;display:inline-flex;gap:10px;flex-wrap:wrap;justify-content:center;">
-      <span style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#333;border-radius:20px;padding:6px 16px;font-size:13px;font-weight:600;">{{ top_recs|length }} top picks</span>
-      {% set social_cnt = top_recs|selectattr("vibe","equalto","social")|list|length %}
-      {% set intel_cnt = top_recs|selectattr("vibe","equalto","intellectual")|list|length %}
-      {% if social_cnt > 0 %}<span style="background:rgba(245,158,11,.2);border:1px solid rgba(245,158,11,.3);color:#fbbf24;border-radius:20px;padding:6px 16px;font-size:13px;font-weight:600;">{{ social_cnt }} social</span>{% endif %}
-      {% if intel_cnt > 0 %}<span style="background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.3);color:#6b8f62;border-radius:20px;padding:6px 16px;font-size:13px;font-weight:600;">{{ intel_cnt }} brainy</span>{% endif %}
+      <span style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);color:white;padding:6px 16px;font-size:13px;font-weight:600;">{{ top_recs|length }} top picks</span>
     </div>
     {% endif %}
     <div style="margin-top:24px;">
@@ -115,7 +111,7 @@ _DIGEST_TEMPLATE = _env.from_string(
   </td></tr>
 
   <!-- White content area -->
-  <tr><td style="background:white;border-radius:0 0 20px 20px;padding:32px 24px;">
+  <tr><td style="background:white;border-radius:0;padding:32px 24px;">
 
     {# --- #1 FEATURED PICK --- #}
     {% if top_recs %}
@@ -174,7 +170,7 @@ _DIGEST_TEMPLATE = _env.from_string(
     {# --- TOP PICKS 2-10 --- #}
     <p style="margin:0 0 14px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#9ca3af;">More top picks</p>
     {% for r in top_recs[1:] %}
-    {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#6b8f62" if r.vibe == "intellectual" else "#3b82f6") %}
+    {% set vibe_color = "#c4734f" if r.vibe == "social" else ("#4a6741" if r.vibe == "intellectual" else "#5b7fa5") %}
     {% set score_bg = "#edf2eb" if r.score >= 70 else ("#fef3c7" if r.score >= 50 else "#f3f4f6") %}
     {% set score_color = "#3a5334" if r.score >= 70 else ("#92400e" if r.score >= 50 else "#6b7280") %}
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border-radius:0;border:1px solid #f3f4f6;overflow:hidden;">
@@ -249,7 +245,7 @@ _DIGEST_TEMPLATE = _env.from_string(
       {% for day_label, day_events in by_day %}
       <p style="margin:20px 0 8px;font-size:14px;font-weight:700;color:#1e40af;padding:4px 0;border-bottom:1px solid #dbeafe;">{{ day_label }}</p>
       {% for r in day_events %}
-      {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#6b8f62" if r.vibe == "intellectual" else "#3b82f6") %}
+      {% set vibe_color = "#c4734f" if r.vibe == "social" else ("#4a6741" if r.vibe == "intellectual" else "#5b7fa5") %}
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;border-radius:0;background:#fafafa;overflow:hidden;">
         <tr>
           <td style="padding:10px 14px;border-left:3px solid {{ vibe_color }};">
@@ -298,7 +294,7 @@ def compose_email(
     tokens_in: int = 0,
     tokens_out: int = 0,
     bucket_suggestions: list[dict] | None = None,
-    dashboard_url: str = "https://recom.arthgupta.dev",
+    dashboard_url: str = "https://calyx.arthgupta.dev",
     run_id: int | None = None,
     home_lat: float = 42.3736,
     home_lon: float = -71.1097,
@@ -469,7 +465,7 @@ _DAILY_TEMPLATE = _env.from_string(
   <tr><td style="background:white;border-radius:0 0 16px 16px;padding:24px 20px;">
 
     {% for r in events %}
-    {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#6b8f62" if r.vibe == "intellectual" else "#3b82f6") %}
+    {% set vibe_color = "#c4734f" if r.vibe == "social" else ("#4a6741" if r.vibe == "intellectual" else "#5b7fa5") %}
     {% set score_bg = "#edf2eb" if r.score >= 70 else ("#fef3c7" if r.score >= 50 else "#f3f4f6") %}
     {% set score_color = "#3a5334" if r.score >= 70 else ("#92400e" if r.score >= 50 else "#6b7280") %}
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;border-radius:0;border:1px solid #f3f4f6;overflow:hidden;">
@@ -485,7 +481,7 @@ _DAILY_TEMPLATE = _env.from_string(
           <p style="margin:0 0 6px;font-size:12px;color:#6b7280;">
             {{ r.event.start_time | format_dt }}{% if r.event.location_name %} · {{ r.event.location_name }}{% endif %}{% if r.event.price %} · {{ r.event.price }}{% endif %}
           </p>
-          {% if r.match_reason %}<p style="margin:0 0 8px;font-size:13px;color:#4a6741;background:#f4f7f3;padding:7px 10px;border-radius:7px;line-height:1.4;">{{ r.match_reason }}</p>{% endif %}
+          {% if r.match_reason %}<p style="margin:0 0 8px;font-size:13px;color:#4a6741;background:#f4f7f3;padding:7px 10px;border-radius:0;line-height:1.4;">{{ r.match_reason }}</p>{% endif %}
           {% if friend_rsvps and r.event.id in friend_rsvps %}
           <p style="margin:0 0 8px;">
             {% for rv in friend_rsvps[r.event.id] %}
@@ -521,7 +517,7 @@ _DAILY_TEMPLATE = _env.from_string(
         <tr><td style="padding:10px 12px;background:white;border-radius:0;">
           <p style="margin:0 0 3px;font-size:14px;font-weight:700;">
             {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#111827;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
-            <span style="display:inline-block;background:{{ type_bg }};color:{{ type_color }};font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;margin-left:4px;">{{ type_label }}</span>
+            <span style="display:inline-block;background:{{ type_bg }};color:{{ type_color }};font-size:10px;font-weight:700;padding:1px 7px;border-radius:0;margin-left:4px;">{{ type_label }}</span>
           </p>
           <p style="margin:0;font-size:12px;color:#6b7280;">
             {% if r.event.location_name %}{{ r.event.location_name }}{% endif %}{% if r.event.price %} · {{ r.event.price }}{% endif %}
@@ -566,7 +562,7 @@ def compose_daily_email(
     ranked_events: list[RankedEvent],
     target_date: datetime,
     bucket_suggestions: list[dict] | None = None,
-    dashboard_url: str = "https://recom.arthgupta.dev",
+    dashboard_url: str = "https://calyx.arthgupta.dev",
     user_token: str = "",
     friend_rsvps: dict[str, list[dict]] | None = None,
     daily_pick_ids: set[str] | None = None,
@@ -685,7 +681,7 @@ _WEEKEND_TEMPLATE = _env.from_string(
     <p style="margin:{% if not loop.first %}24px{% else %}0{% endif %} 0 12px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#4a6741;">{{ day_label }}</p>
 
     {% for r in events %}
-    {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#6b8f62" if r.vibe == "intellectual" else "#3b82f6") %}
+    {% set vibe_color = "#c4734f" if r.vibe == "social" else ("#4a6741" if r.vibe == "intellectual" else "#5b7fa5") %}
     {% set score_bg = "#edf2eb" if r.score >= 70 else ("#fef3c7" if r.score >= 50 else "#f3f4f6") %}
     {% set score_color = "#3a5334" if r.score >= 70 else ("#92400e" if r.score >= 50 else "#6b7280") %}
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;border-radius:0;border:1px solid #f3f4f6;overflow:hidden;">
@@ -736,7 +732,7 @@ _WEEKEND_TEMPLATE = _env.from_string(
 
 def compose_weekend_email(
     ranked_events: list[RankedEvent],
-    dashboard_url: str = "https://recom.arthgupta.dev",
+    dashboard_url: str = "https://calyx.arthgupta.dev",
     user_token: str = "",
 ) -> tuple[str, str] | None:
     """Build a Thursday weekend preview email with Fri/Sat/Sun events by day.
@@ -858,7 +854,7 @@ _WELCOME_TEMPLATE = _env.from_string(
     <div style="border-top:1px solid #e5e7eb;padding-top:20px;margin-top:4px;">
       <p style="margin:0 0 14px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#9ca3af;">Preview: this week&apos;s top picks</p>
       {% for r in top_events %}
-      {% set vibe_color = "#f59e0b" if r.vibe == "social" else ("#6b8f62" if r.vibe == "intellectual" else "#3b82f6") %}
+      {% set vibe_color = "#c4734f" if r.vibe == "social" else ("#4a6741" if r.vibe == "intellectual" else "#5b7fa5") %}
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border-radius:0;border:1px solid #f3f4f6;overflow:hidden;">
         <tr>
           <td style="padding:12px 14px;border-left:4px solid {{ vibe_color }};">
@@ -905,7 +901,7 @@ def compose_welcome_email(
     user_token: str,
     event_count: int,
     top_events: list[RankedEvent],
-    dashboard_url: str = "https://recom.arthgupta.dev",
+    dashboard_url: str = "https://calyx.arthgupta.dev",
 ) -> tuple[str, str]:
     """Build the welcome/onboarding email for a new user.
 
