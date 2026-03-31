@@ -132,14 +132,9 @@ _DIGEST_TEMPLATE = _env.from_string(
         <h2 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#3a5334;line-height:1.25;">
           {% if hero.event.url %}<a href="{{ hero.event.url }}" style="color:#3a5334;text-decoration:none;">{{ hero.event.title }}</a>{% else %}{{ hero.event.title }}{% endif %}
         </h2>
-        {% if hero.match_reason %}<p style="margin:0 0 12px;font-size:14px;color:#3a5334;line-height:1.5;background:rgba(74,103,65,.1);padding:10px 14px;border-radius:0;border-left:3px solid #6b8f62;">{{ hero.match_reason }}</p>{% endif %}
-        {% if hero.event.price %}<p style="margin:0;font-size:13px;color:#6b7280;">{{ hero.event.price }}</p>{% endif %}
-        <div style="margin-top:14px;">
-          {% if user_token %}<a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ hero.event.id }}.ics" style="display:inline-block;background:#4a6741;color:white;text-decoration:none;font-weight:700;font-size:14px;padding:10px 24px;border-radius:0;">&#128197; Add to my week</a>{% endif %}
-          {% if hero.event.url %}<a href="{{ hero.event.url }}" style="display:inline-block;margin-left:8px;color:#4a6741;text-decoration:none;font-weight:600;font-size:13px;">Get tickets &rarr;</a>{% endif %}
-          <span style="display:inline-block;margin-left:8px;background:#edf2eb;color:#3a5334;font-weight:800;font-size:13px;padding:9px 14px;border-radius:0;">{{ hero.score | int }}</span>
-          {% if user_token %}<a href="{{ dashboard_url }}/api/ping-group?event_id={{ hero.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:10px;">Bring friends? &rarr;</a>{% endif %}
-        </div>
+        {% if hero.match_reason %}<p style="margin:0 0 12px;font-size:14px;color:#555;line-height:1.5;">{{ hero.match_reason }}</p>{% endif %}
+        {% if hero.event.price %}<p style="margin:0 0 12px;font-size:13px;color:#888;">{{ hero.event.price }}</p>{% endif %}
+        {% if user_token %}<a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ hero.event.id }}.ics" style="display:inline-block;background:#4a6741;color:white;text-decoration:none;font-weight:700;font-size:13px;padding:10px 24px;">Add to calendar</a>{% endif %}
       </td></tr>
     </table>
 
@@ -173,23 +168,12 @@ _DIGEST_TEMPLATE = _env.from_string(
     {% set vibe_color = "#c4734f" if r.vibe == "social" else ("#4a6741" if r.vibe == "intellectual" else "#5b7fa5") %}
     {% set score_bg = "#edf2eb" if r.score >= 70 else ("#fef3c7" if r.score >= 50 else "#f3f4f6") %}
     {% set score_color = "#3a5334" if r.score >= 70 else ("#92400e" if r.score >= 50 else "#6b7280") %}
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;border-radius:0;border:1px solid #f3f4f6;overflow:hidden;">
-      <tr>
-        {% if r.event.image_url %}
-        <td style="width:72px;vertical-align:top;">
-          <img src="{{ r.event.image_url }}" alt="" width="72" height="72" style="display:block;object-fit:cover;width:72px;height:72px;border-radius:0 0 0 12px;">
-        </td>
-        {% endif %}
-        <td style="padding:12px 14px;vertical-align:top;border-left:4px solid {{ vibe_color }};">
-          <p style="margin:0 0 2px;font-size:14px;font-weight:700;line-height:1.3;">
-            {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#111827;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
-            <span style="display:inline-block;background:{{ score_bg }};color:{{ score_color }};font-size:11px;font-weight:800;padding:1px 8px;border-radius:0;margin-left:6px;">{{ r.score | int }}</span>
-          </p>
-          <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} · {{ r.event.location_name }}{% endif %}{% if r.event.price %} · {{ r.event.price }}{% endif %}{% if dist_labels.get(r.event.id) %} · <span style="color:#059669;">{{ dist_labels[r.event.id] }}</span>{% endif %}</p>
-          {% if r.match_reason %}<p style="margin:0;font-size:12px;color:#4a6741;line-height:1.35;">{{ r.match_reason }}</p>{% endif %}
-        </td>
-      </tr>
-    </table>
+    <div style="padding:10px 0;border-bottom:1px solid #f0f0f0;">
+      <p style="margin:0 0 2px;font-size:14px;font-weight:700;line-height:1.3;">
+        {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#1a1a1a;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
+      </p>
+      <p style="margin:0;font-size:12px;color:#888;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} &middot; {{ r.event.location_name }}{% endif %}{% if r.event.price %} &middot; {{ r.event.price }}{% endif %}</p>
+    </div>
     {% endfor %}
     {% endif %}
 
@@ -491,11 +475,11 @@ _DAILY_TEMPLATE = _env.from_string(
           {% endif %}
           <p style="margin:0;">
             {% if user_token %}
-            <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#4a6741;text-decoration:none;padding:5px 16px;border-radius:0;margin-right:6px;">&#128197; Add to my week</a>
+            
             <a href="{{ dashboard_url }}/api/rsvp-link?event_id={{ r.event.id }}&status=maybe&u={{ user_token }}&title={{ r.event.title | urlencode }}" style="display:inline-block;font-size:12px;font-weight:600;color:#92400e;text-decoration:none;border:1.5px solid #fde68a;padding:4px 14px;border-radius:0;margin-right:6px;">Maybe</a>
-            <a href="{{ dashboard_url }}/api/ping-group?event_id={{ r.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:6px;">Bring friends? &rarr;</a>
+            
             {% endif %}
-            {% if r.event.url %}<a href="{{ r.event.url }}" style="display:inline-block;font-size:12px;font-weight:600;color:#4a6741;text-decoration:none;padding:4px 0;">Get tickets &rarr;</a>{% endif %}
+            {% if r.event.url %}{% endif %}
           </p>
         </td>
       </tr>
@@ -694,8 +678,8 @@ _WEEKEND_TEMPLATE = _env.from_string(
           <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} &middot; {{ r.event.location_name }}{% endif %}{% if r.event.price %} &middot; {{ r.event.price }}{% endif %}</p>
           {% if r.match_reason %}<p style="margin:0 0 6px;font-size:12px;color:#4a6741;">{{ r.match_reason }}</p>{% endif %}
           {% if user_token %}
-          <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#4a6741;text-decoration:none;padding:4px 14px;border-radius:0;">&#128197; Add to my week</a>
-          <a href="{{ dashboard_url }}/api/ping-group?event_id={{ r.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:10px;">Bring friends? &rarr;</a>
+          
+          
           {% endif %}
         </td>
       </tr>
@@ -863,8 +847,8 @@ _WELCOME_TEMPLATE = _env.from_string(
             </p>
             <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} &middot; {{ r.event.location_name }}{% endif %}</p>
             {% if user_token %}
-            <a href="{{ dashboard_url }}/u/{{ user_token }}/event/{{ r.event.id }}.ics" style="display:inline-block;font-size:12px;font-weight:700;color:white;background:#4a6741;text-decoration:none;padding:4px 14px;border-radius:0;margin-top:4px;">&#128197; Add to my week</a>
-            <a href="{{ dashboard_url }}/api/ping-group?event_id={{ r.event.id }}&u={{ user_token }}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-left:10px;">Bring friends? &rarr;</a>
+            
+            
             {% endif %}
           </td>
         </tr>
