@@ -738,6 +738,7 @@ async def taste_profile_page(request: Request):
     current_user = _get_current_user(request)
     if not current_user:
         return RedirectResponse("/login")
+    show_welcome = request.query_params.get("welcome") == "1"
     user_id = current_user["id"]
     spotify_connected = bool(current_user.get("spotify_token_file"))
     youtube_connected = bool(current_user.get("youtube_token_file"))
@@ -935,7 +936,8 @@ async def taste_profile_page(request: Request):
       </div>
     </div>
 
-    <div style="border:1px solid #e0e0e0;padding:20px;margin-bottom:20px;">
+    {('<div style="border:1.5px solid #4a6741;background:#edf2eb;padding:16px 18px;margin-bottom:16px;"><div style="font-size:11px;font-weight:700;color:#4a6741;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">◉ Welcome to Calyx</div><div style="font-size:14px;color:#1a1a1a;line-height:1.5;">Take 30 seconds and subscribe your real calendar below. Every event you RSVP <em>going</em> to — and what your group-mates are going to — flows in automatically.</div></div>') if show_welcome else ''}
+    <div style="border:1px solid #e0e0e0;padding:20px;margin-bottom:20px;{'border-color:#4a6741;border-width:2px;' if show_welcome else ''}">
       <h2 style="margin:0 0 6px;">Your calendar</h2>
       <p style="font-size:13px;color:#666;margin-bottom:14px;line-height:1.5;">Subscribe to see every event you've RSVP'd <em>going</em> to plus what your group-mates are going to — in your real calendar.</p>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
@@ -4042,13 +4044,20 @@ async def auth_google_callback(request: Request, code: str = "", state: str = ""
         return HTMLResponse("<h1>Email not verified by Google</h1>", status_code=400)
     db = get_db()
     user = db.get_user_by_email(email)
+    is_new = False
     if not user:
+        is_new = True
         user_id = db.create_user(email, info.get("name", ""))
         db.seed_taste_items(user_id)
         user = db.get_user(user_id)
     nxt = request.cookies.get("oauth_next", "/calendar") or "/calendar"
     if not nxt.startswith("/"):
         nxt = "/calendar"
+    # First-time sign-in via the generic /login (not via an invite link) → drop them on
+    # the You page with a welcome banner that highlights the calendar subscribe section.
+    # Invite-link signups have a specific `next` (the invite URL) and should follow that.
+    if is_new and nxt == "/calendar":
+        nxt = "/taste-profile?welcome=1"
     response = RedirectResponse(nxt, status_code=303)
     _set_token_cookie(response, user["user_token"])
     response.delete_cookie("oauth_state")
