@@ -16,6 +16,12 @@
 
 # DONE: Email consolidation — dropped send_weekend_preview.py + send_tonight.py + their crons.
 #   Daily digest covers near-term, weekly Sat is the pipeline output, ratings + admin stay.
+# DONE: /calendar perf — fuzzy SequenceMatcher dedupe → O(n) prefix bucket. 4.6s → 0.26s.
+# DONE: Calendar feed redesign — single feed at /u/<token>/feed.ics. Always includes:
+#   my-going + group-mates' going/maybe. Toggles (You → Settings): include my maybe,
+#   include recommendations (max 2/day, ★ prefix). Drop /group/{id}/feed.ics.
+# DONE: Calendar subscribe UI consolidated to "You" page. Removed from group pages.
+# DONE: RSVP "No" button on /calendar to dismiss events. "Show dismissed" toggle restores.
 
 # DONE: Group MVP (a) Invite flow — auto-joins authed users, Google sign-in CTA for unauth.
 #   Killed /api/join-group/{id}/{code} (manual signup form replaced by Google).

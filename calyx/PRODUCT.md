@@ -183,13 +183,19 @@ require: signup-without-invite that connects integrations, location flexibility
 
 ### Live
 - **Pipeline** — weekly cron ingests Spotify/YouTube/Gmail + 13 event sources, ranks via Claude, emails digest
-- **/calendar Discover** — list + week views, score badges, RSVP, modal preview, filter chips, search; group events surface alongside discoveries with a "GROUP · {name}" pill
+- **/calendar Discover** — list + week views, score badges, RSVP (Going/Maybe/No to dismiss), modal preview, filter chips, search; group events surface alongside discoveries with a "GROUP · {name}" pill. "No" dismisses events from view (toggle "Show events I said no to" to bring back).
 - **Groups** — create, invite link, member list, RSVP, mute notifications, leave, kick, delete, rename
 - **Manual events in groups** — URL paste autofill, quick-pick chips ("Tonight 7pm" etc.), end time, notes, recurring; live in unified `events` table with `source='manual'`
 - **Edit manual events** — same form, opens populated, "Save changes" submit
 - **Email digests** — weekly Saturday, daily, weekend preview, tonight, post-event ratings, admin Sunday (consolidation pending)
 - **Auth** — Google sign-in (single source); cookie session 1y; `?u=token` for email click-through convenience
-- **iCal feeds** — `/u/{token}/feed.ics` (personal: top picks + RSVPs + group events); `/group/{id}/feed.ics`; `/event/{id}.ics` and `/u/{token}/event/{id}.ics` for individual events
+- **iCal feed** — `/u/{token}/feed.ics` is the single calendar subscription. Composition:
+  - Always: events you've RSVP'd `going` to (group + discovered)
+  - Always: events any group-mate has RSVP'd `going`/`maybe` to (visible coordination)
+  - Toggle in You → Settings: include your own `maybe` RSVPs
+  - Toggle in You → Settings: include up to 2 top recommendations per day (★ prefix)
+  - SUMMARY prefixes give visual distinction: `[GroupName]`, `(?)` maybe, `[→ Sarah going]` friend, `★` rec
+  - Plus `/event/{id}.ics` and `/u/{token}/event/{id}.ics` for individual-event downloads
 - **Sharing**
   - `/e/{event_id}` for discovered events
   - `/share/event/{gid}/{eid}/{code}` for group events with one-click RSVP (auto-joins group). Has dynamic OG image at `/og/event/{gid}/{eid}/{code}.png` for chat unfurls.
@@ -209,6 +215,7 @@ require: signup-without-invite that connects integrations, location flexibility
 ### Removed
 - Email/password ("magic link") sign-in → replaced by Google
 - "Who's free this week?" availability widget on group page; `/api/group/{id}/availability` GET/POST and tables `availability_polls/_votes/_grids`
+- `/group/{id}/feed.ics` — folded into the unified `/u/{token}/feed.ics` which now includes group + friend events
 - `/group/{id}/plan` (when2meet-style availability page) and `/api/group/{id}/grid`
 - `/api/group/{id}/rsvp` — folded into `/api/rsvp` (works for both discovered + group events via `event_id`)
 - `set_guest_rsvp` and `guest_rsvps` table — Google sign-in is mandatory now

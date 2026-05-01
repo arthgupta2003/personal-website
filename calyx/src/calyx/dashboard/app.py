@@ -558,6 +558,12 @@ async def profile_update(request: Request):
     if "filter_work_hours" in body:
         updates.append("filter_work_hours = ?")
         params.append(1 if body["filter_work_hours"] else 0)
+    if "feed_include_maybe" in body:
+        updates.append("feed_include_maybe = ?")
+        params.append(1 if body["feed_include_maybe"] else 0)
+    if "feed_include_recs" in body:
+        updates.append("feed_include_recs = ?")
+        params.append(1 if body["feed_include_recs"] else 0)
     if updates:
         params.append(user_id)
         db.conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
@@ -842,6 +848,12 @@ async def taste_profile_page(request: Request):
     is_admin = current_user.get("id") == 1
     admin_html = '<div style="margin-top:20px;"><a href="/admin" style="font-size:12px;color:#888;">Admin</a> &middot; <a href="/admin/sources" style="font-size:12px;color:#888;">Sources</a></div>' if is_admin else ""
 
+    # Calendar subscribe URLs (single feed: all RSVP'd events from groups + discover)
+    user_token = current_user.get("user_token", "") or ""
+    feed_url = f"{settings.dashboard_url}/u/{user_token}/feed.ics"
+    webcal_url = feed_url.replace("https://", "webcal://").replace("http://", "webcal://")
+    gcal_url = f"https://calendar.google.com/calendar/r?cid={feed_url.replace('https://', 'http://')}"
+
     body = f"""
 <style>
 .you-page{{max-width:620px;margin:0 auto;padding:40px 0 80px}}
@@ -927,6 +939,30 @@ async def taste_profile_page(request: Request):
       </div>
     </div>
 
+    <div style="border:1px solid #e0e0e0;padding:20px;margin-bottom:20px;">
+      <h2 style="margin:0 0 6px;">Your calendar</h2>
+      <p style="font-size:13px;color:#666;margin-bottom:14px;line-height:1.5;">Subscribe to see every event you've RSVP'd <em>going</em> to plus what your group-mates are going to — in your real calendar.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+        <a href="{webcal_url}" class="btn-primary" style="text-decoration:none;font-size:12px;padding:10px 16px;">Apple Calendar</a>
+        <a href="{gcal_url}" target="_blank" class="btn-primary" style="text-decoration:none;font-size:12px;padding:10px 16px;">Google Calendar</a>
+        <button type="button" onclick="navigator.clipboard.writeText(&apos;{feed_url}&apos;);this.textContent=&apos;✓ Copied&apos;;setTimeout(()=>this.textContent=&apos;Copy iCal URL&apos;,1500);" class="btn-secondary" style="font-size:12px;padding:10px 16px;">Copy iCal URL</button>
+      </div>
+      <div class="toggle-row" style="padding-top:12px;border-top:1px solid #f0f0f0;">
+        <div class="toggle-label">
+          <div>Include my <em>maybe</em> RSVPs</div>
+          <div>Show events you said maybe to (marked tentative)</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="feed-maybe-toggle" {"checked" if current_user.get("feed_include_maybe") else ""} onchange="toggleFeedPref('feed_include_maybe', this.checked)"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row" style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0;">
+        <div class="toggle-label">
+          <div>Include recommendations</div>
+          <div>Up to 2 top-scored discoveries per day, marked with ★</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="feed-recs-toggle" {"checked" if current_user.get("feed_include_recs") else ""} onchange="toggleFeedPref('feed_include_recs', this.checked)"><span class="slider"></span></label>
+      </div>
+    </div>
+
     <div style="border:1px solid #e0e0e0;overflow:hidden;margin-bottom:20px;">
       <div style="padding:20px 20px 12px;"><h2 style="margin:0 0 8px;">Connected Services</h2></div>
       <div class="svc-row" style="border-top:1px solid #e0e0e0;">
@@ -988,6 +1024,14 @@ function toggleWorkHours(on) {{
     method: 'POST',
     headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify({{ filter_work_hours: on ? 1 : 0 }}),
+  }});
+}}
+
+function toggleFeedPref(field, on) {{
+  fetch('/api/profile/update', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{ [field]: on ? 1 : 0 }}),
   }});
 }}
 
@@ -1526,6 +1570,8 @@ async def calendar_view(request: Request):
       .rsvp-btn:hover {{ color: #4a6741; border-color: #4a6741; }}
       .rsvp-btn.going.active {{ background: #4a6741; color: #fff; border-color: #4a6741; }}
       .rsvp-btn.maybe.active {{ background: #edf2eb; color: #4a6741; border-color: #4a6741; }}
+      .rsvp-btn.no:hover {{ color: #c4734f; border-color: #c4734f; }}
+      .rsvp-btn.no.active {{ background: #f5f1ee; color: #c4734f; border-color: #c4734f; }}
       .filter-chip {{ font-size: 11px; padding: 5px 12px; border: 1px solid #e0e0e0; background: white; cursor: pointer; color: #888; font-weight: 600; transition: all .15s; text-transform: uppercase; letter-spacing: .3px; }}
       .filter-chip:hover {{ border-color: #4a6741; color: #4a6741; }}
       .filter-chip.active {{ border-color: #4a6741; color: #fff; background: #4a6741; }}
@@ -1607,11 +1653,15 @@ async def calendar_view(request: Request):
       </div>
     </div>
 
-    <div style="position:relative;margin-bottom:20px;">
+    <div style="position:relative;margin-bottom:8px;">
       <input id="search-input" type="text" placeholder="Try &quot;jazz tonight&quot; or &quot;outdoor things this weekend&quot;" oninput="onSearchInput()" onkeydown="if(event.key==='Enter'){{event.preventDefault();doSearch();}}"
              style="width:100%;padding:12px 14px;border:1px solid #ccc;border-bottom:2px solid #ccc;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;transition:border-color .15s;"
              onfocus="this.style.borderBottomColor='#4a6741'" onblur="this.style.borderBottomColor='#ccc'">
     </div>
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#888;margin-bottom:16px;cursor:pointer;">
+      <input id="show-dismissed" type="checkbox" onchange="applyFilters()" style="margin:0;">
+      Show events I said no to
+    </label>
     <div id="search-status" style="display:none;padding:16px 20px;margin-bottom:16px;background:#4a6741;font-size:15px;font-weight:700;color:#fff;text-align:center;animation:pulse 1.5s ease-in-out infinite;">
       Searching the web for &ldquo;<span id="search-status-query"></span>&rdquo;
     </div>
@@ -1757,8 +1807,10 @@ async def calendar_view(request: Request):
 
     function getFilteredEvents() {{
       const query = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
+      const showDismissed = !!document.getElementById('show-dismissed')?.checked;
       return EVENTS.filter(e => {{
         if (!e.start) return false;
+        if (e.my_rsvp === 'no' && !showDismissed) return false;
         if (query) {{
           const haystack = (e.title + ' ' + e.location + ' ' + e.description + ' ' + e.match_reason).toLowerCase();
           if (!haystack.includes(query)) return false;
@@ -1910,9 +1962,11 @@ async def calendar_view(request: Request):
       if (HAS_USER) {{
         const goingCls = e.my_rsvp === 'going' ? ' active' : '';
         const maybeCls = e.my_rsvp === 'maybe' ? ' active' : '';
+        const noCls = e.my_rsvp === 'no' ? ' active' : '';
         rsvpBtns = `<div class="card-actions" onclick="event.stopPropagation()">
           <button class="rsvp-btn going${{goingCls}}" onclick="setRsvp(&apos;${{eid}}&apos;, ${{RUN_ID}}, &apos;going&apos;, this)">Going</button>
           <button class="rsvp-btn maybe${{maybeCls}}" onclick="setRsvp(&apos;${{eid}}&apos;, ${{RUN_ID}}, &apos;maybe&apos;, this)">Maybe</button>
+          <button class="rsvp-btn no${{noCls}}" onclick="setRsvp(&apos;${{eid}}&apos;, ${{RUN_ID}}, &apos;no&apos;, this)" title="Hide this event">No</button>
         </div>`;
       }}
       const meta = [timeStr, e.location, e.price].filter(Boolean).join(' &middot; ');
@@ -3055,26 +3109,17 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     actions_html = ""
     if is_member:
         settings = Settings()
-        feed_url = f"{settings.dashboard_url}/group/{group_id}/feed.ics"
-        webcal_url = feed_url.replace("https://", "webcal://").replace("http://", "webcal://")
-        gcal_url = f"https://calendar.google.com/calendar/r?cid={feed_url.replace('https://', 'http://')}"
         invite_code = group.get("invite_code", "")
         group_link = f"{settings.dashboard_url}/group/{group_id}/join/{invite_code}"
 
         actions_html = f'''<div style="border-top:1px solid #e0e0e0;padding-top:24px;margin-top:28px;">
-            <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
                 <button onclick="navigator.clipboard.writeText(&apos;{group_link}&apos;);this.textContent=&apos;Copied!&apos;;setTimeout(()=>this.textContent=&apos;Copy invite link&apos;,1500)"
                         class="btn-primary" style="flex:1;text-align:center;">Copy invite link</button>
                 <button onclick="navigator.share({{title:&apos;Join {group_name} on Calyx&apos;,text:&apos;Join our group to coordinate plans&apos;,url:&apos;{group_link}&apos;}}).catch(()=>{{}})"
                         class="btn-secondary" style="flex:1;text-align:center;">Share</button>
             </div>
-            <div style="display:flex;gap:8px;font-size:12px;">
-                <a href="{webcal_url}" style="color:#888;">Add to Apple Calendar</a>
-                <span style="color:#ddd;">|</span>
-                <a href="{gcal_url}" target="_blank" style="color:#888;">Google Calendar</a>
-                <span style="color:#ddd;">|</span>
-                <a href="#" onclick="navigator.clipboard.writeText(&apos;{feed_url}&apos;);this.textContent=&apos;Copied&apos;;return false;" style="color:#888;">Copy iCal URL</a>
-            </div>
+            <p style="font-size:11px;color:#aaa;margin-top:6px;">Subscribe to your calendar feed in <a href="/taste-profile" style="color:#888;">You</a>.</p>
         </div>'''
 
     # --- Join CTA for non-members (only if they arrived via valid invite link) ---
@@ -3639,160 +3684,6 @@ async def og_event_image(group_id: int, event_id: int, invite_code: str):
         media_type="image/png",
         headers={"Cache-Control": "public, max-age=3600"},
     )
-
-
-@app.get("/group/{group_id:int}/feed.ics")
-async def group_ical_feed(group_id: int, min_score: int = 40):
-    """Group iCal feed with RSVP info in descriptions."""
-    db = get_db()
-    group = db.get_group_by_id(group_id)
-    if not group:
-        return Response(content="BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR",
-                       media_type="text/calendar")
-
-    events = db.get_group_events(group["id"])
-    kept = [e for e in events if (e.get("score") or 0) >= min_score]
-    event_ids = [e.get("event_id", "") for e in kept if e.get("event_id")]
-    rsvps_map = db.get_rsvps_for_events(event_ids)
-
-    import html as _html
-
-    def _ical_escape(text: str) -> str:
-        text = _html.unescape(text)
-        return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
-
-    from datetime import timezone as _tz
-    utcnow = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
-
-    lines = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        f"PRODID:-//recom//Group {_ical_escape(group['name'])}//EN",
-        "CALSCALE:GREGORIAN",
-        "METHOD:PUBLISH",
-        f"X-WR-CALNAME:Calyx - {_ical_escape(group['name'])}",
-        "X-APPLE-CALENDAR-COLOR:#f59e0b",
-        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
-    ]
-
-    for e in kept[:50]:
-        start = e.get("start_time")
-        if not start:
-            continue
-        try:
-            dt_obj = datetime.fromisoformat(start)
-        except (ValueError, TypeError):
-            continue
-
-        dtstart = dt_obj.strftime("%Y%m%dT%H%M%S")
-        title = _ical_escape(e.get("title") or "")
-        location = _ical_escape(e.get("location_name") or "")
-        url = e.get("url") or ""
-        score = int(e.get("score") or 0)
-        reason = _ical_escape(e.get("match_reason") or "")
-        eid = e.get("event_id", "")
-        vibe = e.get("vibe", "mixed")
-        lat, lon = e.get("lat"), e.get("lon")
-
-        # Add RSVP info to description
-        rsvp_lines = []
-        event_rsvps = rsvps_map.get(eid, [])
-        for rv in event_rsvps:
-            rv_label = {"going": "Going", "maybe": "Maybe", "cant": "Can't go"}.get(rv["status"], rv["status"])
-            rsvp_lines.append(f"{rv['user_name']}: {rv_label}")
-        rsvp_text = "\\n".join(rsvp_lines) if rsvp_lines else ""
-        desc_parts = [f"Score: {score}/100", reason]
-        if rsvp_text:
-            desc_parts.append(f"\\nRSVPs:\\n{rsvp_text}")
-
-        # Determine if anyone is "going" for TRANSP
-        has_going = any(rv["status"] == "going" for rv in event_rsvps)
-
-        uid = f"{eid}@recom-group-{group_id}"
-        vevent_lines = [
-            "BEGIN:VEVENT",
-            f"UID:{uid}",
-            f"DTSTAMP:{utcnow}",
-            f"DTSTART:{dtstart}",
-            f"SUMMARY:[{score}] {title}",
-            f"LOCATION:{location}",
-            f"URL:{url}",
-            f"DESCRIPTION:{_ical_escape('\\n'.join(desc_parts))}",
-            f"CATEGORIES:{vibe}",
-            f"TRANSP:{'OPAQUE' if has_going else 'TRANSPARENT'}",
-            "DURATION:PT2H",
-        ]
-        if lat and lon:
-            vevent_lines.append(f"GEO:{lat};{lon}")
-        # ATTENDEE lines for group member RSVPs
-        partstat_map = {"going": "ACCEPTED", "maybe": "TENTATIVE", "cant": "DECLINED"}
-        for rv in event_rsvps:
-            ps = partstat_map.get(rv["status"])
-            if ps:
-                cn = _ical_escape(rv.get("user_name", ""))
-                email = rv.get("user_email", "")
-                if email:
-                    vevent_lines.append(f"ATTENDEE;PARTSTAT={ps};CN={cn}:mailto:{email}")
-        # Reminder alarm
-        vevent_lines.extend([
-            "BEGIN:VALARM",
-            "TRIGGER:-PT2H",
-            "ACTION:DISPLAY",
-            f"DESCRIPTION:Reminder: {title}",
-            "END:VALARM",
-        ])
-        vevent_lines.append("END:VEVENT")
-        lines.extend(vevent_lines)
-
-    # Include user-added group events
-    user_events = db.get_group_user_events(group["id"])
-    for ue in user_events:
-        start = ue.get("start_time")
-        if not start:
-            continue
-        try:
-            dt_obj = datetime.fromisoformat(start)
-        except (ValueError, TypeError):
-            continue
-        dtstart = dt_obj.strftime("%Y%m%dT%H%M%S")
-        ue_title = _ical_escape(ue.get("title") or "")
-        ue_location = _ical_escape(ue.get("location") or "")
-        ue_url = ue.get("url") or ""
-        creator = ue.get("creator_name") or ""
-        notes = ue.get("notes") or ""
-        desc_parts = [f"Added by {creator}"]
-        if notes:
-            desc_parts.append(notes)
-        end = ue.get("end_time")
-        ue_lines = [
-            "BEGIN:VEVENT",
-            f"UID:group-event-{ue['id']}@recom",
-            f"DTSTAMP:{utcnow}",
-            f"DTSTART:{dtstart}",
-        ]
-        if end:
-            try:
-                ue_lines.append(f"DTEND:{datetime.fromisoformat(end).strftime('%Y%m%dT%H%M%S')}")
-            except (ValueError, TypeError):
-                ue_lines.append("DURATION:PT2H")
-        else:
-            ue_lines.append("DURATION:PT2H")
-        ue_lines.extend([
-            f"SUMMARY:{ue_title}",
-            f"LOCATION:{ue_location}",
-            f"URL:{ue_url}",
-            f"DESCRIPTION:{_ical_escape(chr(10).join(desc_parts))}",
-            "END:VEVENT",
-        ])
-        lines.extend(ue_lines)
-
-    lines.append("END:VCALENDAR")
-    return Response(
-        content="\r\n".join(lines),
-        media_type="text/calendar",
-        headers={"Content-Disposition": f"inline; filename=recom-group-{group_id}.ics"},
-    )
-
 
 
 @app.post("/api/extract-event-url")
@@ -4651,226 +4542,210 @@ async def event_added_confirmation(token: str, event_id: str):
 
 
 @app.get("/u/{token}/feed.ics")
-async def user_ical_feed(token: str, min_score: int = 40):
-    """Per-user shareable iCal feed. The token in the URL IS the auth."""
+async def user_ical_feed(token: str):
+    """Per-user iCal feed. Composition (token IS the auth — calendar clients can't OAuth):
+
+      - Always: events you've RSVP'd `going` to.
+      - Always: events your group-mates have RSVP'd `going` or `maybe` to.
+      - Toggle (Settings → "Include maybes"): your own `maybe` RSVPs too.
+      - Toggle (Settings → "Include recommendations"): up to 2 top-scored discovered events
+        per day from your latest pipeline run.
+
+    SUMMARY prefixes give visual distinction (calendar apps can't recolor per-event reliably):
+      [GroupName] for group events, ★ for recommendations, [→ Sarah going] for friend events.
+    """
     db = get_db()
     user = db.get_user_by_token(token)
-    _empty_cal = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//recom//Event Recommender//EN\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Calyx Events\r\nEND:VCALENDAR"
+    _empty = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//calyx//Plans//EN\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Calyx Plans\r\nEND:VCALENDAR"
     if not user:
-        return Response(content=_empty_cal, media_type="text/calendar")
-
-    run = db.get_user_latest_run(user["id"])
-    if not run:
-        return Response(content=_empty_cal, media_type="text/calendar")
-
-    # Use daily_picks table (shared with email) if available, else fall back
-    kept = db.get_daily_picks(run["id"])
-    if not kept:
-        # Fallback: compute on the fly (first time or old runs)
-        db.compute_daily_picks(run["id"], user["id"], min_score=min_score)
-        kept = db.get_daily_picks(run["id"])
-    if not kept:
-        events = db.get_run_events(run["id"])
-        kept = [e for e in events if e.get("keep") and (e.get("score") or 0) >= min_score]
+        return Response(content=_empty, media_type="text/calendar")
 
     import html as _html
-    import urllib.parse as _urlparse
+    from datetime import timezone as _tz, datetime as _dt
+    from collections import defaultdict
 
-    def _ical_escape(text: str) -> str:
-        text = _html.unescape(text)
+    def _esc(text):
+        text = _html.unescape(str(text or ""))
         return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
 
-    def _ical_fold(line: str) -> str:
-        """RFC 5545 line folding at 75 octets."""
+    def _fold(line):
         encoded = line.encode("utf-8")
         if len(encoded) <= 75:
             return line
         chunks = []
         while len(encoded) > 75:
             cut = 75
-            # Don't split a multi-byte UTF-8 char: back up if we're in the middle of one
             while cut > 0 and (encoded[cut] & 0xC0) == 0x80:
                 cut -= 1
             if cut == 0:
-                cut = 75  # safety: shouldn't happen, but avoid infinite loop
+                cut = 75
             chunks.append(encoded[:cut].decode("utf-8"))
             encoded = encoded[cut:]
         if encoded:
             chunks.append(encoded.decode("utf-8"))
         return "\r\n ".join(chunks)
 
-    from datetime import timezone as _tz
-    utcnow = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
-
+    utcnow = _dt.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
     user_name = user.get("name") or user.get("email", "")
     user_email = user.get("email", "")
     settings = Settings()
     dashboard_url = settings.dashboard_url
+    include_maybe = bool(user.get("feed_include_maybe"))
+    include_recs = bool(user.get("feed_include_recs"))
 
-    # Get user's RSVPs for ATTENDEE/TRANSP
-    user_rsvp_rows = db.conn.execute(
-        "SELECT event_id, status FROM rsvps WHERE user_id = ?", (user["id"],)
+    # Set of (event_id, kind, label_suffix) tuples to include. Each event_id appears once.
+    # kind ∈ {"my_going","my_maybe","friend","rec"} — drives the prefix.
+    seen: dict[str, dict] = {}
+
+    def _add(event_id: str, kind: str, label: str = ""):
+        if event_id not in seen:
+            seen[event_id] = {"kind": kind, "label": label}
+
+    # 1. My going (and maybe)
+    statuses = ["going", "maybe"] if include_maybe else ["going"]
+    rows = db.conn.execute(
+        f"""SELECT event_id, status FROM rsvps WHERE user_id = ? AND status IN ({','.join(['?']*len(statuses))})""",
+        (user["id"], *statuses),
     ).fetchall()
-    user_rsvp_map = {r["event_id"]: r["status"] for r in user_rsvp_rows}
+    for r in rows:
+        _add(r["event_id"], "my_going" if r["status"] == "going" else "my_maybe")
 
-    # Get friend RSVPs (from shared groups) for title annotation
-    friend_rsvps: dict[str, list[str]] = {}  # event_id -> ["Name going", "Name maybe"]
-    user_groups = db.get_user_groups(user["id"])
-    if user_groups:
-        group_member_ids = set()
-        for g in user_groups:
-            for m in db.get_group_members(g["id"]):
-                if m["id"] != user["id"]:
-                    group_member_ids.add(m["id"])
-        if group_member_ids:
-            placeholders = ",".join("?" * len(group_member_ids))
-            friend_rows = db.conn.execute(
-                f"""SELECT r.event_id, r.status, u.name, u.email
-                    FROM rsvps r JOIN users u ON u.id = r.user_id
-                    WHERE r.user_id IN ({placeholders}) AND r.status IN ('going', 'maybe')""",
-                list(group_member_ids),
-            ).fetchall()
-            for fr in friend_rows:
-                fname = (fr["name"] or fr["email"] or "?").split()[0]
-                eid = fr["event_id"]
-                label = f"{fname} {'going' if fr['status'] == 'going' else 'maybe'}"
-                friend_rsvps.setdefault(eid, []).append(label)
+    # 2. Group-mate going/maybe RSVPs
+    group_member_ids = set()
+    for g in db.get_user_groups(user["id"]):
+        for m in db.get_group_members(g["id"]):
+            if m["id"] != user["id"]:
+                group_member_ids.add(m["id"])
+    if group_member_ids:
+        ph = ",".join("?" * len(group_member_ids))
+        friend_rows = db.conn.execute(
+            f"""SELECT r.event_id, r.status, u.name, u.email
+                FROM rsvps r JOIN users u ON u.id = r.user_id
+                WHERE r.user_id IN ({ph}) AND r.status IN ('going','maybe')""",
+            list(group_member_ids),
+        ).fetchall()
+        # Bucket per event_id, choose first friend label
+        friend_first: dict[str, str] = {}
+        for fr in friend_rows:
+            eid = fr["event_id"]
+            if eid in friend_first:
+                continue
+            fname = (fr["name"] or fr["email"] or "?").split()[0]
+            friend_first[eid] = f"→ {fname} {fr['status']}"
+        for eid, label in friend_first.items():
+            _add(eid, "friend", label)
+
+    # 3. Recommendations (toggle): top 2/day from latest run
+    if include_recs:
+        run = db.get_user_latest_run(user["id"])
+        if run:
+            kept = [e for e in db.get_run_events(run["id"]) if e.get("keep") and e.get("start_time") and (e.get("score") or 0) >= 50]
+            kept.sort(key=lambda x: -(x.get("score") or 0))
+            per_day: dict[str, int] = defaultdict(int)
+            for e in kept:
+                day = (e.get("start_time") or "")[:10]
+                if per_day[day] >= 2:
+                    continue
+                per_day[day] += 1
+                _add(e.get("event_id", ""), "rec")
+
+    if not seen:
+        return Response(content=_empty, media_type="text/calendar")
+
+    # Fetch event details for every collected id
+    placeholders = ",".join("?" * len(seen))
+    detail_rows = db.conn.execute(
+        f"""SELECT e.event_id, e.title, e.start_time, e.end_time, e.location_name, e.url,
+                   e.notes, e.source, e.group_id, e.lat, e.lon,
+                   COALESCE(g.display_name, '') as group_name
+            FROM events e
+            LEFT JOIN groups g ON g.id = e.group_id
+            WHERE e.event_id IN ({placeholders})
+              AND e.start_time IS NOT NULL
+            GROUP BY e.event_id""",
+        list(seen.keys()),
+    ).fetchall()
 
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        f"PRODID:-//recom//User {_ical_escape(user_name)}//EN",
+        f"PRODID:-//calyx//Plans {_esc(user_name)}//EN",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
-        f"X-WR-CALNAME:Calyx — {_ical_escape(user_name)}'s Picks",
-        "X-APPLE-CALENDAR-COLOR:#818cf8",
+        f"X-WR-CALNAME:Calyx — {_esc(user_name)}'s Plans",
+        "X-APPLE-CALENDAR-COLOR:#4a6741",
         "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     ]
-
-    kept.sort(key=lambda x: -(x.get("score") or 0))
-    for e in kept[:50]:
-        start = e.get("start_time")
-        if not start:
-            continue
+    for r in detail_rows:
         try:
-            dt = datetime.fromisoformat(start)
+            dt = _dt.fromisoformat(r["start_time"])
         except (ValueError, TypeError):
             continue
+        info = seen[r["event_id"]]
+        kind = info["kind"]
+        label = info["label"]
         dtstart = dt.strftime("%Y%m%dT%H%M%S")
-        raw_title = e.get("title") or ""
-        title = _ical_escape(raw_title)
-        location = _ical_escape(e.get("location_name") or "")
-        url = e.get("url") or ""
-        score = int(e.get("score") or 0)
-        reason = _ical_escape(e.get("match_reason") or "")
-        price = _ical_escape(e.get("price") or "Free")
-        eid = e.get("event_id", "")
-        uid = f"{eid}@recom-user-{token}"
-        vibe = e.get("vibe", "mixed")
-        lat, lon = e.get("lat"), e.get("lon")
-
-        # Build RSVP links for the description
-        enc_title = _urlparse.quote_plus(raw_title)
-        rsvp_going = f"{dashboard_url}/api/rsvp-link?event_id={eid}&status=going&u={token}&title={enc_title}"
-        rsvp_maybe = f"{dashboard_url}/api/rsvp-link?event_id={eid}&status=maybe&u={token}&title={enc_title}"
-        desc = f"{price}\\nScore: {score}/100\\n{reason}\\n\\nRSVP Going: {rsvp_going}\\nRSVP Maybe: {rsvp_maybe}"
-
-        # RSVP status for this user
-        user_rsvp_status = user_rsvp_map.get(eid)
-        is_going = user_rsvp_status == "going"
-
-        # Build title with friend RSVPs
-        friends_tag = ""
-        fr_list = friend_rsvps.get(eid, [])
-        if fr_list:
-            friends_tag = f" ({_ical_escape(', '.join(fr_list))})"
-
-        vevent_lines = [
-            "BEGIN:VEVENT",
-            f"UID:{uid}",
-            f"DTSTAMP:{utcnow}",
-            f"DTSTART:{dtstart}",
-            _ical_fold(f"SUMMARY:[{score}] {title}{friends_tag}"),
-            _ical_fold(f"LOCATION:{location}"),
-            _ical_fold(f"URL:{url}"),
-            _ical_fold(f"DESCRIPTION:{desc}"),
-            f"CATEGORIES:{vibe}",
-            f"TRANSP:{'OPAQUE' if is_going else 'TRANSPARENT'}",
-            "DURATION:PT2H",
-        ]
-        if lat and lon:
-            vevent_lines.append(f"GEO:{lat};{lon}")
-        # ATTENDEE for user's own RSVP
-        if user_rsvp_status and user_email:
-            partstat_map = {"going": "ACCEPTED", "maybe": "TENTATIVE", "cant": "DECLINED"}
-            ps = partstat_map.get(user_rsvp_status)
-            if ps:
-                cn = _ical_escape(user_name)
-                vevent_lines.append(f"ATTENDEE;PARTSTAT={ps};CN={cn}:mailto:{user_email}")
-        # Reminder alarm
-        vevent_lines.extend([
-            "BEGIN:VALARM",
-            "TRIGGER:-PT2H",
-            "ACTION:DISPLAY",
-            f"DESCRIPTION:Reminder: {title}",
-            "END:VALARM",
-        ])
-        vevent_lines.append("END:VEVENT")
-        lines.extend(vevent_lines)
-
-    # --- Group events the user is a member of (always included) ---
-    group_events = db.get_upcoming_group_events_for_user(user["id"])
-    for ge in group_events:
-        start = ge.get("start_time")
-        if not start:
-            continue
-        try:
-            dt = datetime.fromisoformat(start)
-        except (ValueError, TypeError):
-            continue
-        dtstart = dt.strftime("%Y%m%dT%H%M%S")
-        end_iso = ge.get("end_time")
         dtend = ""
-        if end_iso:
+        if r["end_time"]:
             try:
-                dtend = datetime.fromisoformat(end_iso).strftime("%Y%m%dT%H%M%S")
+                dtend = _dt.fromisoformat(r["end_time"]).strftime("%Y%m%dT%H%M%S")
             except (ValueError, TypeError):
-                dtend = ""
-        title = _ical_escape(ge.get("title") or "")
-        location = _ical_escape(ge.get("location") or "")
-        url = ge.get("url") or f"{dashboard_url}/group/{ge['g_id']}"
-        notes = _ical_escape(ge.get("notes") or "")
-        group_name = _ical_escape(ge.get("group_display_name") or "")
-        grp_eid = f"grp_evt_{ge['id']}"
-        uid = f"{grp_eid}@recom-user-{token}"
-        user_rsvp_status = user_rsvp_map.get(grp_eid)
-        is_going = user_rsvp_status == "going"
-        desc = (f"From {group_name} on Calyx\\n\\n{notes}" if notes else f"From {group_name} on Calyx").strip("\\n")
-        vevent_lines = [
+                pass
+        is_manual = r["source"] == "manual"
+        title = _esc(r["title"])
+        location = _esc(r["location_name"])
+        url = r["url"] or (f"{dashboard_url}/group/{r['group_id']}" if r["group_id"] else "")
+        notes = _esc(r["notes"] or "")
+
+        # SUMMARY prefix by kind
+        if kind == "my_going":
+            prefix = f"[{_esc(r['group_name'])}] " if is_manual and r["group_name"] else ""
+        elif kind == "my_maybe":
+            prefix = "(?) "
+        elif kind == "friend":
+            prefix = f"[{_esc(label)}] "
+        elif kind == "rec":
+            prefix = "★ "
+        else:
+            prefix = ""
+
+        desc_parts = []
+        if r["group_name"]:
+            desc_parts.append(f"From {_esc(r['group_name'])} on Calyx")
+        if kind == "rec":
+            desc_parts.append("Recommended for you")
+        if kind == "friend":
+            desc_parts.append(_esc(label))
+        if notes:
+            desc_parts.append(notes)
+        desc = "\\n\\n".join(desc_parts) if desc_parts else "Event from Calyx"
+        # Only `my_going` is OPAQUE (busy); everything else stays TENTATIVE/TRANSPARENT.
+        transp = "OPAQUE" if kind == "my_going" else "TRANSPARENT"
+
+        vevent = [
             "BEGIN:VEVENT",
-            f"UID:{uid}",
+            f"UID:{r['event_id']}-{kind}@calyx-{token}",
             f"DTSTAMP:{utcnow}",
             f"DTSTART:{dtstart}",
         ]
         if dtend:
-            vevent_lines.append(f"DTEND:{dtend}")
+            vevent.append(f"DTEND:{dtend}")
         else:
-            vevent_lines.append("DURATION:PT2H")
-        vevent_lines.extend([
-            _ical_fold(f"SUMMARY:[{group_name}] {title}"),
-            _ical_fold(f"LOCATION:{location}"),
-            _ical_fold(f"URL:{url}"),
-            _ical_fold(f"DESCRIPTION:{desc}"),
-            "CATEGORIES:group",
-            f"TRANSP:{'OPAQUE' if is_going else 'TRANSPARENT'}",
+            vevent.append("DURATION:PT2H")
+        vevent.extend([
+            _fold(f"SUMMARY:{prefix}{title}"),
+            _fold(f"LOCATION:{location}"),
+            _fold(f"URL:{url}"),
+            _fold(f"DESCRIPTION:{desc}"),
+            f"CATEGORIES:{kind}",
+            f"TRANSP:{transp}",
         ])
-        if user_rsvp_status and user_email:
-            partstat_map = {"going": "ACCEPTED", "maybe": "TENTATIVE", "cant": "DECLINED"}
-            ps = partstat_map.get(user_rsvp_status)
-            if ps:
-                cn = _ical_escape(user_name)
-                vevent_lines.append(f"ATTENDEE;PARTSTAT={ps};CN={cn}:mailto:{user_email}")
-        vevent_lines.extend([
+        if r["lat"] and r["lon"]:
+            vevent.append(f"GEO:{r['lat']};{r['lon']}")
+        if user_email and kind in ("my_going", "my_maybe"):
+            partstat = "ACCEPTED" if kind == "my_going" else "TENTATIVE"
+            vevent.append(f"ATTENDEE;PARTSTAT={partstat};CN={_esc(user_name)}:mailto:{user_email}")
+        vevent.extend([
             "BEGIN:VALARM",
             "TRIGGER:-PT2H",
             "ACTION:DISPLAY",
@@ -4878,13 +4753,13 @@ async def user_ical_feed(token: str, min_score: int = 40):
             "END:VALARM",
             "END:VEVENT",
         ])
-        lines.extend(vevent_lines)
+        lines.extend(vevent)
 
     lines.append("END:VCALENDAR")
     return Response(
         content="\r\n".join(lines),
         media_type="text/calendar",
-        headers={"Content-Disposition": f"inline; filename=recom-{token}.ics"},
+        headers={"Content-Disposition": f"inline; filename=calyx-{token}.ics"},
     )
 
 

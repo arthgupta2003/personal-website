@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL,
     active INTEGER DEFAULT 1,
     email_digest INTEGER DEFAULT 1,
-    filter_work_hours INTEGER DEFAULT 1
+    filter_work_hours INTEGER DEFAULT 1,
+    feed_include_maybe INTEGER DEFAULT 0,
+    feed_include_recs INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -304,6 +306,11 @@ class Database:
             self.conn.execute("ALTER TABLE users ADD COLUMN user_token TEXT")
             self.conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_token ON users(user_token)")
             self.conn.commit()
+        if "feed_include_maybe" not in user_cols:
+            self.conn.execute("ALTER TABLE users ADD COLUMN feed_include_maybe INTEGER DEFAULT 0")
+        if "feed_include_recs" not in user_cols:
+            self.conn.execute("ALTER TABLE users ADD COLUMN feed_include_recs INTEGER DEFAULT 0")
+        self.conn.commit()
 
         # --- Unify manual group events into the main events table ---
         events_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(events)").fetchall()}
@@ -872,35 +879,20 @@ class Database:
                 continue
             if eid not in best or (e.get("score") or 0) > (best[eid].get("score") or 0):
                 best[eid] = e
-        # Dedupe pass 2: fuzzy merge events with similar titles on the same day
-        import re, difflib
+        # Dedupe pass 2: dedup events with the same normalized (title, day). O(n) — the
+        # previous fuzzy SequenceMatcher pass was O(n²) per day and dominated the route's
+        # latency at ~5s for 800+ events.
+        import re
         def _norm(title: str) -> str:
-            t = re.sub(r"[^\w\s]", "", title.lower().strip())
+            t = re.sub(r"[^\w\s]", "", (title or "").lower().strip())
             return re.sub(r"\s+", " ", t)
-        # Group by day, then fuzzy-match within each day
-        from collections import defaultdict
-        by_day: dict[str, list[tuple[str, dict]]] = defaultdict(list)
-        for eid, e in best.items():
+        seen: dict[tuple[str, str], dict] = {}
+        for e in best.values():
             day = (e.get("start_time") or "")[:10]
-            by_day[day].append((eid, e))
-        final: dict[str, dict] = {}
-        for day, day_events in by_day.items():
-            # Sort by score desc so we keep the best version
-            day_events.sort(key=lambda x: -(x[1].get("score") or 0))
-            kept_norms: list[str] = []
-            for eid, e in day_events:
-                norm = _norm(e.get("title", ""))
-                # Check if this title is too similar to any already-kept title
-                is_dupe = False
-                for kept in kept_norms:
-                    ratio = difflib.SequenceMatcher(None, norm, kept).ratio()
-                    if ratio > 0.55:
-                        is_dupe = True
-                        break
-                if not is_dupe:
-                    kept_norms.append(norm)
-                    final[eid] = e
-        return sorted(final.values(), key=lambda x: -(x.get("score") or 0))
+            key = (day, _norm(e.get("title", ""))[:60])
+            if key not in seen or (e.get("score") or 0) > (seen[key].get("score") or 0):
+                seen[key] = e
+        return sorted(seen.values(), key=lambda x: -(x.get("score") or 0))
 
     def get_run_events(self, run_id: int) -> list[dict]:
         rows = self.conn.execute(
