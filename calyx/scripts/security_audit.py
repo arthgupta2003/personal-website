@@ -10,8 +10,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from recom.config import Settings
-from recom.email.sender import send_email
+from calyx.config import Settings
+from calyx.email.sender import send_email
 
 
 def audit() -> list[dict]:
@@ -115,14 +115,14 @@ def audit() -> list[dict]:
             "file": "sender.py",
         })
 
-    # 9. Check if recom.db is in .gitignore
+    # 9. Check if calyx.db is in .gitignore
     gitignore = (root / ".gitignore").read_text() if (root / ".gitignore").exists() else ""
-    if "recom.db" not in gitignore:
+    if "calyx.db" not in gitignore:
         findings.append({
             "severity": "LOW",
             "category": "Secrets",
-            "title": "recom.db not in .gitignore",
-            "detail": "Database contains user tokens, emails, and personal data. Add recom.db to .gitignore and git rm --cached recom.db.",
+            "title": "calyx.db not in .gitignore",
+            "detail": "Database contains user tokens, emails, and personal data. Add calyx.db to .gitignore and git rm --cached calyx.db.",
             "file": ".gitignore",
         })
 

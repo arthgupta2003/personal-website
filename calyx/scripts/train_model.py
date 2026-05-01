@@ -13,9 +13,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from recom.config import Settings
-from recom.db import Database
-from recom.ranking.ml_model import MLRanker
+from calyx.config import Settings
+from calyx.db import Database
+from calyx.ranking.ml_model import MLRanker
 
 
 def main():

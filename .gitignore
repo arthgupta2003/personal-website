@@ -1,5 +1,10 @@
 calyx/.env
 calyx/state/
+calyx/*.db
+calyx/*.db-journal
+calyx/Cargo.toml
+calyx/src/main.rs
+calyx/watch_*
 __pycache__/
 *.pyc
 .venv/

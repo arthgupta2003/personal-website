@@ -99,8 +99,8 @@ def http_post(url: str, data: dict, cookie: str = "", timeout: int = 30) -> tupl
 
 def get_token(email: str) -> str:
     """Create/fetch a test user and return their token."""
-    from recom.config import Settings
-    from recom.db import Database
+    from calyx.config import Settings
+    from calyx.db import Database
     s = Settings()
     db = Database(s.db_path)
     uid = db.create_user(email, "Email/Cal Test")
@@ -110,8 +110,8 @@ def get_token(email: str) -> str:
 
 def get_admin_token() -> str:
     """Get the token for user #1 (admin)."""
-    from recom.config import Settings
-    from recom.db import Database
+    from calyx.config import Settings
+    from calyx.db import Database
     s = Settings()
     db = Database(s.db_path)
     user = db.get_user(1)
@@ -295,11 +295,11 @@ def test_email_composer():
     """Tests 14-16: Unit tests for email composer (no SMTP)."""
     print("\n-- Email Composer (unit tests) --")
 
-    from recom.models import Event, EventSource, InterestProfile, RankedEvent
+    from calyx.models import Event, EventSource, InterestProfile, RankedEvent
 
     # Test 14: compose_email with mock data
     try:
-        from recom.email.composer import compose_email
+        from calyx.email.composer import compose_email
 
         mock_events = []
         for i in range(5):
@@ -341,7 +341,7 @@ def test_email_composer():
 
     # Test 15: compose_daily_email
     try:
-        from recom.email.composer import compose_daily_email
+        from calyx.email.composer import compose_daily_email
 
         result = compose_daily_email(
             ranked_events=mock_events,
@@ -378,8 +378,8 @@ def test_api_endpoints(base: str, token: str):
     # We need taste items to exist for a valid vote; get a pair first
     # Test 17: POST /api/taste/vote
     # First try to get existing taste items
-    from recom.config import Settings
-    from recom.db import Database
+    from calyx.config import Settings
+    from calyx.db import Database
     s = Settings()
     db = Database(s.db_path)
     user = db.get_user_by_token(token)
@@ -479,7 +479,7 @@ def main():
         status, _, _ = http_get(base, timeout=10)
         if status == 0:
             print(f"\nERROR: Cannot reach dashboard at {base}")
-            print("Make sure the dashboard is running: uv run recom-dashboard")
+            print("Make sure the dashboard is running: uv run calyx-dashboard")
             sys.exit(1)
     except Exception as e:
         print(f"\nERROR: Cannot reach dashboard at {base}: {e}")

@@ -5,6 +5,49 @@
 # ACTIVE — in progress
 # ============================================================
 
+# TODO: Add https://calyx.arthgupta.dev/auth/google/callback
+#       to GCP Console > OAuth client 379419274346-... > Authorized redirect URIs
+#       (also http://localhost:8000/auth/google/callback for local dev)
+#       Without this, /login → "Continue with Google" → 400 redirect_uri_mismatch.
+
+# TODO: Reinstall crons — `bash scripts/install_cron.sh`
+#       Old crontab still has `uv run recom` / `uv run recom-daily` which now 404 after rename.
+#       Updated install_cron.sh strips both legacy "recom" + new "calyx" entries before reinstall.
+
+# TODO: Email consolidation — collapse weekend preview + tonight into daily digest; weekly stays
+#   (probably drop send_weekend_preview.py and send_tonight.py + their crons)
+
+# DONE: Group MVP (a) Invite flow — auto-joins authed users, Google sign-in CTA for unauth.
+#   Killed /api/join-group/{id}/{code} (manual signup form replaced by Google).
+# DONE: Group MVP (d) Sharable event URL — /share/event/{gid}/{eid}/{code} preview page +
+#   /rsvp/{status} action; auto-joins group on RSVP. Share button on every manual event.
+#   Dynamic OG image at /og/event/{gid}/{eid}/{code}.png for chat unfurls.
+# DONE: Group MVP (c) Edit manual events — same form opens pre-populated, "Save changes" submit.
+# DONE: Group MVP (b) Group RSVP polish — group events appear on /calendar with sage pill;
+#   /u/{token}/feed.ics now includes them with [{group_name}] prefix in summary.
+# DONE: Unify events table — manual group events folded into the main `events` table.
+#   Migration preserves RSVPs by remapping event_id grp_evt_<old> → grp_evt_<new>.
+#   Killed `group_events` and `guest_rsvps` tables. Routes use unified table everywhere.
+# DONE: Unify RSVP APIs — killed /api/group/{id}/rsvp; everything uses /api/rsvp now.
+# DONE: Cleanup pass — deleted /onboarding, /join, /feed.ics (public), /u/{token}/rsvps.ics,
+#   /group/{id}/plan, /api/group/{id}/availability (GET/POST), /api/group/{id}/grid,
+#   /api/admin/schedule + UI. ~700 lines of dead code gone.
+
+# DONE: /calendar perf — LIMIT 5 → 1 in get_latest_scored_events; was 131s, now <5s
+# DONE: Google sign-in foundation — /auth/google/{login,callback}, /auth/logout. PKCE wired.
+#   Replaces email/magic-link auth. /login + /join now show "Continue with Google".
+# DONE: Rename src/recom/ → src/calyx/ — package, imports, entry-points (calyx, calyx-daily,
+#   calyx-dashboard), .env prefix CALYX_*, DB filename calyx.db, tmux session name, docs.
+# DONE: Mobile-first redesign:
+#   - Global @media (max-width:768px) rules: bigger tap targets (44px), font-size:16px on inputs
+#     (prevents iOS zoom), tighter padding, table horizontal scroll, form-row wrapping.
+#   - Nav: hides user-name + Sign out on mobile, horizontal-scroll fallback if overflowing.
+#   - Killed availability widget ("Who's free this week?") from group page.
+#   - Manual event picker rebuild: collapsed-by-default + URL-paste primary path + quick-pick
+#     chips (Tonight 7pm, Tomorrow 7pm, Fri/Sat/Sun preset times) + live readable readout +
+#     end-time + url + notes fields. Smart defaults (today before 5pm else tomorrow, 7pm).
+#   All pages now fit at 375px (no horizontal overflow). 30/30 browser tests + 18/18 smoke pass.
+
 # DONE: Map view — Leaflet, stars for top picks, Today/Week/All, clustering
 #   Leaflet map, event pins colored by score. Button added, needs JS.
 

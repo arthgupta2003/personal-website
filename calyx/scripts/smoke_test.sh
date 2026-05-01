@@ -35,7 +35,6 @@ check "/landing" "200"
 check "/admin" "200"
 check "/admin/sources" "200"
 check "/login" "200"
-check "/feed.ics" "200"
 check "/groups" "200"
 check "/calendar" "200"
 
@@ -44,7 +43,7 @@ code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/event/nonexistent_event.ics
 [ "$code" = "404" ] && { echo "  PASS /event/{id}.ics 404 for unknown"; ((PASS++)); } \
   || { echo "  FAIL /event/{id}.ics — expected 404, got $code"; ((FAIL++)); }
 SAMPLE_EID=$(cd "$RECOM_DIR" && uv run python -c "
-from recom.db import Database; db = Database('recom.db')
+from calyx.db import Database; db = Database('calyx.db')
 r = db.conn.execute('SELECT event_id FROM events ORDER BY run_id DESC LIMIT 1').fetchone()
 print(r[0] if r else '')
 " 2>/dev/null)
@@ -64,8 +63,8 @@ if [ -n "$TEST_EMAIL" ]; then
   echo "-- Authenticated (email: $TEST_EMAIL) --"
 
   TOKEN=$(cd "$RECOM_DIR" && uv run python -c "
-from recom.config import Settings
-from recom.db import Database
+from calyx.config import Settings
+from calyx.db import Database
 s = Settings()
 db = Database(s.db_path)
 uid = db.create_user('$TEST_EMAIL', 'Smoke Test')

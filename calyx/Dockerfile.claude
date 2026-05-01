@@ -65,7 +65,7 @@ case "${1:-status}" in
     echo "Restarting dashboard..."
     [ -f "$PIDDIR/dashboard.pid" ] && kill "$(cat $PIDDIR/dashboard.pid)" 2>/dev/null
     sleep 1
-    cd /workspace && uv run recom-dashboard >> "$LOGDIR/dashboard.log" 2>&1 &
+    cd /workspace && uv run calyx-dashboard >> "$LOGDIR/dashboard.log" 2>&1 &
     echo $! > "$PIDDIR/dashboard.pid"
     echo "Dashboard restarted (PID $!)"
     ;;
@@ -152,7 +152,7 @@ echo ""
 
 # 1. Dashboard
 echo "[1/3] Dashboard on :8000"
-uv run recom-dashboard >> "$LOGDIR/dashboard.log" 2>&1 &
+uv run calyx-dashboard >> "$LOGDIR/dashboard.log" 2>&1 &
 echo $! > "$PIDDIR/dashboard.pid"
 
 # 2. Cloudflared tunnel
@@ -186,7 +186,7 @@ while true; do
   # Restart dashboard if it died
   if ! kill -0 "$(cat $PIDDIR/dashboard.pid 2>/dev/null)" 2>/dev/null; then
     echo "[$(date)] Dashboard died, restarting..."
-    cd /workspace && uv run recom-dashboard >> "$LOGDIR/dashboard.log" 2>&1 &
+    cd /workspace && uv run calyx-dashboard >> "$LOGDIR/dashboard.log" 2>&1 &
     echo $! > "$PIDDIR/dashboard.pid"
   fi
   # Restart code-web if it died

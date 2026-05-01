@@ -25,7 +25,7 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        from recom.config import Settings
+        from calyx.config import Settings
     except ImportError:
         logger.error("recom package not found. Run: pip install -e .")
         sys.exit(1)

@@ -6,7 +6,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 CALYX="$DIR/calyx"
 cd "$DIR"
 
-SESSION="recom"
+SESSION="calyx"
 LOG="$CALYX/state/startup.log"
 
 # Wait for network on boot (launchd may fire before WiFi/Ethernet is up)
@@ -24,7 +24,7 @@ case "${1:-start}" in
     ;;
   status)
     if tmux has-session -t "$SESSION" 2>/dev/null; then
-      echo "recom tmux session running"
+      echo "calyx tmux session running"
       tmux list-panes -t "$SESSION" -F '  #{pane_title}: PID #{pane_pid}' 2>/dev/null
     else
       echo "Not running"
@@ -71,7 +71,7 @@ CAFFEINE_PID=$!
 
 # Create tmux session with enough room for panes (headless default is 80x24)
 tmux new-session -d -s "$SESSION" -n main -x 200 -y 50
-tmux send-keys -t "$SESSION" "while true; do cd $CALYX && uv run recom-dashboard; echo 'Dashboard crashed, restarting in 5s...'; sleep 5; done" Enter
+tmux send-keys -t "$SESSION" "while true; do cd $CALYX && uv run calyx-dashboard; echo 'Dashboard crashed, restarting in 5s...'; sleep 5; done" Enter
 
 # Cloudflare tunnel pane
 tmux split-window -t "$SESSION" -v
@@ -103,7 +103,7 @@ echo "  ./start.sh status    — check services"
 echo "  ./start.sh restart   — restart everything"
 echo "  ./start.sh stop      — stop everything"
 echo ""
-echo "  tmux attach -t recom — view all panes"
+echo "  tmux attach -t calyx — view all panes"
 echo ""
 echo "Cron jobs (run separately):"
 echo "  bash calyx/scripts/install_cron.sh   — installs 5 cron jobs"

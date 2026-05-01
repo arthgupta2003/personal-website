@@ -46,8 +46,8 @@ def check(label: str, condition: bool, detail: str = ""):
 
 
 def get_token(email: str) -> str:
-    from recom.config import Settings
-    from recom.db import Database
+    from calyx.config import Settings
+    from calyx.db import Database
     s = Settings()
     db = Database(s.db_path)
     uid = db.create_user(email, "Browser Test")
@@ -98,19 +98,19 @@ def test_authenticated(page: Page, base: str, token: str):
         "path": "/",
     }])
 
-    # Root redirects to /groups even when authed
+    # Root redirects authed users to /calendar
     page.goto(base + "/", wait_until="domcontentloaded", timeout=120000)
     page.wait_for_timeout(2000)
-    check("/ (authed) redirects to /groups", "/groups" in page.url, f"ended at {page.url}")
+    check("/ (authed) redirects to /calendar", "/calendar" in page.url, f"ended at {page.url}")
 
     # Groups page loads
     content = page.content()
     check("/groups (authed) no 500", "500" not in page.title() and "Internal Server Error" not in content)
     check("/groups (authed) has nav", page.locator("nav").count() > 0)
 
-    # Nav has exactly 3 core links: Groups, Discover, Profile
+    # Nav has 3 core links: Discover, Groups, You
     nav_html = page.locator("nav").inner_html()
-    for link in ["Groups", "Discover", "Profile"]:
+    for link in ["Groups", "Discover", "You"]:
         check(f"nav has {link}", link in nav_html, f"nav: {nav_html[:300]!r}")
 
     # Core auth pages load without errors and have consistent nav

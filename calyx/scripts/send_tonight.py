@@ -13,9 +13,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from recom.config import Settings
-from recom.db import Database
-from recom.email.sender import send_email
+from calyx.config import Settings
+from calyx.db import Database
+from calyx.email.sender import send_email
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

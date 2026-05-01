@@ -22,19 +22,19 @@ This is a **monorepo** with two main areas:
 uv sync
 
 # Run full pipeline (discovers events, ranks, emails)
-uv run recom                  # single user (from .env)
-uv run recom --user 2         # specific user ID
-uv run recom --all-users      # all active users
+uv run calyx                  # single user (from .env)
+uv run calyx --user 2         # specific user ID
+uv run calyx --all-users      # all active users
 
 # Individual services
-uv run recom-daily            # send daily digest email
-uv run recom-dashboard        # start FastAPI dashboard on port 8000
+uv run calyx-daily            # send daily digest email
+uv run calyx-dashboard        # start FastAPI dashboard on port 8000
 
 # Start all services (dashboard + Cloudflare tunnel + Claude Code Web) in tmux
 ./start.sh
 ./start.sh stop
 ./start.sh status
-tmux attach -t recom          # view logs
+tmux attach -t calyx          # view logs
 
 # One-time OAuth setup
 uv run python scripts/auth_spotify.py
@@ -57,7 +57,7 @@ No Makefile or test suite — `uv` handles all build/run tasks.
 
 ## Testing & quality checklist
 
-**After any dashboard change**, run BOTH tests before considering the task done. Dashboard must be running first (`/workspace/.venv/bin/uvicorn recom.dashboard.app:app --host 0.0.0.0 --port 8000`).
+**After any dashboard change**, run BOTH tests before considering the task done. Dashboard must be running first (`/workspace/.venv/bin/uvicorn calyx.dashboard.app:app --host 0.0.0.0 --port 8000`).
 
 ```bash
 # 1. HTTP smoke test — checks all routes return correct status codes
@@ -75,7 +75,7 @@ node --check /tmp/s.js   # must show no output (clean)
 ```
 
 **Checklist for dashboard changes:**
-1. Import check: `python -c "from recom.dashboard.app import app; print('OK')"`
+1. Import check: `python -c "from calyx.dashboard.app import app; print('OK')"`
 2. All pages use `_layout(..., current_user)` — never `LAYOUT_HEAD` directly
 3. `_layout(title, body, current_user)` — body must NOT end with `+ LAYOUT_FOOT`
 4. Auth-required pages call `_get_current_user(request)` and redirect if None
@@ -95,29 +95,29 @@ Keep commits focused. Don't batch unrelated changes. Never force-push.
 
 ## Architecture
 
-Recom is a personal weekly event recommender for Boston/Cambridge. The core flow is a linear pipeline:
+Calyx is a personal weekly event recommender for Boston/Cambridge. The core flow is a linear pipeline:
 
 ```
 Ingest (YouTube + Spotify + Gmail) → Extract Interests (Claude) → Discover Events (7 sources, parallel) → Rank (Claude) → Email + Dashboard (SQLite)
 ```
 
-**Pipeline orchestrator**: `src/recom/main.py` — runs each stage in sequence, handles `--user`/`--all-users` flags, tracks cost per run.
+**Pipeline orchestrator**: `src/calyx/main.py` — runs each stage in sequence, handles `--user`/`--all-users` flags, tracks cost per run.
 
 ### Key modules
 
 | Path | Purpose |
 |------|---------|
-| `src/recom/config.py` | Pydantic settings loaded from `.env` (API keys, location, email, model) |
-| `src/recom/models.py` | Shared data models: `Event`, `RankedEvent`, `InterestProfile`, `ActivityItem` |
-| `src/recom/db.py` | SQLite ORM layer — all persistence: runs, events, rankings, RSVPs, groups, costs |
-| `src/recom/ingest/` | YouTube API, Spotify API, Gmail newsletter scanning |
-| `src/recom/extract/interests.py` | Claude analyzes activity → `InterestProfile` (cached 7 days) |
-| `src/recom/events/` | One file per source; `aggregator.py` runs all in parallel and deduplicates |
-| `src/recom/ranking/ranker.py` | Claude scores events on 7 dimensions in batches of 40 |
-| `src/recom/ranking/bucket_list.py` | Claude picks seasonal activities from `bucket_list.txt` |
-| `src/recom/email/composer.py` | Jinja2 HTML email templates |
-| `src/recom/email/sender.py` | Gmail SMTP (STARTTLS) — also sends magic links, invites, RSVP notifications |
-| `src/recom/dashboard/app.py` | FastAPI app: calendar view, RSVP API, groups, iCal feed, admin endpoints |
+| `src/calyx/config.py` | Pydantic settings loaded from `.env` (API keys, location, email, model) |
+| `src/calyx/models.py` | Shared data models: `Event`, `RankedEvent`, `InterestProfile`, `ActivityItem` |
+| `src/calyx/db.py` | SQLite ORM layer — all persistence: runs, events, rankings, RSVPs, groups, costs |
+| `src/calyx/ingest/` | YouTube API, Spotify API, Gmail newsletter scanning |
+| `src/calyx/extract/interests.py` | Claude analyzes activity → `InterestProfile` (cached 7 days) |
+| `src/calyx/events/` | One file per source; `aggregator.py` runs all in parallel and deduplicates |
+| `src/calyx/ranking/ranker.py` | Claude scores events on 7 dimensions in batches of 40 |
+| `src/calyx/ranking/bucket_list.py` | Claude picks seasonal activities from `bucket_list.txt` |
+| `src/calyx/email/composer.py` | Jinja2 HTML email templates |
+| `src/calyx/email/sender.py` | Gmail SMTP (STARTTLS) — sends digests, invites, RSVP notifications |
+| `src/calyx/dashboard/app.py` | FastAPI app: calendar view, RSVP API, groups, iCal feed, admin endpoints |
 
 ### Ranking system
 
@@ -125,7 +125,7 @@ Events are scored on 7 dimensions (0–15 each): interest match, social/fun fact
 
 Cost: ~$3–4 per full run (ranking ~1100 events with claude-sonnet).
 
-### Database schema (SQLite: `recom.db`)
+### Database schema (SQLite: `calyx.db`)
 
 Tables: `users`, `runs`, `events`, `rankings`, `costs`, `source_stats`, `ingest_stats`, `attended`, `rsvps`, `groups`, `group_members`, `taste_items`, `taste_matchups`, `impressions`, `steering`, `travel_plans`, `source_cache`. Multi-user: each user has their own OAuth tokens, interest profile, location, and email.
 
@@ -148,7 +148,7 @@ Cost: ~$1–2 per full run (down from ~$4 with prefilter).
 
 ### Dashboard
 
-FastAPI app with cookie-based auth and magic link support (`?u=<token>`). Key routes:
+FastAPI app with Google OAuth sign-in (cookie session); per-user `?u=<token>` and `/u/<token>/...` URLs are bearer convenience tokens for email and iCal contexts. Key routes:
 
 | Route | Purpose |
 |-------|---------|
@@ -178,7 +178,7 @@ FastAPI app with cookie-based auth and magic link support (`?u=<token>`). Key ro
 
 ## Configuration
 
-Copy `.env.example` to `.env`. Only `RECOM_ANTHROPIC_API_KEY` is strictly required to run. Event API keys (Eventbrite, Ticketmaster, etc.) are optional — missing keys skip that source. The default Claude model is `claude-sonnet-4-20250514`; switch to `claude-haiku` in `.env` to reduce cost.
+Copy `.env.example` to `.env`. Only `CALYX_ANTHROPIC_API_KEY` is strictly required to run. Event API keys (Eventbrite, Ticketmaster, etc.) are optional — missing keys skip that source. The default Claude model is `claude-sonnet-4-20250514`; switch to `claude-haiku` in `.env` to reduce cost.
 
 User-editable plaintext files:
 - `my_interests.txt` — manual interest keywords merged with Claude-extracted profile

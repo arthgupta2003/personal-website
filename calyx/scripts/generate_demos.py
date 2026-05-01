@@ -27,8 +27,8 @@ DEMOS_DIR.mkdir(exist_ok=True)
 
 
 def get_token(email: str = "test@example.com") -> str:
-    from recom.config import Settings
-    from recom.db import Database
+    from calyx.config import Settings
+    from calyx.db import Database
     s = Settings()
     db = Database(s.db_path)
     uid = db.create_user(email, "Demo User")
@@ -37,8 +37,8 @@ def get_token(email: str = "test@example.com") -> str:
 
 
 def get_invite_code(group_id: int = 1) -> str:
-    from recom.config import Settings
-    from recom.db import Database
+    from calyx.config import Settings
+    from calyx.db import Database
     s = Settings()
     db = Database(s.db_path)
     g = db.get_group_by_id(group_id)

@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from recom.config import Settings
-from recom.db import Database
+from calyx.config import Settings
+from calyx.db import Database
 
 
 def get_events_needing_rating(db: Database, user_id: int) -> list[dict]:
@@ -129,7 +129,7 @@ def main():
 
         if args.send:
             try:
-                from recom.email.sender import send_email
+                from calyx.email.sender import send_email
                 send_email(
                     to=user["email"],
                     subject=subject,
