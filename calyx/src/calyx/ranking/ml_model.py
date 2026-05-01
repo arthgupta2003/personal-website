@@ -1,7 +1,7 @@
 """ML-based ranking model — distills Claude's composite scores from deterministic features.
 
 Usage:
-  from recom.ranking.ml_model import MLRanker
+  from calyx.ranking.ml_model import MLRanker
   ranker = MLRanker()
   ranker.train(db)           # train from attended history
   score = ranker.predict(event_features)

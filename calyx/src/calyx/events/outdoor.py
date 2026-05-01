@@ -12,9 +12,9 @@ from datetime import datetime
 import httpx
 from bs4 import BeautifulSoup
 
-from recom.config import Settings
-from recom.events.common import make_event_id
-from recom.models import Event, EventSource
+from calyx.config import Settings
+from calyx.events.common import make_event_id
+from calyx.models import Event, EventSource
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ async def _fetch_amc_events(settings: Settings) -> list[Event]:
         date_el = card.select_one("time, .date, [class*='date']")
         start_time = None
         if date_el:
-            from recom.models import parse_event_dt
+            from calyx.models import parse_event_dt
             start_time = parse_event_dt(date_el.get("datetime") or date_el.get_text(strip=True))
 
         desc_el = card.select_one("p, .description, .summary")

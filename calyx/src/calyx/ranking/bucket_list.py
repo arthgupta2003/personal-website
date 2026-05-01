@@ -9,8 +9,8 @@ from pathlib import Path
 
 import anthropic
 
-from recom.config import estimate_cost
-from recom.models import CostRecord
+from calyx.config import estimate_cost
+from calyx.models import CostRecord
 
 logger = logging.getLogger(__name__)
 

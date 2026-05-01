@@ -7,7 +7,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from recom.config import Settings
+from calyx.config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -60,18 +60,6 @@ def send_email(subject: str, html_body: str, settings: Settings, to: str | None 
     except OSError as exc:
         logger.error("Network error sending email: %s", exc)
         raise
-
-
-def send_magic_link(email: str, token: str, dashboard_url: str, settings: Settings) -> None:
-    link = f"{dashboard_url}/?u={token}"
-    html = f"""<div style="font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-    <h2 style="color:#1e40af;">Your Calyx Link</h2>
-    <p>Click below to access your events:</p>
-    <a href="{link}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;
-       border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0;">Open Calyx</a>
-    <p style="color:#9ca3af;font-size:13px;">Or copy this URL: {link}</p>
-    </div>"""
-    send_email("Your Calyx link", html, settings, to=email)
 
 
 def send_invite_email(

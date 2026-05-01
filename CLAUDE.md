@@ -41,15 +41,14 @@ uv run python scripts/auth_spotify.py
 uv run python scripts/auth_youtube.py
 uv run python scripts/auth_gmail.py
 
-# Cron jobs (5 total — run once to install all)
+# Cron jobs (4 total — run once to install all)
 bash scripts/install_cron.sh
 # Installs:
 #   Weekly pipeline   — Saturday 9am (discover + rank + email)
 #   Daily digest      — 8am every day (today's picks from latest run)
-#   Taste matchup     — 9am Mon-Fri (Elo comparison email)
-#   Tonight picks     — 4pm Fri+Sat (last-minute event picks)
 #   Post-event ratings — 10pm daily (rate events you attended)
-# Logs: state/{cron,daily,taste,tonight,ratings}.log
+#   Admin digest      — Sunday 10am (source health, retros, TODOs)
+# Logs: state/{cron,daily,ratings,admin}.log
 # Verify: crontab -l
 ```
 

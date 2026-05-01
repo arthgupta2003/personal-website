@@ -8,18 +8,18 @@ from pathlib import Path
 
 import anthropic
 
-from recom.config import Settings
-from recom.db import Database
-from recom.email.composer import compose_email
-from recom.email.sender import send_email
-from recom.events.aggregator import discover_all_events
-from recom.extract.interests import extract_interests, load_manual_keywords
-from recom.ingest.gmail import get_newsletter_emails
-from recom.ingest.spotify import get_spotify_activity
-from recom.ingest.youtube import get_youtube_activity
-from recom.models import CostRecord, RawActivity
-from recom.ranking.bucket_list import load_bucket_list, pick_suggestions
-from recom.ranking.ranker import rank_events
+from calyx.config import Settings
+from calyx.db import Database
+from calyx.email.composer import compose_email
+from calyx.email.sender import send_email
+from calyx.events.aggregator import discover_all_events
+from calyx.extract.interests import extract_interests, load_manual_keywords
+from calyx.ingest.gmail import get_newsletter_emails
+from calyx.ingest.spotify import get_spotify_activity
+from calyx.ingest.youtube import get_youtube_activity
+from calyx.models import CostRecord, RawActivity
+from calyx.ranking.bucket_list import load_bucket_list, pick_suggestions
+from calyx.ranking.ranker import rank_events
 
 logging.basicConfig(
     level=logging.INFO,
@@ -266,7 +266,7 @@ def run_for_user(settings: Settings, db: Database, client: anthropic.Anthropic, 
 
     # === Step 5.5: Welcome email for new users ===
     if user and not user.get("welcome_sent") and recommended and settings.smtp_password:
-        from recom.email.composer import compose_welcome_email
+        from calyx.email.composer import compose_welcome_email
         logger.info("Step 5.5: Sending welcome email to new user...")
         w_subject, w_html = compose_welcome_email(
             user_name=user.get("name") or user.get("email", "").split("@")[0],
@@ -330,7 +330,7 @@ def main():
         run_for_user(settings, db, client, user_id=user_id)
 
     db.close()
-    logger.info("All done. Dashboard: uv run recom-dashboard")
+    logger.info("All done. Dashboard: uv run calyx-dashboard")
 
 
 if __name__ == "__main__":

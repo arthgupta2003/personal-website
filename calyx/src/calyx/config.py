@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     gcal_calendar_id: str = ""  # set after first run creates the shared calendar
 
     # Paths
-    db_path: str = "recom.db"
+    db_path: str = "calyx.db"
     state_dir: str = "state"
     interests_file: str = "my_interests.txt"
     bucket_list_file: str = "bucket_list.txt"
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     dashboard_port: int = 8000
     dashboard_url: str = "https://calyx.arthgupta.dev"
 
-    model_config = {"env_file": ".env", "env_prefix": "RECOM_", "extra": "ignore"}
+    model_config = {"env_file": ".env", "env_prefix": "CALYX_", "extra": "ignore"}
 
 
 MODEL_PRICING: dict[str, dict[str, float]] = {

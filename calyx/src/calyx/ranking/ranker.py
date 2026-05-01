@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 
 import anthropic
 
-from recom.config import estimate_cost
-from recom.models import CostRecord, Event, InterestProfile, RankedEvent, haversine_km
+from calyx.config import estimate_cost
+from calyx.models import CostRecord, Event, InterestProfile, RankedEvent, haversine_km
 
 logger = logging.getLogger(__name__)
 

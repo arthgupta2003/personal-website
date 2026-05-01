@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 
 from datetime import datetime
 
@@ -9,10 +10,11 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from starlette.responses import RedirectResponse
 
-from recom.config import Settings
-from recom.db import Database
-from recom.email.sender import send_magic_link, send_invite_email, send_rsvp_notify, send_group_ping, send_group_event_notification
-from recom.gcal import get_or_create_calendar, push_event as gcal_push_event, update_attendees as gcal_update_attendees, sync_rsvps_to_db as gcal_sync_rsvps
+from calyx.config import Settings
+from calyx.db import Database
+from calyx.dashboard.auth import build_login_url as google_login_url, exchange_code as google_exchange_code
+from calyx.email.sender import send_invite_email, send_rsvp_notify, send_group_ping, send_group_event_notification
+from calyx.gcal import get_or_create_calendar, push_event as gcal_push_event, update_attendees as gcal_update_attendees, sync_rsvps_to_db as gcal_sync_rsvps
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,10 @@ def _maybe_set_cookie(request: Request, response: Response, user: dict | None) -
     return response
 
 
+def _oauth_redirect_uri(settings: Settings) -> str:
+    return settings.dashboard_url.rstrip("/") + "/auth/google/callback"
+
+
 _LOGO_SVG = '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C9 6 4 8 4 13c0 4 3.5 7 8 7s8-3 8-7c0-5-5-7-8-11z" fill="#4a6741" opacity=".15"/><path d="M12 5c-2 3-5.5 4.5-5.5 8.5 0 3 2.5 5.5 5.5 5.5s5.5-2.5 5.5-5.5c0-4-3.5-5.5-5.5-8.5z" fill="#4a6741" opacity=".3"/><path d="M12 8c-1.5 2-3.5 3-3.5 5.5 0 2 1.5 3.5 3.5 3.5s3.5-1.5 3.5-3.5c0-2.5-2-3.5-3.5-5.5z" fill="#4a6741"/><path d="M12 12v6" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/><path d="M10.5 14.5c.5-.5 1.5-.5 1.5-.5" stroke="#fff" stroke-width=".8" stroke-linecap="round"/></svg>'
 
 
@@ -73,7 +79,8 @@ def render_nav(user: dict | None = None) -> str:
           <a href="/groups" class="nav-link">Groups</a>
           <a href="/taste-profile" class="nav-link">You</a>
           <div class="nav-divider"></div>
-          <span style="font-size:12px;color:#888;font-weight:500;">{name}</span>
+          <span class="nav-user-name">{name}</span>
+          <a href="/auth/logout" class="nav-link nav-mobile-hide" style="font-size:11px;color:#aaa;margin-left:8px;">Sign out</a>
         </div></nav>"""
     return f"""<nav class="app-nav"><div class="app-nav-inner">
       <a href="/" class="app-logo">{_LOGO_SVG} calyx</a>
@@ -94,10 +101,18 @@ def _layout(title: str, body: str, user: dict | None = None, og: dict | None = N
 <meta property="og:type" content="website">
 <meta property="og:title" content="{og_title}">
 <meta property="og:description" content="{og_desc}">
-<meta property="og:image" content="{og_image}">'''
+<meta property="og:image" content="{og_image}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="{og_title}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{og_title}">
+<meta name="twitter:description" content="{og_desc}">
+<meta name="twitter:image" content="{og_image}">'''
     if og_url:
         og_tags += f'\n<meta property="og:url" content="{og_url}">'
-    og_tags += '\n<meta name="twitter:card" content="summary_large_image">'
+        og_tags += f'\n<link rel="canonical" href="{og_url}">'
     html = LAYOUT_STYLE.replace("__TITLE__", title).replace("__OG_TAGS__", og_tags)
     return html + nav + '<div class="app-content">' + body + LAYOUT_FOOT
 
@@ -117,18 +132,22 @@ __OG_TAGS__
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; }
   body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-         background: #fff; color: #111; font-size: 14px; line-height: 1.55; min-height: 100vh; }
+         background: #fff; color: #111; font-size: 14px; line-height: 1.55; min-height: 100vh;
+         -webkit-text-size-adjust: 100%; }
+  img, video, iframe { max-width: 100%; height: auto; }
   /* --- App shell --- */
   .app-nav { background: #fff; padding: 0 20px; position: sticky; top: 0; z-index: 100; border-bottom: 2px solid #4a6741; }
-  .app-nav-inner { display: flex; align-items: center; max-width: 960px; margin: 0 auto; height: 56px; gap: 4px; }
-  .app-logo { font-size: 20px; font-weight: 800; color: #4a6741; text-decoration: none; letter-spacing: -.8px; margin-right: auto; text-transform: lowercase; display: flex; align-items: center; gap: 6px; }
+  .app-nav-inner { display: flex; align-items: center; max-width: 960px; margin: 0 auto; height: 56px; gap: 4px; min-width: 0; }
+  .app-logo { font-size: 20px; font-weight: 800; color: #4a6741; text-decoration: none; letter-spacing: -.8px; margin-right: auto; text-transform: lowercase; display: flex; align-items: center; gap: 6px; flex-shrink: 0; min-height: 44px; }
   .app-logo svg { width: 22px; height: 22px; }
   .app-logo:hover { text-decoration: none; opacity: .85; }
-  .app-nav a.nav-link { font-size: 13px; font-weight: 500; color: #666; text-decoration: none; padding: 8px 14px; letter-spacing: .3px; text-transform: uppercase; transition: color .15s; }
+  .app-nav a.nav-link { font-size: 13px; font-weight: 500; color: #666; text-decoration: none; padding: 12px 14px; letter-spacing: .3px; text-transform: uppercase; transition: color .15s; min-height: 44px; display: inline-flex; align-items: center; }
   .app-nav a.nav-link:hover { color: #4a6741; text-decoration: none; }
   .app-nav a.nav-link.active { color: #4a6741; font-weight: 700; border-bottom: 2px solid #4a6741; margin-bottom: -2px; }
   .nav-divider { width: 1px; height: 20px; background: #ddd; margin: 0 8px; }
+  .nav-user-name { font-size: 12px; color: #888; font-weight: 500; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .app-content { max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }
   /* --- Shared components --- */
   /* --- Botanical color system: sage (#4a6741) + terracotta (#c4734f) --- */
@@ -163,10 +182,41 @@ __OG_TAGS__
   .btn-secondary { background: #fff; color: #4a6741; border: 1px solid #4a6741; padding: 10px 24px; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: .5px; }
   .btn-secondary:hover { background: #edf2eb; }
   .btn-pill { padding: 6px 16px; font-size: 12px; }
-  @media (max-width: 640px) {
-    .app-nav a.nav-link { font-size: 11px; padding: 8px 8px; }
-    .app-content { padding: 20px 16px 40px; }
-    h1 { font-size: 1.6rem; }
+  /* --- Mobile (≤768px): primary breakpoint, since most users are on phones --- */
+  @media (max-width: 768px) {
+    body { font-size: 15px; }
+    /* Nav: tighter padding, hide secondary chrome (name + sign-out moved to /profile) */
+    .app-nav { padding: 0 12px; }
+    .app-nav-inner { height: 52px; gap: 2px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    .app-nav-inner::-webkit-scrollbar { display: none; }
+    .app-nav a.nav-link { font-size: 12px; padding: 10px 10px; }
+    .nav-divider, .nav-user-name, .nav-mobile-hide { display: none !important; }
+    .app-logo { font-size: 18px; }
+    /* Content padding tighter */
+    .app-content { padding: 20px 14px 80px; }
+    h1 { font-size: 1.5rem; margin-bottom: 18px; }
+    h2 { margin: 22px 0 12px; }
+    .card { padding: 18px 16px; }
+    /* Bigger tap targets */
+    .btn-primary, .btn-secondary { padding: 12px 18px; font-size: 14px; min-height: 44px; }
+    .btn-pill { padding: 8px 14px; font-size: 12px; min-height: 36px; }
+    button, input[type=submit], input[type=button] { min-height: 44px; }
+    input[type=text], input[type=email], input[type=url], input[type=date], input[type=time],
+    input[type=number], input[type=tel], select, textarea { min-height: 44px; font-size: 16px; /* prevents iOS zoom */ }
+    /* Forms wrap on mobile */
+    form { width: 100%; }
+    form > div, form .form-row { flex-wrap: wrap !important; }
+    form input, form select, form textarea { min-width: 0 !important; max-width: 100% !important; }
+    /* Tables: horizontal scroll */
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+    /* Generic flex rows wrap */
+    .stack-mobile { flex-direction: column !important; align-items: stretch !important; }
+    .stack-mobile > * { width: 100% !important; }
+  }
+  @media (max-width: 480px) {
+    .app-content { padding: 16px 12px 80px; }
+    .card { padding: 14px 12px; }
+    h1 { font-size: 1.35rem; }
   }
 </style>
 </head>
@@ -259,7 +309,7 @@ def _build_ranked_events_from_run(run_id: int):
     """Helper: reconstruct RankedEvent list from a DB run_id."""
     import re as _re
     from datetime import datetime
-    from recom.models import RankedEvent, Event, EventSource
+    from calyx.models import RankedEvent, Event, EventSource
 
     db = get_db()
     raw_events = db.get_run_events(run_id)
@@ -319,23 +369,6 @@ async def run_history(request: Request):
             <td>${r['cost_total']:.4f}</td>
             <td>{r['model_used'] or ''}</td>
         </tr>"""
-    # Load schedule settings
-    db_obj = get_db()
-    sched_pipeline_day = db_obj.get_setting("schedule_pipeline_day", "Saturday")
-    sched_pipeline_hour = db_obj.get_setting("schedule_pipeline_hour", "9")
-    sched_daily_hour = db_obj.get_setting("schedule_daily_hour", "8")
-    day_opts = "".join(
-        f'<option value="{d}"{" selected" if d == sched_pipeline_day else ""}>{d}</option>'
-        for d in ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-    )
-    pipeline_hour_opts = "".join(
-        f'<option value="{h}"{" selected" if str(h) == sched_pipeline_hour else ""}>{h}:00</option>'
-        for h in range(6, 13)
-    )
-    daily_hour_opts = "".join(
-        f'<option value="{h}"{" selected" if str(h) == sched_daily_hour else ""}>{h}:00</option>'
-        for h in range(6, 13)
-    )
     body = f"""
     <h1>⚙️ Admin</h1>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
@@ -352,90 +385,9 @@ async def run_history(request: Request):
         </tr></thead>
         <tbody>{rows_html}</tbody>
     </table>
-
-    <details style="margin-top:24px;">
-      <summary style="cursor:pointer;font-size:14px;font-weight:600;color:#374151;">Schedule Settings</summary>
-      <div class="card" style="max-width:480px;margin-top:8px;">
-        <form id="sched-form" style="display:flex;flex-direction:column;gap:14px;">
-            <div>
-                <label style="font-size:13px;color:#6b7280;display:block;margin-bottom:4px;">Weekly pipeline day</label>
-                <select name="pipeline_day" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;width:100%;">{day_opts}</select>
-            </div>
-            <div>
-                <label style="font-size:13px;color:#6b7280;display:block;margin-bottom:4px;">Weekly pipeline hour</label>
-                <select name="pipeline_hour" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;width:100%;">{pipeline_hour_opts}</select>
-            </div>
-            <div>
-                <label style="font-size:13px;color:#6b7280;display:block;margin-bottom:4px;">Daily digest email hour</label>
-                <select name="daily_hour" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;width:100%;">{daily_hour_opts}</select>
-            </div>
-            <div style="display:flex;align-items:center;gap:12px;">
-                <button type="button" onclick="saveSchedule()"
-                        style="padding:8px 20px;background:#4f46e5;color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer;font-weight:600;">Save &amp; Reinstall Cron</button>
-                <span id="sched-status" style="font-size:13px;color:#6b7280;"></span>
-            </div>
-        </form>
-      </div>
-    </details>
-    <script>
-    async function saveSchedule() {{
-        const form = document.getElementById('sched-form');
-        const data = {{
-            pipeline_day: form.pipeline_day.value,
-            pipeline_hour: form.pipeline_hour.value,
-            daily_hour: form.daily_hour.value,
-        }};
-        const st = document.getElementById('sched-status');
-        st.textContent = 'Saving...';
-        try {{
-            const r = await fetch('/api/admin/schedule', {{
-                method: 'POST',
-                headers: {{'Content-Type': 'application/json'}},
-                body: JSON.stringify(data)
-            }});
-            const res = await r.json();
-            st.textContent = res.ok ? '✓ Saved' + (res.cron_updated ? ' + cron updated' : '') : '✗ ' + (res.error || 'Failed');
-            st.style.color = res.ok ? '#16a34a' : '#dc2626';
-        }} catch(e) {{ st.textContent = '✗ ' + e; st.style.color = '#dc2626'; }}
-    }}
-    </script>
+    <p style="font-size:12px;color:#9ca3af;margin-top:24px;">Schedule is managed via <code>scripts/install_cron.sh</code>.</p>
     """
     return HTMLResponse(_layout("Admin", body, current_user))
-
-
-@app.post("/api/admin/schedule")
-async def api_admin_schedule(request: Request):
-    """Save schedule settings and optionally regenerate crontab."""
-    import subprocess as _sub
-    try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
-    db = get_db()
-    day = body.get("pipeline_day", "Saturday")
-    pipeline_hour = str(body.get("pipeline_hour", "9"))
-    daily_hour = str(body.get("daily_hour", "8"))
-    db.set_setting("schedule_pipeline_day", day)
-    db.set_setting("schedule_pipeline_hour", pipeline_hour)
-    db.set_setting("schedule_daily_hour", daily_hour)
-    # Try to reinstall cron (best-effort)
-    cron_updated = False
-    install_script = Path(__file__).parent.parent.parent.parent / "scripts" / "install_cron.sh"
-    if install_script.exists():
-        try:
-            env = {"PATH": "/usr/local/bin:/usr/bin:/bin"}
-            day_abbr = day[:3].lower()
-            # Convert day name to cron day-of-week number (0=Sun)
-            _dow = {"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6}
-            dow = _dow.get(day_abbr, 6)
-            res = _sub.run(
-                ["bash", str(install_script), pipeline_hour, daily_hour, str(dow)],
-                capture_output=True, text=True, timeout=10, env=env
-            )
-            cron_updated = res.returncode == 0
-        except Exception:
-            pass
-    return JSONResponse({"ok": True, "cron_updated": cron_updated})
 
 
 @app.get("/admin/sources", response_class=HTMLResponse)
@@ -585,7 +537,7 @@ async def profile_update(request: Request):
         params.append(location_text)
         # Try to geocode the location to set lat/lon automatically
         try:
-            from recom.events.geocoder import _geocode_query
+            from calyx.events.geocoder import _geocode_query
             coords = _geocode_query(location_text)
             if coords:
                 updates.append("home_lat = ?")
@@ -1415,7 +1367,7 @@ In 2-3 sentences: Why did our database miss these? What event sources or scraper
 
         # Email the retro to admin
         try:
-            from recom.email.sender import send_email as _send
+            from calyx.email.sender import send_email as _send
             subject = f"[Calyx] Search gap: {query}"
             html = f"""<div style="font-family:Inter,system-ui,sans-serif;max-width:500px;">
                 <div style="border-left:3px solid #c4734f;padding:12px 16px;margin-bottom:16px;">
@@ -1454,19 +1406,59 @@ async def calendar_view(request: Request):
     user_id = current_user["id"] if current_user else None
     all_events = db.get_latest_scored_events(user_id)
     kept = [e for e in all_events if e.get("keep") and e.get("start_time")]
-    if not kept:
+
+    # Group events the user is a member of (surfaced alongside discoveries)
+    group_events = db.get_upcoming_group_events_for_user(user_id) if user_id else []
+
+    if not kept and not group_events:
         return HTMLResponse(_layout("Discover", "<h1>Discover</h1><div class='card'><p>No scored events yet. Pipeline may still be running.</p></div>", current_user))
 
     # Find run_id for RSVP API calls
-    run_id = kept[0].get("run_id", 0)
+    run_id = kept[0].get("run_id", 0) if kept else 0
 
-    # Fetch RSVPs
+    # Fetch RSVPs (include group event IDs so we can show going/maybe state on group cards too)
     all_event_ids = [e.get("event_id", "") for e in kept if e.get("event_id")]
+    all_event_ids += [f"grp_evt_{ge['id']}" for ge in group_events]
     rsvps_map = db.get_rsvps_for_events(all_event_ids)
     user_token = current_user["user_token"] if current_user else ""
 
-    # Build JSON event array for JS
+    # Build JSON event array for JS — group events first (highest priority)
     events_json = []
+    for ge in group_events:
+        grp_eid = f"grp_evt_{ge['id']}"
+        evt_rsvps = rsvps_map.get(grp_eid, [])
+        rsvp_list = [{"user_name": rv["user_name"], "status": rv["status"]} for rv in evt_rsvps]
+        my_rsvp = ""
+        if current_user:
+            for rv in evt_rsvps:
+                if rv.get("user_id") == current_user["id"]:
+                    my_rsvp = rv["status"]
+                    break
+        events_json.append({
+            "id": grp_eid,
+            "title": ge.get("title", ""),
+            "start": ge.get("start_time") or "",
+            "end": ge.get("end_time") or "",
+            "url": ge.get("url") or "",
+            "score": 95,
+            "vibe": "social",
+            "location": ge.get("location") or "",
+            "price": "",
+            "description": (ge.get("notes") or "")[:200],
+            "match_reason": f"From {ge.get('group_display_name') or 'your group'}",
+            "event_type": "group",
+            "group_id": ge.get("g_id"),
+            "group_name": ge.get("group_display_name") or "Group",
+            "rsvps": rsvp_list,
+            "my_rsvp": my_rsvp,
+            "primary": True,
+            "source": ge.get("group_display_name") or "Group",
+            "image_url": "",
+            "lat": None,
+            "lon": None,
+            "scores": {"interest": 14, "social": 15, "urgency": 12, "logistics": 14, "friend": 15, "discovery": 6, "quality": 13},
+        })
+
     for e in kept:
         eid = e.get("event_id", "")
         raw_desc = e.get("description") or ""
@@ -1524,7 +1516,7 @@ async def calendar_view(request: Request):
       .page-header .subtitle {{ font-size: 13px; color: #888; }}
       .toolbar {{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }}
       .view-toggle {{ display: flex; border: 1px solid #e0e0e0; }}
-      .view-toggle button {{ padding: 7px 16px; border: none; background: transparent; cursor: pointer; font-size: 12px; font-weight: 500; color: #888; transition: all .15s; text-transform: uppercase; letter-spacing: .5px; }}
+      .view-toggle button {{ padding: 11px 18px; border: none; background: transparent; cursor: pointer; font-size: 12px; font-weight: 500; color: #888; transition: all .15s; text-transform: uppercase; letter-spacing: .5px; min-height: 40px; }}
       .view-toggle button.active {{ background: #000; color: #fff; }}
       .score-badge {{ display: inline-block; font-weight: 700; padding: 3px 10px; font-size: 13px; border-radius: 4px; }}
       .score-high {{ background: #4a6741; color: #fff; }}
@@ -1552,6 +1544,10 @@ async def calendar_view(request: Request):
       .evt-card.score-mid-card {{ border-left-color: #c4734f; }}
       .evt-card.rsvp-going-card {{ border-left: 4px solid #4a6741; background: #f8faf7; }}
       .evt-card.rsvp-maybe-card {{ border-left-color: #888; }}
+      .evt-card.group-card {{ border-left: 4px solid #4a6741; background: linear-gradient(to right, #f4f7f2 0%, #fff 80%); }}
+      .group-pill {{ display: inline-block; font-size: 10px; font-weight: 700; color: #4a6741; background: #edf2eb; padding: 3px 9px; border-radius: 999px; text-decoration: none; letter-spacing: .8px; text-transform: uppercase; margin-bottom: 6px; }}
+      .group-pill:hover {{ background: #d4e0d1; text-decoration: none; }}
+      .card-score.group-tag {{ background: #4a6741; color: #fff; font-size: 10px; padding: 3px 8px; letter-spacing: 1px; }}
       .evt-card .card-body {{ flex: 1; padding: 14px 16px; min-width: 0; }}
       .evt-card .card-top {{ display: flex; align-items: flex-start; gap: 8px; }}
       .evt-card .card-title {{ font-size: 14px; font-weight: 700; color: #000; flex: 1; text-decoration: none; line-height: 1.35; }}
@@ -1593,7 +1589,6 @@ async def calendar_view(request: Request):
       @media (max-width: 640px) {{
         .toolbar {{ gap: 8px; }}
         .evt-card {{ margin: 6px 0; padding: 12px 14px; }}
-        body {{ padding: 12px; }}
         .page-header h1 {{ font-size: 20px; }}
         .heat-grid {{ grid-template-columns: 1fr; }}
         .timeline-col {{ width: 180px; }}
@@ -1921,16 +1916,30 @@ async def calendar_view(request: Request):
         </div>`;
       }}
       const meta = [timeStr, e.location, e.price].filter(Boolean).join(' &middot; ');
-      const scoreClass = e.score >= 70 ? ' score-high-card' : e.score >= 50 ? ' score-mid-card' : '';
-      return `<div class="evt-card${{scoreClass}}${{e.my_rsvp === 'going' ? ' rsvp-going-card' : ''}}" onclick="if(event.target.tagName!=='BUTTON')window.open(&apos;${{e.url || '#'}}&apos;, &apos;_blank&apos;)">
+      const isGroup = e.event_type === 'group';
+      const scoreClass = isGroup ? ' group-card' : (e.score >= 70 ? ' score-high-card' : e.score >= 50 ? ' score-mid-card' : '');
+      const groupPill = isGroup
+        ? `<a href="/group/${{e.group_id}}" onclick="event.stopPropagation()" class="group-pill">▸ ${{e.group_name || 'Group'}}</a>`
+        : '';
+      const scoreOrTag = isGroup
+        ? `<span class="card-score group-tag">PLAN</span>`
+        : `<span class="card-score ${{scoreCls(e.score)}}">${{e.score}}</span>`;
+      const sourceLine = isGroup
+        ? ''
+        : (e.source ? '<div style="font-size:10px;color:#bbb;margin-top:4px;text-transform:capitalize;">via ' + e.source + '</div>' : '');
+      const cardOnclick = isGroup
+        ? `onclick="if(event.target.tagName!=='BUTTON' && !event.target.closest('a'))location.href='/group/${{e.group_id}}'"`
+        : `onclick="if(event.target.tagName!=='BUTTON')window.open(&apos;${{e.url || '#'}}&apos;, &apos;_blank&apos;)"`;
+      return `<div class="evt-card${{scoreClass}}${{e.my_rsvp === 'going' ? ' rsvp-going-card' : ''}}" ${{cardOnclick}}>
         <div class="card-body">
+          ${{groupPill}}
           <div class="card-top">
             <span class="card-title">${{e.title}}</span>
-            <span class="card-score ${{scoreCls(e.score)}}">${{e.score}}</span>
+            ${{scoreOrTag}}
           </div>
           <div class="card-meta">${{meta}}</div>
           ${{e.description ? '<div class="card-reason">' + e.description + '</div>' : ''}}
-          ${{e.source ? '<div style="font-size:10px;color:#bbb;margin-top:4px;text-transform:capitalize;">via ' + e.source + '</div>' : ''}}
+          ${{sourceLine}}
           ${{rsvpBtns}}
         </div>
       </div>`;
@@ -2205,14 +2214,42 @@ async def attend_via_link(event_id: str, title: str = ""):
 
 @app.post("/api/rsvp", response_class=JSONResponse)
 async def api_rsvp(request: Request):
-    """Set RSVP status for an event."""
+    """Set or clear RSVP status for an event (works for discovered + manual events).
+
+    JSON body: {event_id, status} — empty status clears the RSVP.
+    Auth via cookie (preferred) or `user_token` (legacy email-link convenience).
+    """
     data = await request.json()
-    token = data.get("user_token", "")
     db = get_db()
-    user = db.get_user_by_token(token)
+    user = _get_current_user(request)
     if not user:
-        return JSONResponse({"error": "Invalid user token"}, status_code=401)
-    db.set_rsvp(user["id"], data["event_id"], data["run_id"], data["status"])
+        token = data.get("user_token", "")
+        if token:
+            user = db.get_user_by_token(token)
+    if not user:
+        return JSONResponse({"error": "Sign in required"}, status_code=401)
+    event_id = data.get("event_id", "")
+    status = data.get("status", "")
+    if not event_id:
+        return JSONResponse({"error": "event_id required"}, status_code=400)
+    if not status:
+        # Clear the RSVP
+        db.conn.execute(
+            "DELETE FROM rsvps WHERE user_id = ? AND event_id = ?",
+            (user["id"], event_id),
+        )
+        db.conn.commit()
+        return {"ok": True, "status": ""}
+    # Resolve run_id: caller may pass it; otherwise look it up from the event
+    run_id = data.get("run_id")
+    if run_id is None:
+        row = db.conn.execute(
+            "SELECT run_id FROM events WHERE event_id = ? ORDER BY run_id DESC LIMIT 1",
+            (event_id,),
+        ).fetchone()
+        run_id = row["run_id"] if row else 0
+    db.set_rsvp(user["id"], event_id, run_id, status)
+    data["status"] = status  # keep older code path below working unchanged
 
     # Notify group-mates and push to GCal when RSVP is "going"
     if data["status"] == "going":
@@ -2623,12 +2660,22 @@ async def group_invite(group_id: int, request: Request):
 
 @app.get("/group/{group_id:int}/join/{invite_code}", response_class=HTMLResponse)
 async def group_join_page(group_id: int, invite_code: str, request: Request):
-    """Invite link landing — validates code then renders group page with join form."""
+    """Invite link landing.
+
+    Valid code + authed user + not yet a member → auto-join, redirect to group page.
+    Valid code + unauthed → show group preview with "Continue with Google" CTA, where
+    the next param brings them right back here (which then auto-joins).
+    """
     db = get_db()
     group = db.get_group_by_id(group_id)
     if not group or group.get("invite_code") != invite_code:
         return HTMLResponse("<h1>Invalid invite link</h1>", status_code=404)
     group_name = db.get_group_display_name(group)
+    current_user = _get_current_user(request)
+    if current_user:
+        if not db.is_group_member(group_id, current_user["id"]):
+            db.add_group_member(group_id, current_user["id"])
+        return RedirectResponse(f"/group/{group_id}?success=Joined+{group_name.replace(' ', '+')}", status_code=303)
     og = {
         "title": f"{group_name} on Calyx",
         "description": "Join the group to coordinate plans together",
@@ -2729,10 +2776,16 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         url = e.get("url") or ""
         title_link = f'<a href="{url}" target="_blank" style="font-weight:700;font-size:15px;color:#1e293b;text-decoration:none;">{e["title"][:55]}</a>' if url else f'<span style="font-weight:700;font-size:15px;color:#1e293b;">{e["title"][:55]}</span>'
         delete_btn = ""
+        edit_btn = ""
         is_event_creator = current_user and e.get("created_by") == current_user["id"]
         is_group_creator = current_user and group.get("created_by") == current_user["id"]
         if is_event_creator or is_group_creator:
+            edit_btn = f'<button type="button" onclick="openEditEvent({group_id},{e["id"]})" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:12px;padding:4px 8px;">edit</button>'
             delete_btn = f'<form action="/api/group/{group_id}/delete-event" method="post" style="margin:0;" onsubmit="return confirm(&apos;Remove this event?&apos;)"><input type="hidden" name="event_id" value="{e["id"]}"><button type="submit" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px;padding:4px 8px;">remove</button></form>'
+        share_btn = ""
+        if is_member and group.get("invite_code"):
+            _share_url = f'{Settings().dashboard_url}/share/event/{group_id}/{e["id"]}/{group["invite_code"]}'
+            share_btn = f'<button type="button" onclick="shareEvent(this, &quot;{_share_url}&quot;, &quot;{e["title"][:60].replace(chr(34), "&quot;")}&quot;)" style="background:none;border:none;color:#4a6741;cursor:pointer;font-size:12px;padding:4px 8px;font-weight:600;">share</button>'
         ue_eid = f"grp_evt_{e['id']}"
         ue_rsvps = rsvps_map.get(ue_eid, [])
         ue_avatars = _rsvp_avatars(ue_rsvps)
@@ -2751,8 +2804,25 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                 <button onclick="rsvpGroupEvent({group_id}, &apos;{ue_eid}&apos;, &apos;maybe&apos;, this)" class="grp-rsvp-btn maybe{maybe_cls}">Maybe</button>
             </div>'''
             nudge_btn = f'<a href="/api/ping-group?event_id={ue_eid}&amp;u={user_token}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-top:6px;display:inline-block;" onmouseover="this.style.color=&apos;#4f46e5&apos;" onmouseout="this.style.color=&apos;#6b7280&apos;">Nudge group</a>'
-        upcoming_html += f'''<div class="card" style="padding:14px 16px;margin-bottom:8px;">
-            <div style="display:flex;justify-content:space-between;align-items:start;">
+        # Embed event data for inline edit (data-* read by openEditEvent)
+        from html import escape as _esc
+        _start_iso = (e.get("start_time") or "")
+        _end_iso = (e.get("end_time") or "") or ""
+        _date_part = _start_iso[:10]
+        _start_part = _start_iso[11:16] if len(_start_iso) >= 16 else ""
+        _end_part = _end_iso[11:16] if len(_end_iso) >= 16 else ""
+        _data_attrs = (
+            f'data-event-id="{e["id"]}" '
+            f'data-title="{_esc(e.get("title") or "", quote=True)}" '
+            f'data-date="{_date_part}" '
+            f'data-time="{_start_part}" '
+            f'data-end="{_end_part}" '
+            f'data-location="{_esc(e.get("location") or "", quote=True)}" '
+            f'data-url="{_esc(e.get("url") or "", quote=True)}" '
+            f'data-notes="{_esc(e.get("notes") or "", quote=True)}"'
+        )
+        upcoming_html += f'''<div class="card group-event-card" {_data_attrs} style="padding:14px 16px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">
                 <div style="flex:1;min-width:0;">
                     {title_link}
                     <div style="font-size:13px;color:#6b7280;margin-top:2px;">{time_str}{" · " + loc if loc else ""}</div>
@@ -2761,7 +2831,11 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                     {rsvp_btns}
                     {nudge_btn}
                 </div>
-                {delete_btn}
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;">
+                    {share_btn}
+                    {edit_btn}
+                    {delete_btn}
+                </div>
             </div>
         </div>'''
 
@@ -2796,37 +2870,185 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     # --- Add event form (members only) ---
     add_event_html = ""
     if is_member:
-        from datetime import datetime as _dt
-        default_date = _dt.now().strftime("%Y-%m-%d")
-        add_event_html = f'''<div style="border:1px solid #e0e0e0;padding:20px;margin-bottom:28px;">
-            <h2 style="margin:0 0 12px;">Add Event</h2>
-            <div style="display:flex;gap:8px;margin-bottom:10px;">
-                <input id="url-paste-{group_id}" type="url" placeholder="Paste event URL to autofill..."
-                       style="flex:1;padding:10px 12px;border:1px solid #ccc;font-size:13px;font-family:inherit;color:#555;box-sizing:border-box;">
-                <button type="button" onclick="autofillFromUrl({group_id})" style="padding:8px 14px;background:#4a6741;color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Fill</button>
+        from datetime import datetime as _dt, timedelta as _td2
+        _now = _dt.now()
+        if _now.hour < 17:
+            default_date = _now.strftime("%Y-%m-%d")
+        else:
+            default_date = (_now + _td2(days=1)).strftime("%Y-%m-%d")
+        default_time = "19:00"
+        add_event_html = f'''<div style="margin-bottom:28px;">
+            <button type="button" onclick="toggleAddEvent({group_id})" id="ae-toggle-{group_id}"
+                    class="btn-primary" style="width:100%;padding:14px;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px;">
+                <span style="font-size:18px;line-height:1;">+</span><span>Add event</span>
+            </button>
+            <div id="ae-panel-{group_id}" style="display:none;border:1px solid #e0e0e0;border-top:none;padding:18px 16px;background:#fafafa;">
+                <!-- URL paste (primary path) -->
+                <label style="display:block;font-size:12px;font-weight:700;color:#4a6741;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Paste a link</label>
+                <div class="form-row" style="display:flex;gap:8px;margin-bottom:6px;">
+                    <input id="url-paste-{group_id}" type="url" placeholder="https://lu.ma/..., eventbrite.com/..., etc."
+                           style="flex:1;min-width:0;padding:11px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;background:#fff;">
+                    <button type="button" onclick="autofillFromUrl({group_id})" id="ae-fill-{group_id}"
+                            class="btn-primary" style="padding:11px 16px;white-space:nowrap;">Autofill</button>
+                </div>
+                <p id="ae-url-status-{group_id}" style="font-size:12px;color:#888;margin-bottom:14px;min-height:16px;"></p>
+
+                <!-- Manual fields -->
+                <label id="ae-manual-label-{group_id}" style="display:block;font-size:12px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Or fill manually</label>
+                <div id="ae-edit-banner-{group_id}" style="display:none;padding:10px 12px;background:#edf2eb;border-left:3px solid #4a6741;font-size:13px;color:#1a1a1a;margin-bottom:10px;">
+                    Editing <strong id="ae-edit-banner-title-{group_id}"></strong>
+                    · <button type="button" onclick="cancelEdit({group_id})" style="background:none;border:none;color:#4a6741;cursor:pointer;font-size:13px;font-weight:600;text-decoration:underline;padding:0;">cancel edit</button>
+                </div>
+                <form action="/api/group/{group_id}/add-event" method="post" id="add-event-form-{group_id}" style="display:flex;flex-direction:column;gap:12px;">
+                    <input type="hidden" name="edit_id" id="ae-edit-id-{group_id}" value="">
+                    <div class="ae-field">
+                        <label class="ae-label" for="ae-title-{group_id}">Title</label>
+                        <input name="title" id="ae-title-{group_id}" placeholder="Event name" required class="ae-input">
+                    </div>
+
+                    <div class="ae-field">
+                        <label class="ae-label">When</label>
+                        <div class="ae-chips" id="ae-chips-{group_id}">
+                            <button type="button" data-day="0" data-time="19:00" onclick="setQuickWhen({group_id}, this)" class="ae-chip">Tonight 7pm</button>
+                            <button type="button" data-day="1" data-time="19:00" onclick="setQuickWhen({group_id}, this)" class="ae-chip">Tomorrow 7pm</button>
+                            <button type="button" data-day="fri" data-time="20:00" onclick="setQuickWhen({group_id}, this)" class="ae-chip">Fri 8pm</button>
+                            <button type="button" data-day="sat" data-time="20:00" onclick="setQuickWhen({group_id}, this)" class="ae-chip">Sat 8pm</button>
+                            <button type="button" data-day="sun" data-time="14:00" onclick="setQuickWhen({group_id}, this)" class="ae-chip">Sun 2pm</button>
+                        </div>
+                        <div class="ae-when-row">
+                            <div class="ae-when-cell">
+                                <span class="ae-sublabel">Date</span>
+                                <input name="date" id="ae-date-{group_id}" type="date" value="{default_date}" required class="ae-input">
+                            </div>
+                            <div class="ae-when-cell">
+                                <span class="ae-sublabel">Start</span>
+                                <input name="time" id="ae-time-{group_id}" type="time" value="{default_time}" class="ae-input">
+                            </div>
+                            <div class="ae-when-cell">
+                                <span class="ae-sublabel">End <span style="color:#bbb;font-weight:400;">(optional)</span></span>
+                                <input name="end_time" id="ae-end-{group_id}" type="time" class="ae-input">
+                            </div>
+                        </div>
+                        <div id="ae-when-readout-{group_id}" class="ae-readout"></div>
+                    </div>
+
+                    <div class="ae-field">
+                        <label class="ae-label" for="ae-loc-{group_id}">Location</label>
+                        <input name="location" id="ae-loc-{group_id}" placeholder="Where? (optional)" class="ae-input">
+                    </div>
+
+                    <div class="ae-field">
+                        <label class="ae-label" for="ae-url-{group_id}">Link</label>
+                        <input name="url" id="ae-url-{group_id}" type="url" placeholder="https:// (optional)" class="ae-input">
+                    </div>
+
+                    <div class="ae-field">
+                        <label class="ae-label" for="ae-notes-{group_id}">Notes</label>
+                        <textarea name="notes" id="ae-notes-{group_id}" placeholder="Anything to know? (optional)" rows="2" class="ae-input" style="resize:vertical;"></textarea>
+                    </div>
+
+                    <div class="ae-field" id="ae-recurring-field-{group_id}">
+                        <label class="ae-label" for="ae-recurring-{group_id}">Repeat</label>
+                        <select name="recurring" id="ae-recurring-{group_id}" class="ae-input">
+                            <option value="">One time</option>
+                            <option value="2">Weekly · 2 weeks</option>
+                            <option value="4">Weekly · 4 weeks</option>
+                            <option value="8">Weekly · 8 weeks</option>
+                            <option value="12">Weekly · 12 weeks</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row" style="display:flex;gap:8px;margin-top:6px;">
+                        <button type="button" onclick="toggleAddEvent({group_id})"
+                                style="flex:1;padding:12px;background:#fff;color:#666;border:1px solid #ccc;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.5px;">Cancel</button>
+                        <button type="submit" id="ae-submit-{group_id}" class="btn-primary" style="flex:2;">Add event</button>
+                    </div>
+                </form>
             </div>
-            <form action="/api/group/{group_id}/add-event" method="post" id="add-event-form-{group_id}">
-                <input name="title" id="ae-title-{group_id}" placeholder="What are you doing?" required
-                       style="width:100%;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;margin-bottom:8px;box-sizing:border-box;">
-                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-                    <input name="date" id="ae-date-{group_id}" type="date" value="{default_date}" required
-                           style="flex:1;min-width:130px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;">
-                    <input name="time" id="ae-time-{group_id}" type="time" value="19:00"
-                           style="flex:1;min-width:100px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;">
-                    <input name="location" id="ae-loc-{group_id}" placeholder="Where? (optional)"
-                           style="flex:1;min-width:130px;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;">
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                    <select name="recurring" style="padding:6px 10px;border:1px solid #ccc;font-size:13px;font-family:inherit;color:#555;">
-                        <option value="">One time</option>
-                        <option value="2">Weekly for 2 weeks</option>
-                        <option value="4">Weekly for 4 weeks</option>
-                        <option value="8">Weekly for 8 weeks</option>
-                        <option value="12">Weekly for 12 weeks</option>
-                    </select>
-                </div>
-                <button type="submit" class="btn-primary" style="width:100%;">Add Event</button>
-            </form>
+            <style>
+            .ae-field {{ display: flex; flex-direction: column; gap: 6px; }}
+            .ae-label {{ font-size: 11px; font-weight: 700; color: #4a6741; text-transform: uppercase; letter-spacing: .8px; }}
+            .ae-sublabel {{ font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 4px; display: block; }}
+            .ae-input {{ width: 100%; padding: 11px 12px; border: 1px solid #ccc; font-size: 14px; font-family: inherit; background: #fff; color: #1a1a1a; transition: border-color .12s, box-shadow .12s; }}
+            .ae-input:focus {{ outline: none; border-color: #4a6741; box-shadow: 0 0 0 3px rgba(74,103,65,.12); }}
+            .ae-when-row {{ display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }}
+            @media (max-width: 480px) {{ .ae-when-row {{ grid-template-columns: 1fr 1fr; }} .ae-when-row .ae-when-cell:first-child {{ grid-column: 1 / -1; }} }}
+            .ae-when-cell {{ display: flex; flex-direction: column; min-width: 0; }}
+            .ae-chips {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }}
+            .ae-chip {{ padding: 6px 12px; font-size: 12px; font-weight: 600; color: #4a6741; background: #fff; border: 1px solid #d4e0d1; cursor: pointer; font-family: inherit; min-height: 32px; transition: all .12s; border-radius: 999px; }}
+            .ae-chip:hover {{ background: #edf2eb; border-color: #4a6741; }}
+            .ae-chip.active {{ background: #4a6741; color: #fff; border-color: #4a6741; }}
+            .ae-readout {{ font-size: 12px; color: #4a6741; font-weight: 600; min-height: 16px; }}
+            </style>
+            <script>
+            function toggleAddEvent(gid) {{
+                const panel = document.getElementById('ae-panel-' + gid);
+                const toggle = document.getElementById('ae-toggle-' + gid);
+                const isOpen = panel.style.display !== 'none';
+                panel.style.display = isOpen ? 'none' : 'block';
+                toggle.innerHTML = isOpen
+                    ? '<span style="font-size:18px;line-height:1;">+</span><span>Add event</span>'
+                    : '<span style="font-size:18px;line-height:1;">×</span><span>Close</span>';
+                if (!isOpen) {{
+                    setTimeout(() => document.getElementById('url-paste-' + gid).focus(), 50);
+                    updateWhenReadout(gid);
+                }}
+            }}
+
+            function setQuickWhen(gid, btn) {{
+                const dayCode = btn.dataset.day;
+                const t = btn.dataset.time;
+                const today = new Date(); today.setHours(0,0,0,0);
+                let target = new Date(today);
+                if (dayCode === '0') {{ /* tonight */ }}
+                else if (dayCode === '1') {{ target.setDate(today.getDate() + 1); }}
+                else {{
+                    const dowMap = {{sun:0, mon:1, tue:2, wed:3, thu:4, fri:5, sat:6}};
+                    const want = dowMap[dayCode];
+                    let delta = (want - today.getDay() + 7) % 7;
+                    if (delta === 0) delta = 7;  // always upcoming
+                    target.setDate(today.getDate() + delta);
+                }}
+                const yyyy = target.getFullYear();
+                const mm = String(target.getMonth()+1).padStart(2,'0');
+                const dd = String(target.getDate()).padStart(2,'0');
+                document.getElementById('ae-date-' + gid).value = yyyy + '-' + mm + '-' + dd;
+                document.getElementById('ae-time-' + gid).value = t;
+                // Toggle active state
+                document.querySelectorAll('#ae-chips-' + gid + ' .ae-chip').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                updateWhenReadout(gid);
+            }}
+
+            function updateWhenReadout(gid) {{
+                const dEl = document.getElementById('ae-date-' + gid);
+                const tEl = document.getElementById('ae-time-' + gid);
+                const eEl = document.getElementById('ae-end-' + gid);
+                const readout = document.getElementById('ae-when-readout-' + gid);
+                if (!dEl || !dEl.value) {{ readout.textContent = ''; return; }}
+                const d = new Date(dEl.value + 'T' + (tEl.value || '00:00') + ':00');
+                if (isNaN(d)) {{ readout.textContent = ''; return; }}
+                const dayLabel = d.toLocaleDateString(undefined, {{weekday:'long', month:'short', day:'numeric'}});
+                const timeLabel = tEl.value ? d.toLocaleTimeString(undefined, {{hour:'numeric', minute:'2-digit'}}) : '';
+                let s = dayLabel + (timeLabel ? ' · ' + timeLabel : '');
+                if (eEl && eEl.value) {{
+                    const end = new Date(dEl.value + 'T' + eEl.value + ':00');
+                    if (!isNaN(end)) {{
+                        s += ' – ' + end.toLocaleTimeString(undefined, {{hour:'numeric', minute:'2-digit'}});
+                    }}
+                }}
+                readout.textContent = s;
+            }}
+
+            // Wire date/time change → live readout (after DOM ready)
+            (function() {{
+                const gid = {group_id};
+                ['ae-date-', 'ae-time-', 'ae-end-'].forEach(prefix => {{
+                    const el = document.getElementById(prefix + gid);
+                    if (el) el.addEventListener('input', () => updateWhenReadout(gid));
+                }});
+            }})();
+            </script>
         </div>'''
 
     # --- Invite + Calendar subscribe (members only) ---
@@ -2860,18 +3082,21 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     join_cta = ""
     if _valid_invite and not is_member:
         if not current_user:
-            join_cta = f'''<div class="card" style="margin-bottom:20px;">
-                <form action="/api/join-group/{group_id}/{invite_code}" method="post" style="display:flex;flex-direction:column;gap:8px;">
-                    <input name="name" placeholder="Your name" required
-                           style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
-                    <input name="email" type="email" placeholder="you@gmail.com" required
-                           style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;">
-                    <button type="submit" class="btn-primary">Join this group</button>
-                </form>
+            from urllib.parse import quote as _q
+            invite_url = f"/group/{group_id}/join/{invite_code}"
+            google_g = '<svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>'
+            join_cta = f'''<div class="card" style="margin-bottom:20px;text-align:center;padding:24px 18px;border-top:3px solid #4a6741;">
+                <h2 style="margin:0 0 6px;color:#1a1a1a;font-size:18px;text-transform:none;letter-spacing:0;font-weight:800;">Join {group_name}</h2>
+                <p style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.5;">Sign in to join the group and start coordinating plans.</p>
+                <a href="/auth/google/login?next={_q(invite_url, safe='/')}" style="display:inline-flex;align-items:center;gap:10px;padding:12px 20px;background:#fff;border:1.5px solid #dadce0;color:#3c4043;font-size:14px;font-weight:600;text-decoration:none;border-radius:8px;">
+                    {google_g}
+                    <span>Continue with Google</span>
+                </a>
             </div>'''
         else:
+            # Authed but not a member and not on the auto-join path — fallback CTA
             join_cta = f'''<div class="card" style="margin-bottom:20px;">
-                <form action="/group/{group_id}/join" method="post" style="display:flex;align-items:center;justify-content:space-between;">
+                <form action="/group/{group_id}/join" method="post" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
                     <span style="font-size:14px;color:#374151;">Join this group to add events and see plans.</span>
                     <button type="submit" class="btn-primary" style="white-space:nowrap;">Join</button>
                 </form>
@@ -2953,10 +3178,12 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     <script>
     async function autofillFromUrl(groupId) {{
         const urlInput = document.getElementById('url-paste-' + groupId);
+        const fillBtn = document.getElementById('ae-fill-' + groupId);
+        const status = document.getElementById('ae-url-status-' + groupId);
         const url = urlInput.value.trim();
-        if (!url) return;
-        urlInput.disabled = true;
-        urlInput.style.opacity = '.5';
+        if (!url) {{ status.textContent = 'Paste a URL first.'; status.style.color = '#c4734f'; return; }}
+        urlInput.disabled = true; fillBtn.disabled = true; fillBtn.textContent = 'Reading…';
+        status.textContent = 'Fetching event details…'; status.style.color = '#888';
         try {{
             const resp = await fetch('/api/extract-event-url', {{
                 method: 'POST',
@@ -2969,10 +3196,101 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                 if (d.date) document.getElementById('ae-date-' + groupId).value = d.date;
                 if (d.time) document.getElementById('ae-time-' + groupId).value = d.time;
                 if (d.location) document.getElementById('ae-loc-' + groupId).value = d.location;
+                document.getElementById('ae-url-' + groupId).value = url;
+                status.textContent = '✓ Filled. Tweak as needed and submit.'; status.style.color = '#4a6741';
+            }} else {{
+                status.textContent = d.error || 'Could not extract details. Fill manually below.';
+                status.style.color = '#c4734f';
             }}
-        }} catch(e) {{}}
-        urlInput.disabled = false;
-        urlInput.style.opacity = '1';
+        }} catch(e) {{
+            status.textContent = 'Network error. Fill manually below.'; status.style.color = '#c4734f';
+        }}
+        urlInput.disabled = false; fillBtn.disabled = false; fillBtn.textContent = 'Autofill';
+    }}
+
+    async function shareEvent(btn, url, title) {{
+        if (navigator.share) {{
+            try {{
+                await navigator.share({{title: title, text: 'RSVP for ' + title, url: url}});
+                return;
+            }} catch(e) {{ /* fall through to copy */ }}
+        }}
+        try {{
+            await navigator.clipboard.writeText(url);
+            const orig = btn.textContent;
+            btn.textContent = 'copied!';
+            setTimeout(() => {{ btn.textContent = orig; }}, 1500);
+        }} catch(e) {{
+            window.prompt('Copy this link:', url);
+        }}
+    }}
+
+    function openEditEvent(groupId, eventId) {{
+        const card = document.querySelector('.group-event-card[data-event-id="' + eventId + '"]');
+        if (!card) return;
+        const panel = document.getElementById('ae-panel-' + groupId);
+        const toggle = document.getElementById('ae-toggle-' + groupId);
+        // Open the panel if closed
+        if (panel.style.display === 'none' || !panel.style.display) {{
+            panel.style.display = 'block';
+            toggle.innerHTML = '<span style="font-size:18px;line-height:1;">×</span><span>Close</span>';
+        }}
+        // Populate fields
+        document.getElementById('ae-edit-id-' + groupId).value = eventId;
+        document.getElementById('ae-title-' + groupId).value = card.dataset.title || '';
+        document.getElementById('ae-date-' + groupId).value = card.dataset.date || '';
+        document.getElementById('ae-time-' + groupId).value = card.dataset.time || '';
+        document.getElementById('ae-end-' + groupId).value = card.dataset.end || '';
+        document.getElementById('ae-loc-' + groupId).value = card.dataset.location || '';
+        document.getElementById('ae-url-' + groupId).value = card.dataset.url || '';
+        document.getElementById('ae-notes-' + groupId).value = card.dataset.notes || '';
+        // Reset chip active states (none active in edit mode)
+        document.querySelectorAll('#ae-chips-' + groupId + ' .ae-chip').forEach(c => c.classList.remove('active'));
+        // Hide URL-paste + recurring (don't apply when editing)
+        const urlPaste = document.getElementById('url-paste-' + groupId).closest('div');
+        if (urlPaste) urlPaste.style.display = 'none';
+        const urlStatus = document.getElementById('ae-url-status-' + groupId);
+        if (urlStatus) urlStatus.style.display = 'none';
+        const pasteLabel = urlPaste && urlPaste.previousElementSibling;
+        if (pasteLabel && pasteLabel.tagName === 'LABEL') pasteLabel.style.display = 'none';
+        const manualLabel = document.getElementById('ae-manual-label-' + groupId);
+        if (manualLabel) manualLabel.style.display = 'none';
+        const recurringField = document.getElementById('ae-recurring-field-' + groupId);
+        if (recurringField) recurringField.style.display = 'none';
+        // Show edit banner
+        const banner = document.getElementById('ae-edit-banner-' + groupId);
+        const bannerTitle = document.getElementById('ae-edit-banner-title-' + groupId);
+        if (banner) banner.style.display = 'block';
+        if (bannerTitle) bannerTitle.textContent = card.dataset.title || '';
+        // Submit button label
+        const submit = document.getElementById('ae-submit-' + groupId);
+        if (submit) submit.textContent = 'Save changes';
+        // Live readout
+        updateWhenReadout(groupId);
+        // Scroll panel into view
+        setTimeout(() => panel.scrollIntoView({{behavior: 'smooth', block: 'start'}}), 60);
+    }}
+
+    function cancelEdit(groupId) {{
+        // Reset edit state, restore create mode
+        document.getElementById('ae-edit-id-' + groupId).value = '';
+        document.getElementById('add-event-form-' + groupId).reset();
+        const banner = document.getElementById('ae-edit-banner-' + groupId);
+        if (banner) banner.style.display = 'none';
+        // Restore hidden sections
+        const urlPaste = document.getElementById('url-paste-' + groupId).closest('div');
+        if (urlPaste) urlPaste.style.display = '';
+        const urlStatus = document.getElementById('ae-url-status-' + groupId);
+        if (urlStatus) urlStatus.style.display = '';
+        const pasteLabel = urlPaste && urlPaste.previousElementSibling;
+        if (pasteLabel && pasteLabel.tagName === 'LABEL') pasteLabel.style.display = '';
+        const manualLabel = document.getElementById('ae-manual-label-' + groupId);
+        if (manualLabel) manualLabel.style.display = '';
+        const recurringField = document.getElementById('ae-recurring-field-' + groupId);
+        if (recurringField) recurringField.style.display = '';
+        const submit = document.getElementById('ae-submit-' + groupId);
+        if (submit) submit.textContent = 'Add event';
+        updateWhenReadout(groupId);
     }}
 
     async function kickMember(groupId, userId, btn) {{
@@ -2993,7 +3311,7 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         const newStatus = wasActive ? '' : status;
         if (!wasActive) btn.classList.add('active');
         try {{
-            await fetch('/api/group/' + groupId + '/rsvp', {{
+            await fetch('/api/rsvp', {{
                 method: 'POST',
                 headers: {{'Content-Type': 'application/json'}},
                 body: JSON.stringify({{event_id: eventId, status: newStatus, user_token: '{user_token}'}})
@@ -3052,91 +3370,6 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
 
     {add_event_html}
 
-    {"" if not is_member else f"""<div style="border:1px solid #e8e4df;border-radius:8px;padding:20px;margin-bottom:28px;background:#fff;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-            <h2 style="margin:0;">Who&apos;s free this week?</h2>
-            <span style="font-size:12px;color:#888;">Tap to mark your days</span>
-        </div>
-        <div id="avail-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;"></div>
-        <div id="avail-names" style="margin-top:12px;font-size:13px;color:#555;"></div>
-    </div>
-    <script>
-    (function() {{
-        const grid = document.getElementById('avail-grid');
-        const namesEl = document.getElementById('avail-names');
-        const today = new Date(); today.setHours(0,0,0,0);
-        const days = [];
-        for (let i = 0; i < 7; i++) {{
-            const d = new Date(today); d.setDate(today.getDate() + i);
-            days.push(d.toISOString().slice(0,10));
-        }}
-
-        function render(data) {{
-            grid.innerHTML = '';
-            const mySlots = new Set((data.my_slots || []));
-            const slotCounts = data.slot_counts || {{}};
-            const slotNames = data.slot_names || {{}};
-            const totalMembers = {len(members)};
-            let bestDay = '';
-            let bestCount = 0;
-
-            days.forEach(day => {{
-                const d = new Date(day + 'T00:00:00');
-                const isToday = d.getTime() === today.getTime();
-                const label = isToday ? 'Today' : d.toLocaleDateString('en-US', {{weekday:'short'}});
-                const dateNum = d.getDate();
-                const isMine = mySlots.has(day);
-                const count = slotCounts[day] || 0;
-                const pct = totalMembers > 0 ? count / totalMembers : 0;
-
-                if (count > bestCount) {{ bestCount = count; bestDay = day; }}
-
-                // Color intensity based on how many members are free
-                let bg, border, textColor;
-                if (isMine) {{
-                    bg = '#4a6741'; border = '#4a6741'; textColor = '#fff';
-                }} else if (pct >= 0.6) {{
-                    bg = '#c8dcc4'; border = '#9ec097'; textColor = '#2d4a27';
-                }} else if (count > 0) {{
-                    bg = '#edf2eb'; border = '#d4e0d1'; textColor = '#4a6741';
-                }} else {{
-                    bg = '#fff'; border = '#e8e4df'; textColor = '#aaa';
-                }}
-
-                grid.innerHTML += `<div onclick="toggleAvail('${{day}}')" style="text-align:center;padding:10px 4px;border:2px solid ${{border}};border-radius:8px;background:${{bg}};color:${{textColor}};cursor:pointer;transition:all .15s;user-select:none;">
-                    <div style="font-size:11px;font-weight:600;">${{label}}</div>
-                    <div style="font-size:18px;font-weight:800;margin:2px 0;">${{dateNum}}</div>
-                    <div style="font-size:10px;opacity:.8;">${{count > 0 ? count + '/' + totalMembers : ''}}</div>
-                </div>`;
-            }});
-
-            // Show who's free on the best day
-            if (bestDay && bestCount > 0) {{
-                const names = slotNames[bestDay] || [];
-                const bestDate = new Date(bestDay + 'T00:00:00');
-                const dayLabel = bestDate.toLocaleDateString('en-US', {{weekday:'long', month:'short', day:'numeric'}});
-                namesEl.innerHTML = '<strong>' + dayLabel + '</strong> works best — ' + names.join(', ');
-            }} else {{
-                namesEl.innerHTML = 'No one has marked their availability yet. Be the first!';
-            }}
-        }}
-
-        function load() {{
-            fetch('/api/group/{group_id}/availability').then(r => r.json()).then(render);
-        }}
-
-        window.toggleAvail = function(day) {{
-            fetch('/api/group/{group_id}/availability', {{
-                method: 'POST',
-                headers: {{'Content-Type': 'application/json'}},
-                body: JSON.stringify({{slot: day}})
-            }}).then(r => r.json()).then(render);
-        }};
-
-        load();
-    }})();
-    </script>
-    """}
 
     {actions_html}
     {mute_html}
@@ -3145,6 +3378,267 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     {group_rsvp_extras}
     """, user=current_user, og=og))
     return _maybe_set_cookie(request, resp, current_user)
+
+
+@app.get("/share/event/{group_id:int}/{event_id:int}/{invite_code}", response_class=HTMLResponse)
+async def share_event_preview(group_id: int, event_id: int, invite_code: str, request: Request):
+    """Public preview of a group event with one-click RSVP. Anyone with the link can RSVP;
+    if they're not signed in, the RSVP buttons bounce them through Google sign-in first.
+    Acting on a button (the /rsvp/{status} sub-route) auto-joins them to the group."""
+    db = get_db()
+    group = db.get_group_by_id(group_id)
+    if not group or group.get("invite_code") != invite_code:
+        return HTMLResponse("<h1>Invalid share link</h1>", status_code=404)
+    event = db.get_group_event_by_id(event_id)
+    if not event or event["group_id"] != group_id:
+        return HTMLResponse("<h1>Event not found</h1>", status_code=404)
+
+    current_user = _get_current_user(request)
+    group_name = db.get_group_display_name(group)
+    event_id_key = f"grp_evt_{event_id}"
+
+    # Format when
+    from datetime import datetime as _dt
+    try:
+        start = _dt.fromisoformat(event["start_time"])
+        when_str = start.strftime("%A, %B %-d · %-I:%M %p")
+    except Exception:
+        when_str = event.get("start_time", "")
+
+    # Tally current RSVPs (sum across all users for this event_id)
+    rsvps = db.get_rsvps_for_events([event_id_key]).get(event_id_key, [])
+    going = [r for r in rsvps if r.get("status") == "going"]
+    maybe = [r for r in rsvps if r.get("status") == "maybe"]
+    going_names = ", ".join(r.get("user_name") or "Someone" for r in going[:8]) or "Be the first"
+    going_count = len(going)
+    maybe_count = len(maybe)
+
+    # User's existing RSVP (if any)
+    my_status = ""
+    if current_user:
+        for r in rsvps:
+            if r.get("user_id") == current_user["id"]:
+                my_status = r.get("status", "")
+                break
+
+    location_html = f'<div style="font-size:14px;color:#6b7280;margin-bottom:6px;">📍 {event["location"]}</div>' if event.get("location") else ""
+    notes_html = f'<div style="font-size:14px;color:#374151;margin-top:14px;background:#fafafa;padding:12px;border-radius:6px;line-height:1.5;">{event["notes"]}</div>' if event.get("notes") else ""
+    creator_html = f'<div style="font-size:12px;color:#9ca3af;margin-bottom:18px;">Added by {event.get("creator_name") or event.get("creator_email", "").split("@")[0]} · {group_name}</div>'
+
+    # Build RSVP buttons. If unauthed, each button is a Google sign-in link with next pointing to
+    # the rsvp action URL — Google return → action → auto-join + RSVP.
+    base = f"/share/event/{group_id}/{event_id}/{invite_code}/rsvp"
+    from urllib.parse import quote as _q
+    def rsvp_btn(status: str, label: str, color: str, active: bool) -> str:
+        href = f"{base}/{status}" if current_user else f"/auth/google/login?next={_q(base + '/' + status, safe='/')}"
+        bg = color if active else "#fff"
+        fg = "#fff" if active else color
+        return f'<a href="{href}" class="share-rsvp-btn" style="display:flex;align-items:center;justify-content:center;flex:1;min-width:0;padding:14px 8px;border:1.5px solid {color};background:{bg};color:{fg};font-size:13px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.5px;border-radius:8px;">{label}</a>'
+
+    rsvp_row = f'''<div style="display:flex;gap:8px;margin-bottom:14px;">
+        {rsvp_btn("going", "Going", "#4a6741", my_status == "going")}
+        {rsvp_btn("maybe", "Maybe", "#c4734f", my_status == "maybe")}
+        {rsvp_btn("no", "Can't go", "#888", my_status == "no")}
+    </div>'''
+
+    sign_in_hint = ""
+    if not current_user:
+        sign_in_hint = '<p style="font-size:12px;color:#888;text-align:center;margin-top:6px;">You\'ll sign in with Google to RSVP — we\'ll add you to the group automatically.</p>'
+
+    going_section = f'''<div style="margin-top:20px;padding-top:18px;border-top:1px solid #eee;">
+        <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">{going_count} going{f" · {maybe_count} maybe" if maybe_count else ""}</div>
+        <div style="font-size:14px;color:#1a1a1a;line-height:1.5;">{going_names}</div>
+    </div>''' if rsvps else ""
+
+    body = f'''
+    <div style="max-width:560px;margin:0 auto;">
+        {creator_html}
+        <h1 style="margin-bottom:8px;font-size:1.6rem;">{event["title"]}</h1>
+        <div style="font-size:15px;color:#4a6741;font-weight:600;margin-bottom:6px;">{when_str}</div>
+        {location_html}
+        {notes_html}
+        <div style="margin-top:24px;">
+            {rsvp_row}
+            {sign_in_hint}
+        </div>
+        {going_section}
+        <div style="margin-top:32px;padding-top:18px;border-top:1px solid #eee;text-align:center;">
+            <a href="/group/{group_id}" style="font-size:13px;color:#6b7280;">View full group →</a>
+        </div>
+    </div>
+    '''
+    settings = Settings()
+    canonical = f"{settings.dashboard_url}/share/event/{group_id}/{event_id}/{invite_code}"
+    og = {
+        "title": f"{event['title']} · {group_name}",
+        "description": f"{when_str}{' · ' + event['location'] if event.get('location') else ''}",
+        "image": f"{settings.dashboard_url}/og/event/{group_id}/{event_id}/{invite_code}.png",
+        "url": canonical,
+    }
+    return HTMLResponse(_layout(event["title"], body, user=current_user, og=og))
+
+
+@app.get("/share/event/{group_id:int}/{event_id:int}/{invite_code}/rsvp/{status}")
+async def share_event_rsvp(group_id: int, event_id: int, invite_code: str, status: str, request: Request):
+    """Authed-only action: validate share link, ensure membership, record RSVP, redirect."""
+    if status not in ("going", "maybe", "no"):
+        return HTMLResponse("<h1>Invalid RSVP status</h1>", status_code=400)
+    user = _get_current_user(request)
+    if not user:
+        from urllib.parse import quote as _q
+        nxt = f"/share/event/{group_id}/{event_id}/{invite_code}/rsvp/{status}"
+        return RedirectResponse(f"/auth/google/login?next={_q(nxt, safe='/')}", status_code=303)
+    db = get_db()
+    group = db.get_group_by_id(group_id)
+    if not group or group.get("invite_code") != invite_code:
+        return HTMLResponse("<h1>Invalid share link</h1>", status_code=404)
+    event = db.get_group_event_by_id(event_id)
+    if not event or event["group_id"] != group_id:
+        return HTMLResponse("<h1>Event not found</h1>", status_code=404)
+    if not db.is_group_member(group_id, user["id"]):
+        db.add_group_member(group_id, user["id"])
+    db.set_rsvp(user["id"], f"grp_evt_{event_id}", 0, status)
+    label = {"going": "going", "maybe": "maybe", "no": "can't go"}[status]
+    return RedirectResponse(f"/group/{group_id}?success=RSVP+saved+({label})", status_code=303)
+
+
+# --- OG image helpers (used by /share/event/* unfurl previews) ---
+
+_OG_FONT_CANDIDATES = [
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/System/Library/Fonts/HelveticaNeue.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+]
+_OG_FONT_REGULAR_CANDIDATES = [
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/System/Library/Fonts/HelveticaNeue.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+]
+
+
+def _load_font(candidates: list[str], size: int):
+    from PIL import ImageFont
+    import os
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
+
+
+def _wrap_text(text: str, font, max_width: int) -> list[str]:
+    """Greedy line wrap to fit max_width pixels."""
+    words = text.split()
+    lines, line = [], ""
+    for w in words:
+        candidate = (line + " " + w).strip()
+        bbox = font.getbbox(candidate)
+        width = bbox[2] - bbox[0]
+        if width > max_width and line:
+            lines.append(line)
+            line = w
+        else:
+            line = candidate
+    if line:
+        lines.append(line)
+    return lines
+
+
+@app.get("/og/event/{group_id:int}/{event_id:int}/{invite_code}.png")
+async def og_event_image(group_id: int, event_id: int, invite_code: str):
+    """1200x630 OG image for share/event/* unfurls. Cached for 1h."""
+    db = get_db()
+    group = db.get_group_by_id(group_id)
+    if not group or group.get("invite_code") != invite_code:
+        return Response(status_code=404)
+    event = db.get_group_event_by_id(event_id)
+    if not event or event["group_id"] != group_id:
+        return Response(status_code=404)
+
+    from PIL import Image, ImageDraw
+    from datetime import datetime as _dt
+    import io
+
+    W, H = 1200, 630
+    SAGE = (74, 103, 65)
+    SAGE_DARK = (58, 83, 52)
+    TERRA = (196, 115, 79)
+    WHITE = (255, 255, 255)
+    OFF_WHITE = (240, 238, 232)
+
+    img = Image.new("RGB", (W, H), SAGE)
+    draw = ImageDraw.Draw(img)
+
+    # Subtle vertical gradient (sage → darker sage)
+    for y in range(H):
+        t = y / H
+        r = int(SAGE[0] * (1 - t) + SAGE_DARK[0] * t)
+        g = int(SAGE[1] * (1 - t) + SAGE_DARK[1] * t)
+        b = int(SAGE[2] * (1 - t) + SAGE_DARK[2] * t)
+        draw.line([(0, y), (W, y)], fill=(r, g, b))
+
+    # Decorative leaf accent (top-right, soft)
+    for r in range(220, 50, -10):
+        alpha_color = (
+            min(255, SAGE[0] + (220 - r) // 4),
+            min(255, SAGE[1] + (220 - r) // 4),
+            min(255, SAGE[2] + (220 - r) // 4),
+        )
+        draw.ellipse([(W - 60 - r, -r // 2), (W - 60 + r, r * 2)], outline=alpha_color, width=1)
+
+    # Calyx wordmark (top-left)
+    logo_font = _load_font(_OG_FONT_CANDIDATES, 36)
+    draw.text((60, 50), "calyx", fill=WHITE, font=logo_font)
+
+    # Group name chip (top-left under logo)
+    group_name = db.get_group_display_name(group)
+    group_font = _load_font(_OG_FONT_REGULAR_CANDIDATES, 22)
+    draw.text((60, 102), group_name.upper(), fill=OFF_WHITE, font=group_font)
+
+    # Event title (large, wrapped)
+    title = event.get("title") or "Event"
+    title_font = _load_font(_OG_FONT_CANDIDATES, 78)
+    title_lines = _wrap_text(title, title_font, max_width=W - 120)[:3]  # max 3 lines
+    title_y = 200
+    for line in title_lines:
+        draw.text((60, title_y), line, fill=WHITE, font=title_font)
+        bbox = title_font.getbbox(line)
+        title_y += (bbox[3] - bbox[1]) + 12
+
+    # When (large)
+    try:
+        start = _dt.fromisoformat(event["start_time"])
+        when_str = start.strftime("%A, %B %-d · %-I:%M %p")
+    except Exception:
+        when_str = event.get("start_time", "")
+    when_font = _load_font(_OG_FONT_CANDIDATES, 42)
+    when_y = max(title_y + 30, 470)
+    draw.text((60, when_y), when_str, fill=(220, 230, 215), font=when_font)
+
+    # Location (smaller)
+    loc = event.get("location")
+    if loc:
+        loc_font = _load_font(_OG_FONT_REGULAR_CANDIDATES, 30)
+        # Tiny terracotta circle as a "pin", then the location text
+        cx, cy = 70, when_y + 78
+        draw.ellipse([(cx - 8, cy - 8), (cx + 8, cy + 8)], fill=TERRA)
+        draw.ellipse([(cx - 3, cy - 3), (cx + 3, cy + 3)], fill=SAGE_DARK)
+        draw.text((90, when_y + 60), loc, fill=OFF_WHITE, font=loc_font)
+
+    # Bottom bar accent
+    draw.rectangle([(0, H - 12), (W, H)], fill=TERRA)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/group/{group_id:int}/feed.ics")
@@ -3300,226 +3794,6 @@ async def group_ical_feed(group_id: int, min_score: int = 40):
     )
 
 
-@app.get("/group/{group_id:int}/plan", response_class=HTMLResponse)
-async def group_planner(group_id: int, request: Request):
-    """When2Meet-style group event planner — no account required."""
-    db = get_db()
-    current_user = _get_current_user(request)
-    group = db.get_group_by_id(group_id)
-    if not group:
-        return HTMLResponse("<h1>Group not found</h1>", status_code=404)
-
-    settings = Settings()
-    share_url = f"{settings.dashboard_url}/group/{group_id}/plan"
-
-    body = f"""
-    <style>
-      .planner-name-bar {{ background:#eef2ff;border:1.5px solid #c7d2fe;border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px; }}
-      .planner-name-bar input {{ flex:1;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;font-family:inherit; }}
-      .planner-name-bar button {{ padding:8px 18px;background:#4f46e5;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer; }}
-      .planner-name-bar .name-set {{ font-weight:700;font-size:15px;color:#1e1b4b; }}
-      .grid-wrap {{ overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px; }}
-      .plan-grid {{ border-collapse:collapse;min-width:100%; }}
-      .plan-grid th, .plan-grid td {{ padding:6px 10px;text-align:center;font-size:13px;white-space:nowrap; }}
-      .plan-grid thead th {{ position:sticky;top:0;background:#f8fafc;z-index:2;border-bottom:2px solid #e2e8f0;font-weight:600;color:#4f46e5; }}
-      .plan-grid .event-cell {{ text-align:left;position:sticky;left:0;background:#f8fafc;z-index:3;min-width:180px;max-width:260px;white-space:normal; }}
-      .plan-grid thead .event-cell {{ z-index:4; }}
-      .plan-grid .day-row td {{ background:#f1f5f9;font-weight:700;color:#334155;font-size:12px;text-transform:uppercase;letter-spacing:.5px;padding:8px 10px; }}
-      .rsvp-cell {{ cursor:pointer;width:48px;height:40px;border-radius:8px;transition:all .12s;user-select:none; }}
-      .rsvp-cell:hover {{ transform:scale(1.15);box-shadow:0 2px 8px rgba(0,0,0,.12); }}
-      .rsvp-cell[data-status="going"] {{ background:#22c55e;color:white; }}
-      .rsvp-cell[data-status="maybe"] {{ background:#eab308;color:white; }}
-      .rsvp-cell[data-status="cant"] {{ background:#ef4444;color:white; }}
-      .rsvp-cell[data-status=""] {{ background:#f1f5f9;color:#cbd5e1; }}
-      .event-title {{ font-weight:600;font-size:13px;color:#1e1b4b; }}
-      .event-meta {{ font-size:11px;color:#6b7280; }}
-      .share-box {{ background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:10px; }}
-      .share-box input {{ flex:1;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;background:white; }}
-      .share-box button {{ padding:6px 14px;background:#16a34a;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer; }}
-      .tally {{ font-size:11px;color:#6b7280;margin-left:4px; }}
-    </style>
-
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <h1 style="margin:0;">{group["name"]} &mdash; Plan</h1>
-      <a href="/group/{group_id}" style="font-size:13px;color:#4f46e5;">Back to group</a>
-    </div>
-
-    <div id="nameBar" class="planner-name-bar" style="display:none;">
-      <span>Your name:</span>
-      <input id="nameInput" placeholder="Type your name..." autocomplete="off">
-      <button onclick="setName()">Join</button>
-    </div>
-    <div id="nameDisplay" class="planner-name-bar" style="display:none;">
-      <span class="name-set" id="nameLabel"></span>
-      <button onclick="changeName()" style="background:transparent;color:#4f46e5;font-size:13px;padding:4px 10px;">Change</button>
-    </div>
-
-    <div class="grid-wrap">
-      <table class="plan-grid" id="planGrid">
-        <thead><tr><th class="event-cell">Event</th></tr></thead>
-        <tbody id="gridBody"></tbody>
-      </table>
-    </div>
-
-    <div class="share-box" style="margin-bottom:16px;">
-      <span style="font-weight:600;font-size:13px;">Share this link:</span>
-      <input id="shareUrl" value="{share_url}" readonly onclick="this.select()">
-      <button onclick="navigator.clipboard.writeText(document.getElementById(&apos;shareUrl&apos;).value);this.textContent=&apos;Copied!&apos;;setTimeout(()=>this.textContent=&apos;Copy&apos;,1500)">Copy</button>
-    </div>
-
-    <div style="font-size:12px;color:#9ca3af;margin-bottom:8px;">
-      Click cells to cycle: <span style="color:#22c55e;font-weight:700;">Going</span> &rarr;
-      <span style="color:#eab308;font-weight:700;">Maybe</span> &rarr;
-      <span style="color:#ef4444;font-weight:700;">Can&apos;t</span> &rarr; Empty
-    </div>
-
-    <script>
-    const SLUG = '{group_id}';
-    const USER_TOKEN = '{current_user.get("user_token", "") if current_user else ""}';
-    const USER_NAME = '{(current_user.get("name") or "").replace(chr(39), "&apos;")}' || '';
-    const CYCLE = ['', 'going', 'maybe', 'cant'];
-    const ICONS = {{'going': '&#10003;', 'maybe': '?', 'cant': '&#10007;', '': '&middot;'}};
-    let myName = '';
-    let gridData = null;
-
-    function loadName() {{
-      if (USER_NAME) {{
-        myName = USER_NAME;
-      }} else {{
-        myName = localStorage.getItem('recom_guest_' + SLUG) || '';
-      }}
-      updateNameUI();
-    }}
-
-    function updateNameUI() {{
-      if (myName) {{
-        document.getElementById('nameBar').style.display = 'none';
-        document.getElementById('nameDisplay').style.display = 'flex';
-        document.getElementById('nameLabel').textContent = myName;
-      }} else {{
-        document.getElementById('nameBar').style.display = 'flex';
-        document.getElementById('nameDisplay').style.display = 'none';
-      }}
-    }}
-
-    function setName() {{
-      const n = document.getElementById('nameInput').value.trim();
-      if (!n) return;
-      myName = n;
-      if (!USER_TOKEN) localStorage.setItem('recom_guest_' + SLUG, n);
-      updateNameUI();
-      fetchGrid();
-    }}
-
-    function changeName() {{
-      if (USER_TOKEN) return;
-      myName = '';
-      localStorage.removeItem('recom_guest_' + SLUG);
-      updateNameUI();
-    }}
-
-    async function fetchGrid() {{
-      const resp = await fetch('/api/group/' + SLUG + '/grid');
-      gridData = await resp.json();
-      renderGrid();
-    }}
-
-    function renderGrid() {{
-      if (!gridData) return;
-      const people = gridData.people;
-      const events = gridData.events;
-      const rsvps = gridData.rsvps;
-
-      // Header row
-      const thead = document.querySelector('#planGrid thead tr');
-      thead.innerHTML = '<th class="event-cell">Event</th>';
-      people.forEach(p => {{
-        const initials = p.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-        const typeIcon = p.type === 'member' ? '' : '<span style="font-size:9px;color:#9ca3af;"> guest</span>';
-        const isMe = p.name === myName;
-        thead.innerHTML += '<th style="' + (isMe ? 'background:#eef2ff;' : '') + '">' + initials + typeIcon + '<br><span style="font-size:10px;font-weight:400;color:#6b7280;">' + p.name.split(' ')[0] + '</span></th>';
-      }});
-      // Tally column
-      thead.innerHTML += '<th class="tally">Total</th>';
-
-      // Group events by day
-      const tbody = document.getElementById('gridBody');
-      tbody.innerHTML = '';
-      let currentDay = '';
-      events.forEach(ev => {{
-        if (ev.day_label !== currentDay) {{
-          currentDay = ev.day_label;
-          const dayRow = document.createElement('tr');
-          dayRow.className = 'day-row';
-          dayRow.innerHTML = '<td class="event-cell" colspan="' + (people.length + 2) + '">' + currentDay + '</td>';
-          tbody.appendChild(dayRow);
-        }}
-        const row = document.createElement('tr');
-        row.innerHTML = '<td class="event-cell"><div class="event-title">' + ev.title + '</div><div class="event-meta">' + ev.time + (ev.location ? ' &middot; ' + ev.location : '') + '</div></td>';
-
-        let goingCount = 0;
-        people.forEach(p => {{
-          const status = (rsvps[ev.event_id] && rsvps[ev.event_id][p.name]) || '';
-          if (status === 'going') goingCount++;
-          const cell = document.createElement('td');
-          cell.className = 'rsvp-cell';
-          cell.dataset.status = status;
-          cell.dataset.eid = ev.event_id;
-          cell.dataset.person = p.name;
-          cell.innerHTML = ICONS[status] || ICONS[''];
-          if (p.name === myName) {{
-            cell.style.cursor = 'pointer';
-            cell.onclick = () => cycleRsvp(cell);
-          }} else {{
-            cell.style.cursor = 'default';
-            cell.style.opacity = status ? '1' : '0.4';
-          }}
-          row.appendChild(cell);
-        }});
-        // Tally
-        const tally = document.createElement('td');
-        tally.className = 'tally';
-        tally.textContent = goingCount || '';
-        row.appendChild(tally);
-
-        tbody.appendChild(row);
-      }});
-    }}
-
-    async function cycleRsvp(cell) {{
-      if (!myName) return;
-      const cur = cell.dataset.status || '';
-      const idx = CYCLE.indexOf(cur);
-      const next = CYCLE[(idx + 1) % CYCLE.length];
-      cell.dataset.status = next;
-      cell.innerHTML = ICONS[next] || ICONS[''];
-
-      const body = {{event_id: cell.dataset.eid, status: next}};
-      if (USER_TOKEN) {{
-        body.user_token = USER_TOKEN;
-      }} else {{
-        body.guest_name = myName;
-      }}
-      await fetch('/api/group/' + SLUG + '/rsvp', {{
-        method: 'POST',
-        headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify(body)
-      }});
-      // Re-fetch to update tallies
-      fetchGrid();
-    }}
-
-    // Init
-    loadName();
-    fetchGrid();
-    // Poll every 30s
-    setInterval(fetchGrid, 30000);
-    </script>
-    """
-
-    resp = HTMLResponse(_layout(f"{group['name']} Plan", body, user=current_user))
-    return _maybe_set_cookie(request, resp, current_user)
-
 
 @app.post("/api/extract-event-url")
 async def extract_event_from_url(request: Request):
@@ -3601,21 +3875,45 @@ async def api_group_add_event(group_id: int, request: Request):
     title = (form.get("title") or "").strip()
     date = (form.get("date") or "").strip()
     time = (form.get("time") or "19:00").strip()
+    end_time_input = (form.get("end_time") or "").strip()
     location = (form.get("location") or "").strip()
+    event_url = (form.get("url") or "").strip()
+    notes = (form.get("notes") or "").strip()
+    edit_id_str = (form.get("edit_id") or "").strip()
     if not title or not date:
         return HTMLResponse("<h1>Title and date required</h1>", status_code=400)
     repeat_weeks = int(form.get("recurring") or "0")
     from datetime import datetime as _dt, timedelta as _td
     start_time = f"{date}T{time}:00"
-    event_row_id = db.add_group_event(group_id, user["id"], title, start_time, location=location)
+    end_time = f"{date}T{end_time_input}:00" if end_time_input else ""
+
+    # --- Edit mode: update existing event, no recurring expansion, no notification ---
+    if edit_id_str:
+        try:
+            edit_id = int(edit_id_str)
+        except ValueError:
+            return HTMLResponse("<h1>Invalid edit id</h1>", status_code=400)
+        existing = db.get_group_event_by_id(edit_id)
+        if not existing or existing["group_id"] != group_id:
+            return HTMLResponse("<h1>Event not found</h1>", status_code=404)
+        ok = db.update_group_event(edit_id, user["id"], title=title, start_time=start_time,
+                                   end_time=end_time, location=location, url=event_url, notes=notes)
+        if not ok:
+            return HTMLResponse("<h1>Not allowed</h1>", status_code=403)
+        return RedirectResponse(f"/group/{group_id}?success=Event+updated", status_code=303)
+
+    # --- Create mode ---
+    event_row_id = db.add_group_event(group_id, user["id"], title, start_time, end_time=end_time, location=location, url=event_url, notes=notes)
     # Auto-RSVP "going" for the person who added it
     ue_eid = f"grp_evt_{event_row_id}"
     db.set_rsvp(user["id"], ue_eid, 0, "going")
     if repeat_weeks > 1:
         base_date = _dt.fromisoformat(start_time)
+        end_base = _dt.fromisoformat(end_time) if end_time else None
         for week in range(1, repeat_weeks):
             next_dt = base_date + _td(weeks=week)
-            db.add_group_event(group_id, user["id"], title, next_dt.isoformat(), location=location)
+            next_end = (end_base + _td(weeks=week)).isoformat() if end_base else ""
+            db.add_group_event(group_id, user["id"], title, next_dt.isoformat(), end_time=next_end, location=location, url=event_url, notes=notes)
     # Notify other group members
     try:
         members = db.get_group_members(group_id)
@@ -3688,92 +3986,6 @@ async def api_group_leave(group_id: int, request: Request):
     db.leave_group(group_id, user["id"])
     return RedirectResponse("/groups?success=Left+group", status_code=303)
 
-
-def _get_availability_data(db, poll_id: int, user_id: int) -> dict:
-    my_slots = [r["slot"] for r in db.conn.execute(
-        "SELECT slot FROM availability_votes WHERE poll_id=? AND user_id=? AND available=1",
-        (poll_id, user_id),
-    ).fetchall()]
-    slot_counts = {}
-    slot_names: dict[str, list[str]] = {}
-    for r in db.conn.execute(
-        """SELECT av.slot, u.name as user_name FROM availability_votes av
-           JOIN users u ON u.id = av.user_id
-           WHERE av.poll_id=? AND av.available=1""",
-        (poll_id,),
-    ).fetchall():
-        slot = r["slot"]
-        slot_counts[slot] = slot_counts.get(slot, 0) + 1
-        slot_names.setdefault(slot, []).append(r["user_name"] or "?")
-    return {"my_slots": my_slots, "slot_counts": slot_counts, "slot_names": slot_names}
-
-
-@app.get("/api/group/{group_id:int}/availability")
-async def api_group_availability_get(group_id: int, request: Request):
-    """Get availability poll data for a group."""
-    user = _get_current_user(request)
-    db = get_db()
-    if not user:
-        return JSONResponse({"my_slots": [], "slot_counts": {}})
-
-    # Get or create poll for this group
-    poll = db.conn.execute(
-        "SELECT id FROM availability_polls WHERE group_id=? ORDER BY id DESC LIMIT 1",
-        (group_id,),
-    ).fetchone()
-    if not poll:
-        db.conn.execute(
-            "INSERT INTO availability_polls (group_id, created_by, created_at) VALUES (?, ?, ?)",
-            (group_id, user["id"], datetime.now().isoformat()),
-        )
-        db.conn.commit()
-        poll = db.conn.execute("SELECT id FROM availability_polls WHERE group_id=? ORDER BY id DESC LIMIT 1", (group_id,)).fetchone()
-
-    poll_id = poll["id"]
-    return JSONResponse(_get_availability_data(db, poll_id, user["id"]))
-
-
-@app.post("/api/group/{group_id:int}/availability")
-async def api_group_availability_vote(group_id: int, request: Request):
-    """Toggle availability for a slot."""
-    user = _get_current_user(request)
-    db = get_db()
-    if not user:
-        return JSONResponse({"ok": False}, status_code=401)
-    body = await request.json()
-    slot = body.get("slot", "")
-    if not slot:
-        return JSONResponse({"ok": False})
-
-    poll = db.conn.execute(
-        "SELECT id FROM availability_polls WHERE group_id=? ORDER BY id DESC LIMIT 1",
-        (group_id,),
-    ).fetchone()
-    if not poll:
-        return JSONResponse({"ok": False})
-
-    poll_id = poll["id"]
-    existing = db.conn.execute(
-        "SELECT available FROM availability_votes WHERE poll_id=? AND user_id=? AND slot=?",
-        (poll_id, user["id"], slot),
-    ).fetchone()
-
-    if existing:
-        new_val = 0 if existing["available"] else 1
-        db.conn.execute(
-            "UPDATE availability_votes SET available=? WHERE poll_id=? AND user_id=? AND slot=?",
-            (new_val, poll_id, user["id"], slot),
-        )
-    else:
-        db.conn.execute(
-            "INSERT INTO availability_votes (poll_id, user_id, slot, available) VALUES (?, ?, ?, 1)",
-            (poll_id, user["id"], slot),
-        )
-    db.conn.commit()
-
-    return JSONResponse(_get_availability_data(db, poll_id, user["id"]))
-
-
 @app.post("/api/group/{group_id:int}/mute")
 async def api_group_mute(group_id: int, request: Request):
     """Toggle notification mute for current user in this group."""
@@ -3826,591 +4038,6 @@ async def api_group_delete(group_id: int, request: Request):
     if not db.delete_group(group_id, user["id"]):
         return HTMLResponse("<h1>Only the group creator can delete it</h1>", status_code=403)
     return RedirectResponse("/groups", status_code=303)
-
-
-@app.post("/api/group/{group_id:int}/rsvp", response_class=JSONResponse)
-async def api_group_planner_rsvp(group_id: int, request: Request):
-    """Set RSVP from the group planner — works for guests and members."""
-    db = get_db()
-    group = db.get_group_by_id(group_id)
-    if not group:
-        return JSONResponse({"error": "Group not found"}, status_code=404)
-
-    data = await request.json()
-    event_id = data.get("event_id", "")
-    status = data.get("status", "")
-    user_token = data.get("user_token", "")
-    guest_name = data.get("guest_name", "")
-
-    if not event_id:
-        return JSONResponse({"error": "event_id required"}, status_code=400)
-
-    if user_token:
-        user = db.get_user_by_token(user_token)
-        if not user:
-            return JSONResponse({"error": "Invalid token"}, status_code=401)
-        # Find a run_id for this event
-        row = db.conn.execute(
-            "SELECT run_id FROM events WHERE event_id = ? ORDER BY run_id DESC LIMIT 1",
-            (event_id,),
-        ).fetchone()
-        run_id = row["run_id"] if row else 0
-        if status:
-            db.set_rsvp(user["id"], event_id, run_id, status)
-        else:
-            # Remove RSVP
-            db.conn.execute(
-                "DELETE FROM rsvps WHERE user_id = ? AND event_id = ?",
-                (user["id"], event_id),
-            )
-            db.conn.commit()
-    elif guest_name:
-        db.set_guest_rsvp(group["id"], event_id, guest_name.strip(), status)
-    else:
-        return JSONResponse({"error": "user_token or guest_name required"}, status_code=400)
-
-    return {"ok": True}
-
-
-@app.get("/api/group/{group_id:int}/grid", response_class=JSONResponse)
-async def api_group_planner_grid(group_id: int):
-    """Return JSON grid data for the group planner."""
-    db = get_db()
-    group = db.get_group_by_id(group_id)
-    if not group:
-        return JSONResponse({"error": "Group not found"}, status_code=404)
-
-    gid = group["id"]
-    events = db.get_group_events(gid)
-    members = db.get_group_members(gid)
-    guests = db.get_group_guests(gid)
-
-    # Build event list grouped by day
-    from collections import defaultdict
-    from datetime import datetime as dt
-
-    event_ids = [e.get("event_id", "") for e in events if e.get("event_id")]
-    member_rsvps = db.get_rsvps_for_events(event_ids)
-    guest_rsvps = db.get_group_guest_rsvps(gid, event_ids)
-
-    # People list: members first, then guests (excluding names that match members)
-    member_names = {(m.get("name") or m.get("email", "")) for m in members}
-    people = [{"name": m.get("name") or m.get("email", ""), "type": "member"} for m in members]
-    for g in guests:
-        if g not in member_names:
-            people.append({"name": g, "type": "guest"})
-
-    # Build rsvps map: {event_id: {person_name: status}}
-    rsvps: dict[str, dict[str, str]] = {}
-    for eid in event_ids:
-        rsvps[eid] = {}
-        for rv in member_rsvps.get(eid, []):
-            name = rv.get("user_name") or rv.get("user_email", "")
-            rsvps[eid][name] = rv["status"]
-        for rv in guest_rsvps.get(eid, []):
-            rsvps[eid][rv["guest_name"]] = rv["status"]
-
-    # Build event rows grouped by day
-    day_events: dict[str, list] = defaultdict(list)
-    for e in events:
-        if not e.get("start_time"):
-            continue
-        try:
-            d = dt.fromisoformat(e["start_time"])
-            day_key = d.strftime("%Y-%m-%d")
-            day_events[day_key].append((d, e))
-        except (ValueError, TypeError):
-            pass
-
-    event_rows = []
-    for day_str in sorted(day_events.keys()):
-        items = day_events[day_str]
-        items.sort(key=lambda x: -(x[1].get("score") or 0))
-        try:
-            d = dt.strptime(day_str, "%Y-%m-%d")
-            day_label = d.strftime("%A, %b %-d")
-        except ValueError:
-            day_label = day_str
-
-        for event_dt, e in items[:8]:
-            try:
-                time_str = event_dt.strftime("%-I:%M %p")
-            except ValueError:
-                time_str = ""
-            event_rows.append({
-                "event_id": e.get("event_id", ""),
-                "title": (e.get("title") or "")[:55],
-                "time": time_str,
-                "location": (e.get("location_name") or "")[:30],
-                "score": int(e.get("score") or 0),
-                "day_label": day_label,
-            })
-
-    return {"events": event_rows, "people": people, "rsvps": rsvps}
-
-
-@app.get("/feed.ics")
-async def ical_feed(min_score: int = 55):
-    """iCal feed of top recommended events. Subscribe in Google/Apple Calendar.
-    Default: score >= 55 (strong matches). Use ?min_score=25 for everything kept."""
-    db = get_db()
-    settings = Settings()
-    runs = db.get_runs()
-    if not runs:
-        return Response(content="BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR",
-                       media_type="text/calendar")
-
-    run_id = runs[0]["id"]
-    events = db.get_run_events(run_id)
-    kept = [e for e in events if e.get("keep") and (e.get("score") or 0) >= min_score]
-
-    from datetime import timezone as _tz
-    utcnow = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
-
-    lines = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        "PRODID:-//recom//Event Recommender//EN",
-        "CALSCALE:GREGORIAN",
-        "METHOD:PUBLISH",
-        "X-WR-CALNAME:Calyx Events",
-        "X-WR-CALDESC:Personalized event recommendations for Boston/Cambridge",
-        "X-APPLE-CALENDAR-COLOR:#4f46e5",
-        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
-    ]
-
-    def _ical_escape(text: str) -> str:
-        """Escape text for iCal property values per RFC 5545."""
-        import html as _html
-        text = _html.unescape(text)  # convert &quot; &#8212; etc to real chars
-        return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
-
-    def _fold_line(line: str) -> str:
-        """Fold long lines per RFC 5545 (max 75 octets)."""
-        if len(line.encode("utf-8")) <= 75:
-            return line
-        result = []
-        encoded = line.encode("utf-8")
-        first = True
-        while encoded:
-            limit = 75 if first else 74  # continuation lines have leading space
-            chunk = encoded[:limit]
-            # Don't split multi-byte chars
-            while limit > 0:
-                try:
-                    chunk.decode("utf-8")
-                    break
-                except UnicodeDecodeError:
-                    limit -= 1
-                    chunk = encoded[:limit]
-            if first:
-                result.append(chunk.decode("utf-8"))
-                first = False
-            else:
-                result.append(" " + chunk.decode("utf-8"))
-            encoded = encoded[limit:]
-        return "\r\n".join(result)
-
-    # Sort by score descending, then pick top 5 per day with diversity
-    kept.sort(key=lambda x: -(x.get("score") or 0))
-    from collections import defaultdict as _dd
-    day_counts: dict[str, int] = _dd(int)
-    day_source_counts: dict[str, dict[str, int]] = _dd(lambda: _dd(int))
-    max_per_day = 5
-    max_per_source_per_day = 2
-
-    for e in kept:
-        start = e.get("start_time")
-        if not start:
-            continue
-        try:
-            dt = datetime.fromisoformat(start)
-            day_key = dt.strftime("%Y-%m-%d")
-        except (ValueError, TypeError):
-            continue
-
-        if day_counts[day_key] >= max_per_day:
-            continue
-
-        # Limit per vibe per day for diversity (max 2 social, 2 intellectual, etc.)
-        vibe = e.get("vibe", "mixed")
-        if day_source_counts[day_key][vibe] >= max_per_source_per_day:
-            continue
-        day_counts[day_key] += 1
-        day_source_counts[day_key][vibe] += 1
-
-        dtstart = dt.strftime("%Y%m%dT%H%M%S")
-        title = _ical_escape(e.get("title") or "")
-        location = _ical_escape(e.get("location_name") or "")
-        url = e.get("url") or ""
-        score = int(e.get("score") or 0)
-        reason = _ical_escape(e.get("match_reason") or "")
-        price = _ical_escape(e.get("price") or "Free")
-        uid = f"{e.get('event_id', '')}@recom"
-
-        # Distance info
-        dist_str = ""
-        lat, lon = e.get("lat"), e.get("lon")
-        if lat and lon and not e.get("is_online"):
-            import math as _math
-            dlat = _math.radians(lat - settings.latitude)
-            dlon = _math.radians(lon - settings.longitude)
-            a = _math.sin(dlat/2)**2 + _math.cos(_math.radians(settings.latitude))*_math.cos(_math.radians(lat))*_math.sin(dlon/2)**2
-            km = 6371 * 2 * _math.atan2(_math.sqrt(a), _math.sqrt(1-a))
-            dist_str = f"\\n📍 {km:.1f}km from home"
-
-        vevent_lines = [
-            "BEGIN:VEVENT",
-            _fold_line(f"UID:{uid}"),
-            f"DTSTAMP:{utcnow}",
-            f"DTSTART:{dtstart}",
-            _fold_line(f"SUMMARY:[{score}] {title}"),
-            _fold_line(f"LOCATION:{location}"),
-            _fold_line(f"URL:{url}"),
-            _fold_line(f"DESCRIPTION:{price}\\nScore: {score}/100{dist_str}\\n{reason}"),
-            f"CATEGORIES:{vibe}",
-            "TRANSP:TRANSPARENT",
-            "DURATION:PT2H",
-        ]
-        if lat and lon:
-            vevent_lines.append(f"GEO:{lat};{lon}")
-        vevent_lines.append("END:VEVENT")
-        lines.extend(vevent_lines)
-
-    lines.append("END:VCALENDAR")
-    ical_text = "\r\n".join(lines)
-
-    return Response(
-        content=ical_text,
-        media_type="text/calendar",
-        headers={"Content-Disposition": "inline; filename=recom.ics"},
-    )
-
-
-# ---------------------------------------------------------------------------
-# Onboarding — /join page for new users
-# ---------------------------------------------------------------------------
-
-@app.get("/join", response_class=HTMLResponse)
-async def join_page(success: str = ""):
-    db = get_db()
-    users = db.get_users()
-    users_html = ""
-    for u in users:
-        users_html += f"""<tr>
-            <td>{u['name'] or '—'}</td>
-            <td>{u['email']}</td>
-            <td>{'✅' if u.get('spotify_token_file') else '❌'}</td>
-            <td>{'✅' if u.get('youtube_token_file') else '❌'}</td>
-            <td>{u['created_at'][:10]}</td>
-        </tr>"""
-
-    success_banner = ""
-    if success:
-        success_banner = f"""
-        <div style="background: #dcfce7; border: 2px solid #22c55e; border-radius: 8px;
-                    padding: 16px; margin-bottom: 16px; text-align: center; color: #166534;">
-            ✅ {success}
-        </div>"""
-
-    settings = Settings()
-
-    _default_og = '<meta property="og:site_name" content="Calyx"><meta property="og:type" content="website"><meta property="og:title" content="Join Calyx"><meta property="og:description" content="Find events and make plans with friends"><meta property="og:image" content="https://calyx.arthgupta.dev/static/og-image.png"><meta name="twitter:card" content="summary_large_image">'
-    return HTMLResponse(LAYOUT_STYLE.replace("__TITLE__", "Join Calyx").replace("__OG_TAGS__", _default_og) + render_nav(None) + f"""
-    <div class="app-content" style="max-width:560px;">
-
-    {success_banner}
-
-    <div style="text-align:center;padding:32px 0 24px;">
-      <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#818cf8;text-transform:uppercase;margin-bottom:12px;">◉ CALYX</div>
-      <h1 style="font-size:30px;font-weight:800;letter-spacing:-.5px;margin-bottom:10px;">Get your Discover Weekly<br>for real life</h1>
-      <p style="color:#6b7280;font-size:15px;line-height:1.6;">AI-curated Boston events every week, based on what you actually listen to and watch.</p>
-    </div>
-
-    <div class="card" style="margin-bottom:16px;border-top:3px solid #818cf8;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-        <div style="background:#ede9fe;color:#7c3aed;font-weight:800;font-size:12px;padding:4px 10px;border-radius:20px;">Step 1</div>
-        <h2 style="font-size:16px;font-weight:700;">Create your account</h2>
-      </div>
-      <form action="/api/join" method="post" style="display:flex;flex-direction:column;gap:10px;">
-        <input name="name" placeholder="Your name" required
-               style="padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;width:100%;">
-        <input name="email" type="email" placeholder="you@gmail.com" required
-               style="padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;width:100%;">
-        <input name="location" placeholder="Cambridge, MA" value="Cambridge, MA"
-               style="padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;width:100%;">
-        <button type="submit" style="padding:12px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">
-          Get started &rarr;
-        </button>
-      </form>
-      <p style="margin-top:12px;font-size:13px;color:#9ca3af;text-align:center;">Already have an account? <a href="/login" style="color:#4f46e5;font-weight:600;">Sign in</a></p>
-    </div>
-
-    <p style="text-align:center;color:#6b7280;font-size:13px;margin-top:8px;">Takes 2 minutes. No credit card.</p>
-    </div>
-    """ + LAYOUT_FOOT)
-
-
-@app.post("/api/join")
-async def api_join(request: Request):
-    form = await request.form()
-    email = form.get("email", "").strip()
-    name = form.get("name", "").strip()
-    location = form.get("location", "Cambridge, MA").strip()
-
-    if not email:
-        return HTMLResponse("<h1>Email required</h1>", status_code=400)
-
-    db = get_db()
-    user_id = db.create_user(email, name)
-    if location:
-        db.update_user(user_id, location_query=location)
-
-    # Seed taste items for new user
-    db.seed_taste_items(user_id)
-
-    # Send magic link email
-    user = db.get_user(user_id)
-    token = user["user_token"] if user else ""
-    settings = Settings()
-    try:
-        send_magic_link(email, token, settings.dashboard_url, settings)
-    except Exception:
-        logger.exception("Failed to send magic link to %s", email)
-
-    resp = RedirectResponse(f"/onboarding/{token}", status_code=303)
-    _set_token_cookie(resp, token)
-    return resp
-
-
-@app.get("/onboarding/{token}", response_class=HTMLResponse)
-async def onboarding_page(token: str):
-    """Post-signup Elo taste onboarding — 10 quick matchups."""
-    db = get_db()
-    owner = db.get_user_by_token(token)
-    if not owner:
-        return RedirectResponse("/join")
-    user_id = owner["id"]
-    name = (owner.get("name") or "").split()[0] or "there"
-    settings = Settings()
-
-    db.seed_taste_items(user_id)
-    items = db.get_taste_items(user_id)
-    pair = db.get_taste_matchup_pair(user_id)
-    pair_json = json.dumps([dict(pair[0]), dict(pair[1])]) if pair else "null"
-    items_json = json.dumps(items, default=str)
-    feed_url = f"{settings.dashboard_url}/u/{token}/feed.ics"
-
-    resp = HTMLResponse(f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Set up your taste — Calyx</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{ font-family: 'Inter', sans-serif; background: #0f0f1a; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 40px 16px 80px; }}
-.logo {{ font-size: 15px; font-weight: 800; color: #818cf8; letter-spacing: .5px; margin-bottom: 40px; }}
-.progress-wrap {{ width: 100%; max-width: 480px; margin-bottom: 32px; }}
-.progress-bar {{ height: 4px; background: #1e1e3a; border-radius: 2px; overflow: hidden; }}
-.progress-fill {{ height: 100%; background: linear-gradient(90deg, #818cf8, #c084fc); border-radius: 2px; transition: width .4s ease; }}
-.progress-label {{ font-size: 12px; color: #4b5563; margin-top: 8px; text-align: right; }}
-.card {{ width: 100%; max-width: 480px; }}
-.phase {{ display: none; }}
-.phase.active {{ display: block; }}
-/* Welcome */
-.welcome-icon {{ font-size: 48px; text-align: center; margin-bottom: 16px; }}
-.welcome-title {{ font-size: 1.8rem; font-weight: 900; text-align: center; background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }}
-.welcome-sub {{ text-align: center; color: #94a3b8; font-size: 15px; line-height: 1.6; margin-bottom: 28px; }}
-.btn-primary {{ display: block; width: 100%; padding: 14px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; border: none; border-radius: 16px; font-size: 16px; font-weight: 700; cursor: pointer; font-family: inherit; text-align: center; text-decoration: none; transition: transform .15s, box-shadow .15s; box-shadow: 0 4px 20px rgba(79,70,229,.4); }}
-.btn-primary:hover {{ transform: translateY(-1px); box-shadow: 0 6px 28px rgba(79,70,229,.5); }}
-.btn-secondary {{ display: block; width: 100%; padding: 12px; background: transparent; color: #6b7280; border: 1px solid #374151; border-radius: 16px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: center; margin-top: 10px; transition: all .15s; text-decoration: none; }}
-.btn-secondary:hover {{ border-color: #6b7280; color: #9ca3af; }}
-/* Matchup */
-.matchup-label {{ text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; color: #6366f1; margin-bottom: 20px; }}
-.question {{ text-align: center; font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin-bottom: 24px; line-height: 1.4; }}
-.vs-grid {{ display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; margin-bottom: 16px; }}
-.opt {{ background: #1e1e3a; border: 2px solid #2d2d5e; border-radius: 16px; padding: 20px 12px; text-align: center; cursor: pointer; transition: all .2s; }}
-.opt:hover {{ border-color: #818cf8; background: #1a1a2e; transform: translateY(-2px); box-shadow: 0 6px 24px rgba(129,140,248,.2); }}
-.opt.chosen {{ border-color: #22c55e; background: #052e16; pointer-events: none; }}
-.opt-cat {{ font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #6b7280; margin-bottom: 8px; }}
-.opt-label {{ font-size: 15px; font-weight: 700; color: #e2e8f0; line-height: 1.3; }}
-.vs-badge {{ font-size: 20px; font-weight: 900; color: #374151; text-align: center; }}
-.equal-link {{ display: block; text-align: center; font-size: 13px; color: #4b5563; cursor: pointer; margin-top: 4px; padding: 8px; transition: color .15s; background: none; border: none; font-family: inherit; width: 100%; }}
-.equal-link:hover {{ color: #6b7280; }}
-/* Finish */
-.finish-icon {{ font-size: 56px; text-align: center; margin-bottom: 16px; }}
-.finish-title {{ font-size: 1.6rem; font-weight: 900; text-align: center; color: #e2e8f0; margin-bottom: 8px; }}
-.finish-sub {{ text-align: center; color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }}
-.top-3 {{ background: #1e1e3a; border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid #2d2d5e; }}
-.top-3-label {{ font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #6366f1; margin-bottom: 12px; }}
-.top-item {{ display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #2d2d5e; }}
-.top-item:last-child {{ border-bottom: none; }}
-.top-rank {{ font-size: 13px; font-weight: 800; color: #4b5563; width: 20px; }}
-.top-label {{ font-size: 14px; font-weight: 600; color: #e2e8f0; flex: 1; }}
-.steps-next {{ display: flex; flex-direction: column; gap: 10px; }}
-.step-chip {{ display: flex; align-items: center; gap: 12px; background: #1e1e3a; border-radius: 12px; padding: 14px 16px; border: 1px solid #2d2d5e; text-decoration: none; color: inherit; transition: border-color .15s; }}
-.step-chip:hover {{ border-color: #4b5563; }}
-.step-chip-icon {{ font-size: 22px; flex-shrink: 0; }}
-.step-chip-text {{ flex: 1; }}
-.step-chip-title {{ font-size: 14px; font-weight: 700; color: #e2e8f0; }}
-.step-chip-sub {{ font-size: 12px; color: #6b7280; margin-top: 2px; }}
-.step-chip-arrow {{ color: #4b5563; font-size: 18px; }}
-</style>
-</head>
-<body>
-<div class="logo">◉ calyx</div>
-
-<div class="progress-wrap">
-  <div class="progress-bar"><div class="progress-fill" id="prog" style="width:0%"></div></div>
-  <div class="progress-label" id="prog-label">0 / 10 matchups</div>
-</div>
-
-<!-- Phase 1: Welcome -->
-<div class="card phase active" id="phase-welcome">
-  <div class="welcome-icon">👋</div>
-  <div class="welcome-title">Hey {name}!</div>
-  <div class="welcome-sub">Before your first email, tell us what you love doing. 10 quick picks and we'll have enough to find you something great.</div>
-  <button class="btn-primary" onclick="startMatchups()">Let's go →</button>
-  <a href="/" class="btn-secondary">Skip for now</a>
-</div>
-
-<!-- Phase 2: Matchups -->
-<div class="card phase" id="phase-matchup">
-  <div class="matchup-label" id="matchup-counter">Matchup 1 of 10</div>
-  <div class="question">Which sounds more fun to you?</div>
-  <div class="vs-grid">
-    <div class="opt" id="opt-a" onclick="vote(null, 'a')">
-      <div class="opt-cat" id="cat-a"></div>
-      <div class="opt-label" id="label-a"></div>
-    </div>
-    <div class="vs-badge">vs</div>
-    <div class="opt" id="opt-b" onclick="vote(null, 'b')">
-      <div class="opt-cat" id="cat-b"></div>
-      <div class="opt-label" id="label-b"></div>
-    </div>
-  </div>
-  <button class="equal-link" onclick="vote(null, null)">Equal / hard to choose</button>
-</div>
-
-<!-- Phase 3: Done -->
-<div class="card phase" id="phase-done">
-  <div class="finish-icon">🎯</div>
-  <div class="finish-title">Taste profile set!</div>
-  <div class="finish-sub">Based on your picks, here's what we'll look for first:</div>
-  <div class="top-3" id="top-3-list"></div>
-  <div class="steps-next">
-    <a href="/auth/spotify" class="step-chip">
-      <span class="step-chip-icon">🎵</span>
-      <div class="step-chip-text">
-        <div class="step-chip-title">Connect Spotify</div>
-        <div class="step-chip-sub">Find concerts by artists you already love</div>
-      </div>
-      <span class="step-chip-arrow">→</span>
-    </a>
-    <div class="step-chip" style="cursor:default;" onclick="copyFeed()">
-      <span class="step-chip-icon">📅</span>
-      <div class="step-chip-text">
-        <div class="step-chip-title">Subscribe to your calendar</div>
-        <div class="step-chip-sub" id="feed-url" style="word-break:break-all;font-size:11px">{feed_url}</div>
-      </div>
-      <span class="step-chip-arrow" id="copy-icon">⎘</span>
-    </div>
-    <a href="/" class="btn-primary" style="margin-top:4px">Go to my calendar →</a>
-  </div>
-</div>
-
-<script>
-const ITEMS = {items_json};
-let PAIR = {pair_json};
-let matchupsDone = 0;
-const TARGET = 10;
-
-const CAT_COLORS = {{
-  music:'#f59e0b', social:'#3b82f6', arts:'#ec4899',
-  intellectual:'#8b5cf6', active:'#22c55e', food:'#f97316',
-  maker:'#06b6d4', general:'#6b7280'
-}};
-
-function setPhase(id) {{
-  document.querySelectorAll('.phase').forEach(p => p.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-}}
-
-function startMatchups() {{
-  setPhase('phase-matchup');
-  renderPair();
-}}
-
-function renderPair() {{
-  if (!PAIR) {{ finish(); return; }}
-  const [a, b] = PAIR;
-  document.getElementById('cat-a').textContent = a.category;
-  document.getElementById('cat-a').style.color = CAT_COLORS[a.category] || '#6b7280';
-  document.getElementById('label-a').textContent = a.label;
-  document.getElementById('cat-b').textContent = b.category;
-  document.getElementById('cat-b').style.color = CAT_COLORS[b.category] || '#6b7280';
-  document.getElementById('label-b').textContent = b.label;
-  document.getElementById('opt-a').classList.remove('chosen');
-  document.getElementById('opt-b').classList.remove('chosen');
-}}
-
-function vote(e, side) {{
-  if (!PAIR) return;
-  const [a, b] = PAIR;
-  const winnerId = side === 'a' ? a.id : side === 'b' ? b.id : null;
-  if (side) document.getElementById('opt-' + side).classList.add('chosen');
-
-  fetch('/api/taste/vote', {{
-    method: 'POST',
-    headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{item_a_id: a.id, item_b_id: b.id, winner_id: winnerId}})
-  }}).then(r => r.json()).then(d => {{
-    PAIR = d.next_pair;
-    matchupsDone++;
-    const pct = Math.min(100, Math.round(matchupsDone / TARGET * 100));
-    document.getElementById('prog').style.width = pct + '%';
-    document.getElementById('prog-label').textContent = matchupsDone + ' / ' + TARGET + ' matchups';
-    document.getElementById('matchup-counter').textContent = 'Matchup ' + (matchupsDone + 1) + ' of ' + TARGET;
-
-    if (matchupsDone >= TARGET || !PAIR) {{
-      // Brief flash of chosen option, then finish
-      setTimeout(() => finish(d.items), 300);
-    }} else {{
-      setTimeout(() => renderPair(), 200);
-    }}
-  }});
-}}
-
-function finish(items) {{
-  setPhase('phase-done');
-  document.getElementById('prog').style.width = '100%';
-  document.getElementById('prog-label').textContent = 'Done!';
-
-  if (!items) items = ITEMS;
-  const sorted = [...items].sort((a, b) => b.elo_rating - a.elo_rating).slice(0, 3);
-  const list = document.getElementById('top-3-list');
-  list.innerHTML = '<div class="top-3-label">Your top picks so far</div>' +
-    sorted.map((item, i) => `<div class="top-item">
-      <span class="top-rank">#${{i+1}}</span>
-      <span class="top-label">${{item.label}}</span>
-    </div>`).join('');
-}}
-
-function copyFeed() {{
-  const url = document.getElementById('feed-url').textContent.trim();
-  navigator.clipboard.writeText(url).then(() => {{
-    document.getElementById('copy-icon').textContent = '✓';
-    setTimeout(() => document.getElementById('copy-icon').textContent = '⎘', 2000);
-  }});
-}}
-</script>
-</body>
-</html>""")
-    _set_token_cookie(resp, token)
-    return resp
 
 
 @app.get("/auth/spotify")
@@ -4584,45 +4211,96 @@ async def youtube_callback(code: str = "", error: str = "", state: str = ""):
     return resp
 
 
-@app.get("/login", response_class=HTMLResponse)
-async def login_page():
-    return HTMLResponse(_layout("Login", """
-    <h1>Sign In</h1>
-    <div class="card" style="max-width:400px;">
-        <p style="color:#6b7280;margin-bottom:16px;">Enter your email and we'll send you a link to your events.</p>
-        <form action="/api/login" method="post" style="display:flex;flex-direction:column;gap:12px;">
-            <input name="email" type="email" placeholder="you@gmail.com" required
-                   style="padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:15px;">
-            <button type="submit" style="padding:10px 20px;background:#4f46e5;color:white;border:none;
-                    border-radius:8px;font-size:15px;cursor:pointer;font-weight:600;">Send me my link</button>
-        </form>
-        <p style="margin-top:16px;font-size:13px;color:#9ca3af;">New here? <a href="/join">Join Calyx</a></p>
+def _google_signin_cta(next_url: str = "/calendar", heading: str | None = None, subhead: str | None = None) -> str:
+    """Render the standard Google sign-in CTA card. Used by /login and invite flows."""
+    from urllib.parse import quote
+    href = f"/auth/google/login?next={quote(next_url, safe='/')}"
+    h = heading or "Sign in to Calyx"
+    sub = subhead or "Find events and make plans with friends."
+    google_g = '<svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>'
+    return f"""
+    <div class="app-content" style="max-width:480px;">
+    <div style="text-align:center;padding:48px 0 24px;">
+      <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#4a6741;text-transform:uppercase;margin-bottom:12px;">◉ CALYX</div>
+      <h1 style="font-size:28px;font-weight:800;letter-spacing:-.5px;margin-bottom:10px;">{h}</h1>
+      <p style="color:#6b7280;font-size:15px;line-height:1.55;">{sub}</p>
     </div>
-    """))
+    <div class="card" style="text-align:center;padding:28px 24px;">
+      <a href="{href}" style="display:inline-flex;align-items:center;gap:10px;padding:12px 20px;background:#fff;border:1.5px solid #dadce0;color:#3c4043;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;transition:all .15s;">
+        {google_g}
+        <span>Continue with Google</span>
+      </a>
+      <p style="margin-top:16px;font-size:12px;color:#9ca3af;line-height:1.5;">We use Google to sign you in. New here? Same button — your account is created automatically.</p>
+    </div>
+    </div>
+    """
 
 
-@app.post("/api/login")
-async def api_login(request: Request):
-    form = await request.form()
-    email = form.get("email", "").strip()
-    if not email:
-        return HTMLResponse("<h1>Email required</h1>", status_code=400)
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(next: str = "/calendar"):
+    body = _google_signin_cta(next_url=next)
+    page_html = LAYOUT_STYLE.replace("__TITLE__", "Sign in to Calyx").replace("__OG_TAGS__", "") + render_nav(None) + body + LAYOUT_FOOT
+    return HTMLResponse(page_html)
+
+
+@app.get("/auth/google/login")
+async def auth_google_login(request: Request, next: str = "/calendar"):
+    settings = Settings()
+    if not settings.google_client_id or not settings.google_client_secret:
+        return HTMLResponse(
+            "<h1>Google sign-in not configured</h1><p>Set <code>RECOM_GOOGLE_CLIENT_ID</code> and <code>RECOM_GOOGLE_CLIENT_SECRET</code> in <code>.env</code>.</p>",
+            status_code=500,
+        )
+    state = secrets.token_urlsafe(16)
+    redirect_uri = _oauth_redirect_uri(settings)
+    url, verifier = google_login_url(settings.google_client_id, settings.google_client_secret, redirect_uri, state)
+    response = RedirectResponse(url, status_code=302)
+    response.set_cookie("oauth_state", state, max_age=600, httponly=True, samesite="lax")
+    response.set_cookie("oauth_verifier", verifier, max_age=600, httponly=True, samesite="lax")
+    response.set_cookie("oauth_next", next if next.startswith("/") else "/calendar", max_age=600, httponly=True, samesite="lax")
+    return response
+
+
+@app.get("/auth/google/callback")
+async def auth_google_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    if error:
+        return HTMLResponse(f"<h1>Sign-in failed</h1><p>{error}</p><p><a href='/login'>Try again</a></p>", status_code=400)
+    cookie_state = request.cookies.get("oauth_state", "")
+    if not state or state != cookie_state:
+        return HTMLResponse("<h1>Invalid OAuth state</h1><p><a href='/login'>Try again</a></p>", status_code=400)
+    settings = Settings()
+    redirect_uri = _oauth_redirect_uri(settings)
+    verifier = request.cookies.get("oauth_verifier", "")
+    try:
+        info = google_exchange_code(settings.google_client_id, settings.google_client_secret, redirect_uri, code, code_verifier=verifier)
+    except Exception:
+        logger.exception("Google OAuth exchange failed")
+        return HTMLResponse("<h1>Sign-in failed</h1><p><a href='/login'>Try again</a></p>", status_code=500)
+    email = info["email"]
+    if not email or not info.get("email_verified"):
+        return HTMLResponse("<h1>Email not verified by Google</h1>", status_code=400)
     db = get_db()
     user = db.get_user_by_email(email)
-    if user:
-        settings = Settings()
-        try:
-            send_magic_link(email, user["user_token"], settings.dashboard_url, settings)
-        except Exception:
-            logger.exception("Failed to send magic link to %s", email)
-    # Always show same message (prevent enumeration)
-    return HTMLResponse(_layout("Check your email", """
-    <div class="card" style="max-width:400px;text-align:center;padding:32px;">
-        <h2 style="color:#059669;">Check your email!</h2>
-        <p style="color:#6b7280;margin-top:8px;">If an account exists, we sent you a login link.</p>
-        <p style="margin-top:16px;font-size:13px;"><a href="/join">Don't have an account? Join</a></p>
-    </div>
-    """))
+    if not user:
+        user_id = db.create_user(email, info.get("name", ""))
+        db.seed_taste_items(user_id)
+        user = db.get_user(user_id)
+    nxt = request.cookies.get("oauth_next", "/calendar") or "/calendar"
+    if not nxt.startswith("/"):
+        nxt = "/calendar"
+    response = RedirectResponse(nxt, status_code=303)
+    _set_token_cookie(response, user["user_token"])
+    response.delete_cookie("oauth_state")
+    response.delete_cookie("oauth_verifier")
+    response.delete_cookie("oauth_next")
+    return response
+
+
+@app.get("/auth/logout")
+async def auth_logout():
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(COOKIE_NAME)
+    return response
 
 
 @app.get("/groups", response_class=HTMLResponse)
@@ -4729,38 +4407,6 @@ async def group_join(group_id: int, request: Request):
         return HTMLResponse("<h1>Group not found</h1>", status_code=404)
     db.add_group_member(group["id"], user["id"])
     return RedirectResponse(f"/group/{group_id}", status_code=303)
-
-
-@app.post("/api/join-group/{group_id:int}/{invite_code}")
-async def api_join_group(group_id: int, invite_code: str, request: Request):
-    """Combined signup + join group for new users. Validates invite code, creates account, joins group."""
-    db = get_db()
-    group = db.get_group_by_id(group_id)
-    if not group or group.get("invite_code") != invite_code:
-        return HTMLResponse("Invalid invite link", status_code=403)
-
-    form = await request.form()
-    email = (form.get("email") or "").strip()
-    name = (form.get("name") or "").strip()
-    if not email:
-        return HTMLResponse("Email required", status_code=400)
-
-    existing = db.conn.execute("SELECT id, user_token FROM users WHERE email = ?", (email,)).fetchone()
-    if existing:
-        user_id = existing["id"]
-        token = existing["user_token"]
-    else:
-        user_id = db.create_user(email, name)
-        user = db.get_user(user_id)
-        token = user["user_token"] if user else ""
-        db.seed_taste_items(user_id)
-
-    db.add_group_member(group["id"], user_id)
-
-    # No magic link email — just set cookie and redirect. Instant join.
-    resp = RedirectResponse(f"/group/{group_id}?u={token}&success=Welcome!+Add+events+or+RSVP+to+get+started.", status_code=303)
-    _set_token_cookie(resp, token)
-    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -5172,103 +4818,10 @@ async def user_ical_feed(token: str, min_score: int = 40):
         vevent_lines.append("END:VEVENT")
         lines.extend(vevent_lines)
 
-    lines.append("END:VCALENDAR")
-    return Response(
-        content="\r\n".join(lines),
-        media_type="text/calendar",
-        headers={"Content-Disposition": f"inline; filename=recom-{token}.ics"},
-    )
-
-
-@app.get("/u/{token}/rsvps.ics")
-async def user_rsvps_ical(token: str, recs: int = 0):
-    """Unified RSVP feed: your RSVPs + all group members' RSVPs, with names.
-    Add ?recs=1 to also include your personal recommendations (daily picks)."""
-    import html as _html
-
-    db = get_db()
-    user = db.get_user_by_token(token)
-    if not user:
-        return Response(content="BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR",
-                       media_type="text/calendar")
-
-    from datetime import timezone as _tz
-    utcnow = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
-
-    user_id = user["id"]
-    user_name = user.get("name") or user.get("email", "")
-    user_first = user_name.split()[0] if user_name else "You"
-
-    # Collect all relevant user IDs: self + group members
-    all_user_ids = {user_id}
-    user_groups = db.get_user_groups(user_id)
-    for g in user_groups:
-        for m in db.get_group_members(g["id"]):
-            all_user_ids.add(m["id"])
-
-    # Get all RSVPs from all relevant users
-    placeholders = ",".join("?" * len(all_user_ids))
-    rows = db.conn.execute(
-        f"""SELECT r.user_id, r.status, r.event_id, e.title, e.start_time,
-                   e.location_name, e.url, e.price, e.lat, e.lon,
-                   COALESCE(rk.vibe, 'mixed') as vibe,
-                   COALESCE(rk.match_reason, '') as match_reason,
-                   u.name as rsvp_user_name, u.email as rsvp_user_email
-            FROM rsvps r
-            JOIN events e ON e.event_id = r.event_id
-            JOIN users u ON u.id = r.user_id
-            LEFT JOIN rankings rk ON rk.event_id = r.event_id AND rk.run_id = e.run_id
-            WHERE r.user_id IN ({placeholders}) AND r.status IN ('going', 'maybe')
-            ORDER BY e.start_time ASC""",
-        list(all_user_ids),
-    ).fetchall()
-
-    # Group RSVPs by event_id
-    event_rsvps: dict[str, list[dict]] = {}
-    event_data: dict[str, dict] = {}
-    for r in rows:
-        rd = dict(r)
-        eid = rd["event_id"]
-        if eid not in event_data:
-            event_data[eid] = rd
-        event_rsvps.setdefault(eid, []).append(rd)
-
-    def _esc(text: str) -> str:
-        text = _html.unescape(str(text))
-        return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
-
-    def _fold(line: str) -> str:
-        encoded = line.encode("utf-8")
-        if len(encoded) <= 75:
-            return line
-        chunks = []
-        while len(encoded) > 75:
-            cut = 75
-            while cut > 0 and (encoded[cut] & 0xC0) == 0x80:
-                cut -= 1
-            if cut == 0:
-                cut = 75
-            chunks.append(encoded[:cut].decode("utf-8"))
-            encoded = encoded[cut:]
-        if encoded:
-            chunks.append(encoded.decode("utf-8"))
-        return "\r\n ".join(chunks)
-
-    lines = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        f"PRODID:-//recom//Plans {_esc(user_name)}//EN",
-        "CALSCALE:GREGORIAN",
-        f"X-WR-CALNAME:Calyx — Plans",
-        "X-APPLE-CALENDAR-COLOR:#22c55e",
-        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
-    ]
-
-    settings = Settings()
-    dashboard_url = settings.dashboard_url
-
-    for eid, ev in event_data.items():
-        start = ev.get("start_time")
+    # --- Group events the user is a member of (always included) ---
+    group_events = db.get_upcoming_group_events_for_user(user["id"])
+    for ge in group_events:
+        start = ge.get("start_time")
         if not start:
             continue
         try:
@@ -5276,56 +4829,47 @@ async def user_rsvps_ical(token: str, recs: int = 0):
         except (ValueError, TypeError):
             continue
         dtstart = dt.strftime("%Y%m%dT%H%M%S")
-
-        title = _esc(ev.get("title") or "Event")
-        location = _esc(ev.get("location_name") or "")
-        url = ev.get("url") or ""
-
-        # Build who's going tag for title
-        rsvp_list = event_rsvps.get(eid, [])
-        people = []
-        my_status = None
-        for rr in rsvp_list:
-            fname = (rr["rsvp_user_name"] or rr["rsvp_user_email"] or "?").split()[0]
-            if rr["user_id"] == user_id:
-                my_status = rr["status"]
-                fname = "You"
-            label = "going" if rr["status"] == "going" else "maybe"
-            people.append(f"{fname} {label}")
-        people_tag = f" ({_esc(', '.join(people))})" if people else ""
-
-        # RSVP links in description
-        import urllib.parse as _urlparse
-        enc_title = _urlparse.quote_plus(ev.get("title") or "")
-        rsvp_going = f"{dashboard_url}/api/rsvp-link?event_id={eid}&status=going&u={token}&title={enc_title}"
-        rsvp_maybe = f"{dashboard_url}/api/rsvp-link?event_id={eid}&status=maybe&u={token}&title={enc_title}"
-        reason = _esc(ev.get("match_reason") or "")
-        desc_parts = []
-        if reason:
-            desc_parts.append(reason)
-        if url:
-            desc_parts.append(f"Tickets: {url}")
-        desc_parts.append(f"RSVP Going: {rsvp_going}")
-        desc_parts.append(f"RSVP Maybe: {rsvp_maybe}")
-        desc = "\\n".join(_esc(p) for p in desc_parts)
-
-        is_going = my_status == "going"
-
+        end_iso = ge.get("end_time")
+        dtend = ""
+        if end_iso:
+            try:
+                dtend = datetime.fromisoformat(end_iso).strftime("%Y%m%dT%H%M%S")
+            except (ValueError, TypeError):
+                dtend = ""
+        title = _ical_escape(ge.get("title") or "")
+        location = _ical_escape(ge.get("location") or "")
+        url = ge.get("url") or f"{dashboard_url}/group/{ge['g_id']}"
+        notes = _ical_escape(ge.get("notes") or "")
+        group_name = _ical_escape(ge.get("group_display_name") or "")
+        grp_eid = f"grp_evt_{ge['id']}"
+        uid = f"{grp_eid}@recom-user-{token}"
+        user_rsvp_status = user_rsvp_map.get(grp_eid)
+        is_going = user_rsvp_status == "going"
+        desc = (f"From {group_name} on Calyx\\n\\n{notes}" if notes else f"From {group_name} on Calyx").strip("\\n")
         vevent_lines = [
             "BEGIN:VEVENT",
-            f"UID:{eid}@rsvps-{token}",
+            f"UID:{uid}",
             f"DTSTAMP:{utcnow}",
             f"DTSTART:{dtstart}",
-            _fold(f"SUMMARY:{title}{people_tag}"),
-            _fold(f"LOCATION:{location}"),
-            _fold(f"URL:{url}"),
-            _fold(f"DESCRIPTION:{desc}"),
-            f"TRANSP:{'OPAQUE' if is_going else 'TRANSPARENT'}",
-            "DURATION:PT2H",
         ]
-        lat, lon = ev.get("lat"), ev.get("lon")
-        if lat and lon:
-            vevent_lines.append(f"GEO:{lat};{lon}")
+        if dtend:
+            vevent_lines.append(f"DTEND:{dtend}")
+        else:
+            vevent_lines.append("DURATION:PT2H")
+        vevent_lines.extend([
+            _ical_fold(f"SUMMARY:[{group_name}] {title}"),
+            _ical_fold(f"LOCATION:{location}"),
+            _ical_fold(f"URL:{url}"),
+            _ical_fold(f"DESCRIPTION:{desc}"),
+            "CATEGORIES:group",
+            f"TRANSP:{'OPAQUE' if is_going else 'TRANSPARENT'}",
+        ])
+        if user_rsvp_status and user_email:
+            partstat_map = {"going": "ACCEPTED", "maybe": "TENTATIVE", "cant": "DECLINED"}
+            ps = partstat_map.get(user_rsvp_status)
+            if ps:
+                cn = _ical_escape(user_name)
+                vevent_lines.append(f"ATTENDEE;PARTSTAT={ps};CN={cn}:mailto:{user_email}")
         vevent_lines.extend([
             "BEGIN:VALARM",
             "TRIGGER:-PT2H",
@@ -5336,64 +4880,19 @@ async def user_rsvps_ical(token: str, recs: int = 0):
         ])
         lines.extend(vevent_lines)
 
-    # Optionally include personal recs (daily picks not already RSVP'd)
-    if recs:
-        rsvp_eids = set(event_data.keys())
-        run = db.get_user_latest_run(user_id)
-        if run:
-            picks = db.get_daily_picks(run["id"])
-            if not picks:
-                db.compute_daily_picks(run["id"], user_id)
-                picks = db.get_daily_picks(run["id"])
-            for p in picks:
-                peid = p.get("event_id", "")
-                if peid in rsvp_eids or not p.get("start_time"):
-                    continue
-                try:
-                    pdt = datetime.fromisoformat(p["start_time"])
-                except (ValueError, TypeError):
-                    continue
-                ptitle = _esc(p.get("title") or "Event")
-                ploc = _esc(p.get("location_name") or "")
-                purl = p.get("url") or ""
-                pscore = int(p.get("score") or 0)
-                preason = _esc(p.get("match_reason") or "")
-                pdesc_parts = []
-                if preason:
-                    pdesc_parts.append(preason)
-                if purl:
-                    pdesc_parts.append(f"Tickets: {purl}")
-                import urllib.parse as _up2
-                penc = _up2.quote_plus(p.get("title") or "")
-                pdesc_parts.append(f"RSVP Going: {dashboard_url}/api/rsvp-link?event_id={peid}&status=going&u={token}&title={penc}")
-                pdesc_parts.append(f"RSVP Maybe: {dashboard_url}/api/rsvp-link?event_id={peid}&status=maybe&u={token}&title={penc}")
-                pdesc = "\\n".join(_esc(pp) for pp in pdesc_parts)
-                vlines = [
-                    "BEGIN:VEVENT",
-                    f"UID:{peid}@recs-{token}",
-                    f"DTSTAMP:{utcnow}",
-                    f"DTSTART:{pdt.strftime('%Y%m%dT%H%M%S')}",
-                    _fold(f"SUMMARY:[{pscore}] {ptitle}"),
-                    _fold(f"LOCATION:{ploc}"),
-                    _fold(f"URL:{purl}"),
-                    _fold(f"DESCRIPTION:{pdesc}"),
-                    "TRANSP:TRANSPARENT",
-                    "DURATION:PT2H",
-                    "END:VEVENT",
-                ]
-                lines.extend(vlines)
-
     lines.append("END:VCALENDAR")
     return Response(
         content="\r\n".join(lines),
         media_type="text/calendar",
-        headers={"Content-Disposition": f"inline; filename=recom-plans-{token}.ics"},
+        headers={"Content-Disposition": f"inline; filename=recom-{token}.ics"},
     )
 
 
 
 
+
+
 def run():
-    """Entry point for recom-dashboard command."""
+    """Entry point for calyx-dashboard command."""
     import uvicorn
-    uvicorn.run("recom.dashboard.app:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("calyx.dashboard.app:app", host="0.0.0.0", port=8000, reload=False)

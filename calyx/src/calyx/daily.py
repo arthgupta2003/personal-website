@@ -7,11 +7,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from recom.config import Settings
-from recom.db import Database
-from recom.email.composer import compose_daily_email
-from recom.email.sender import send_email
-from recom.models import Event, RankedEvent
+from calyx.config import Settings
+from calyx.db import Database
+from calyx.email.composer import compose_daily_email
+from calyx.email.sender import send_email
+from calyx.models import Event, RankedEvent
 
 logging.basicConfig(
     level=logging.INFO,
@@ -99,7 +99,7 @@ def send_daily_for_user(db: Database, settings: Settings, user: dict, today: dat
     if today.weekday() >= 5:
         try:
             import anthropic
-            from recom.ranking.bucket_list import load_bucket_list, pick_suggestions
+            from calyx.ranking.bucket_list import load_bucket_list, pick_suggestions
             client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
             items = load_bucket_list(settings.bucket_list_file)
             if items:
@@ -136,7 +136,7 @@ def send_daily_for_user(db: Database, settings: Settings, user: dict, today: dat
 
 def send_group_digests(db: Database, settings: Settings, today: datetime):
     """Send group digest emails — one per group, CC'd to all members."""
-    from recom.email.composer import compose_daily_email
+    from calyx.email.composer import compose_daily_email
 
     groups = db.conn.execute("SELECT id, name, slug FROM groups").fetchall()
     target_str = today.strftime("%Y-%m-%d")

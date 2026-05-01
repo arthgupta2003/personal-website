@@ -13,28 +13,28 @@ from datetime import datetime
 
 import anthropic
 
-from recom.config import Settings
-from recom.events.bandsintown import fetch_bandsintown
-from recom.events.geocoder import geocode_events
-from recom.events.resident_advisor import fetch_resident_advisor
-from recom.events.boston_calendar import fetch_boston_events
-from recom.events.dice import fetch_dice
-from recom.events.eventbrite import fetch_eventbrite
-from recom.events.luma import fetch_luma
-from recom.events.meetup import fetch_meetup
-from recom.events.museums import _fetch_ica, _fetch_mfa, _fetch_mit_list, _fetch_gardner, _fetch_harvard_art, _fetch_mos
-from recom.events.community import (
+from calyx.config import Settings
+from calyx.events.bandsintown import fetch_bandsintown
+from calyx.events.geocoder import geocode_events
+from calyx.events.resident_advisor import fetch_resident_advisor
+from calyx.events.boston_calendar import fetch_boston_events
+from calyx.events.dice import fetch_dice
+from calyx.events.eventbrite import fetch_eventbrite
+from calyx.events.luma import fetch_luma
+from calyx.events.meetup import fetch_meetup
+from calyx.events.museums import _fetch_ica, _fetch_mfa, _fetch_mit_list, _fetch_gardner, _fetch_harvard_art, _fetch_mos
+from calyx.events.community import (
     fetch_bpl_events, fetch_coolidge_events,
     fetch_bowery_events, fetch_bso_events,
     fetch_boston_gov_events, fetch_improv_asylum_events,
 )
-from recom.events.newsletters import extract_newsletter_events
-from recom.events.outdoor import fetch_outdoor_events
-from recom.events.songkick import fetch_songkick
-from recom.events.ticketmaster import fetch_ticketmaster
-from recom.events.timeout_boston import fetch_timeout_boston
-from recom.events.university import _fetch_mit, _fetch_harvard, _fetch_localist
-from recom.models import CostRecord, Event, EventSource, SourceStat
+from calyx.events.newsletters import extract_newsletter_events
+from calyx.events.outdoor import fetch_outdoor_events
+from calyx.events.songkick import fetch_songkick
+from calyx.events.ticketmaster import fetch_ticketmaster
+from calyx.events.timeout_boston import fetch_timeout_boston
+from calyx.events.university import _fetch_mit, _fetch_harvard, _fetch_localist
+from calyx.models import CostRecord, Event, EventSource, SourceStat
 
 logger = logging.getLogger(__name__)
 

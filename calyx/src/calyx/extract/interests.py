@@ -9,8 +9,8 @@ from datetime import datetime
 
 import anthropic
 
-from recom.config import estimate_cost
-from recom.models import (
+from calyx.config import estimate_cost
+from calyx.models import (
     ActivityItem,
     CostRecord,
     Interest,

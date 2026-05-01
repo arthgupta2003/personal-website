@@ -7,9 +7,9 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from recom.config import Settings
-from recom.events.common import make_event_id
-from recom.models import EASTERN, Event, EventSource
+from calyx.config import Settings
+from calyx.events.common import make_event_id
+from calyx.models import EASTERN, Event, EventSource
 
 logger = logging.getLogger(__name__)
 

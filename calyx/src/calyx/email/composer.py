@@ -10,7 +10,7 @@ from datetime import datetime
 
 from jinja2 import Environment
 
-from recom.models import InterestProfile, RankedEvent, haversine_km
+from calyx.models import InterestProfile, RankedEvent, haversine_km
 
 logger = logging.getLogger(__name__)
 

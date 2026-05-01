@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from recom.config import Settings
+from calyx.config import Settings
 
 logger = logging.getLogger(__name__)
 

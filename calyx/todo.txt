@@ -14,8 +14,8 @@
 #       Old crontab still has `uv run recom` / `uv run recom-daily` which now 404 after rename.
 #       Updated install_cron.sh strips both legacy "recom" + new "calyx" entries before reinstall.
 
-# TODO: Email consolidation — collapse weekend preview + tonight into daily digest; weekly stays
-#   (probably drop send_weekend_preview.py and send_tonight.py + their crons)
+# DONE: Email consolidation — dropped send_weekend_preview.py + send_tonight.py + their crons.
+#   Daily digest covers near-term, weekly Sat is the pipeline output, ratings + admin stay.
 
 # DONE: Group MVP (a) Invite flow — auto-joins authed users, Google sign-in CTA for unauth.
 #   Killed /api/join-group/{id}/{code} (manual signup form replaced by Google).

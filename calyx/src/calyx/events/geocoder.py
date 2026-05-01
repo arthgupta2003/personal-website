@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 
-from recom.models import Event
+from calyx.models import Event
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ _USER_AGENT = "recom-event-recommender/1.0"
 
 _last_request_time: float = 0.0
 
-# Persistent geocache in SQLite (next to recom.db)
+# Persistent geocache in SQLite (next to calyx.db)
 _geocache_db: sqlite3.Connection | None = None
 
 

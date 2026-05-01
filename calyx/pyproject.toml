@@ -1,7 +1,7 @@
 [project]
-name = "recom"
+name = "calyx"
 version = "0.1.0"
-description = "Weekly event recommender based on YouTube, Spotify, and newsletter interests"
+description = "Calyx — group calendar that finds events you'll actually go to"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.40",
@@ -24,19 +24,20 @@ dependencies = [
     "radicale>=3.6.1",
     "google-genai>=1.66.0",
     "scikit-learn>=1.4",
+    "pillow>=10.0",
 ]
 
 [project.scripts]
-recom = "recom.main:main"
-recom-daily = "recom.daily:main"
-recom-dashboard = "recom.dashboard.app:run"
+calyx = "calyx.main:main"
+calyx-daily = "calyx.daily:main"
+calyx-dashboard = "calyx.dashboard.app:run"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/recom"]
+packages = ["src/calyx"]
 
 [dependency-groups]
 dev = [

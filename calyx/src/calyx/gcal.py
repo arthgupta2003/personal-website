@@ -11,8 +11,8 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-from recom.config import Settings
-from recom.db import Database
+from calyx.config import Settings
+from calyx.db import Database
 
 logger = logging.getLogger(__name__)
 

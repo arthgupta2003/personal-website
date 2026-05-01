@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from recom.config import Settings
-from recom.models import ActivityItem
+from calyx.config import Settings
+from calyx.models import ActivityItem
 
 logger = logging.getLogger(__name__)
 

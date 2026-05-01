@@ -8,9 +8,9 @@ from datetime import datetime
 
 import anthropic
 
-from recom.config import Settings, estimate_cost
-from recom.events.common import make_event_id
-from recom.models import CostRecord, Event, EventSource, parse_event_dt
+from calyx.config import Settings, estimate_cost
+from calyx.events.common import make_event_id
+from calyx.models import CostRecord, Event, EventSource, parse_event_dt
 
 logger = logging.getLogger(__name__)
 
