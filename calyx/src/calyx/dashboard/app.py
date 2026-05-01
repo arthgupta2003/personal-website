@@ -558,9 +558,6 @@ async def profile_update(request: Request):
     if "filter_work_hours" in body:
         updates.append("filter_work_hours = ?")
         params.append(1 if body["filter_work_hours"] else 0)
-    if "feed_include_maybe" in body:
-        updates.append("feed_include_maybe = ?")
-        params.append(1 if body["feed_include_maybe"] else 0)
     if "feed_include_recs" in body:
         updates.append("feed_include_recs = ?")
         params.append(1 if body["feed_include_recs"] else 0)
@@ -948,13 +945,6 @@ async def taste_profile_page(request: Request):
         <button type="button" onclick="navigator.clipboard.writeText(&apos;{feed_url}&apos;);this.textContent=&apos;✓ Copied&apos;;setTimeout(()=>this.textContent=&apos;Copy iCal URL&apos;,1500);" class="btn-secondary" style="font-size:12px;padding:10px 16px;">Copy iCal URL</button>
       </div>
       <div class="toggle-row" style="padding-top:12px;border-top:1px solid #f0f0f0;">
-        <div class="toggle-label">
-          <div>Include my <em>maybe</em> RSVPs</div>
-          <div>Show events you said maybe to (marked tentative)</div>
-        </div>
-        <label class="toggle"><input type="checkbox" id="feed-maybe-toggle" {"checked" if current_user.get("feed_include_maybe") else ""} onchange="toggleFeedPref('feed_include_maybe', this.checked)"><span class="slider"></span></label>
-      </div>
-      <div class="toggle-row" style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0;">
         <div class="toggle-label">
           <div>Include recommendations</div>
           <div>Up to 2 top-scored discoveries per day, marked with ★</div>
@@ -4545,9 +4535,8 @@ async def event_added_confirmation(token: str, event_id: str):
 async def user_ical_feed(token: str):
     """Per-user iCal feed. Composition (token IS the auth — calendar clients can't OAuth):
 
-      - Always: events you've RSVP'd `going` to.
+      - Always: events you've RSVP'd `going` or `maybe` to.
       - Always: events your group-mates have RSVP'd `going` or `maybe` to.
-      - Toggle (Settings → "Include maybes"): your own `maybe` RSVPs too.
       - Toggle (Settings → "Include recommendations"): up to 2 top-scored discovered events
         per day from your latest pipeline run.
 
@@ -4590,7 +4579,6 @@ async def user_ical_feed(token: str):
     user_email = user.get("email", "")
     settings = Settings()
     dashboard_url = settings.dashboard_url
-    include_maybe = bool(user.get("feed_include_maybe"))
     include_recs = bool(user.get("feed_include_recs"))
 
     # Set of (event_id, kind, label_suffix) tuples to include. Each event_id appears once.
@@ -4601,11 +4589,10 @@ async def user_ical_feed(token: str):
         if event_id not in seen:
             seen[event_id] = {"kind": kind, "label": label}
 
-    # 1. My going (and maybe)
-    statuses = ["going", "maybe"] if include_maybe else ["going"]
+    # 1. My going + maybe
     rows = db.conn.execute(
-        f"""SELECT event_id, status FROM rsvps WHERE user_id = ? AND status IN ({','.join(['?']*len(statuses))})""",
-        (user["id"], *statuses),
+        "SELECT event_id, status FROM rsvps WHERE user_id = ? AND status IN ('going','maybe')",
+        (user["id"],),
     ).fetchall()
     for r in rows:
         _add(r["event_id"], "my_going" if r["status"] == "going" else "my_maybe")

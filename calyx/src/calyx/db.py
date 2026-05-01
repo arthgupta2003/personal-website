@@ -24,7 +24,6 @@ CREATE TABLE IF NOT EXISTS users (
     active INTEGER DEFAULT 1,
     email_digest INTEGER DEFAULT 1,
     filter_work_hours INTEGER DEFAULT 1,
-    feed_include_maybe INTEGER DEFAULT 0,
     feed_include_recs INTEGER DEFAULT 0
 );
 
@@ -306,8 +305,6 @@ class Database:
             self.conn.execute("ALTER TABLE users ADD COLUMN user_token TEXT")
             self.conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_token ON users(user_token)")
             self.conn.commit()
-        if "feed_include_maybe" not in user_cols:
-            self.conn.execute("ALTER TABLE users ADD COLUMN feed_include_maybe INTEGER DEFAULT 0")
         if "feed_include_recs" not in user_cols:
             self.conn.execute("ALTER TABLE users ADD COLUMN feed_include_recs INTEGER DEFAULT 0")
         self.conn.commit()
