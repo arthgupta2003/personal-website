@@ -848,7 +848,6 @@ async def taste_profile_page(request: Request):
     # Calendar subscribe URLs (single feed: all RSVP'd events from groups + discover)
     user_token = current_user.get("user_token", "") or ""
     feed_url = f"{settings.dashboard_url}/u/{user_token}/feed.ics"
-    webcal_url = feed_url.replace("https://", "webcal://").replace("http://", "webcal://")
     gcal_url = f"https://calendar.google.com/calendar/r?cid={feed_url.replace('https://', 'http://')}"
 
     body = f"""
@@ -887,12 +886,12 @@ async def taste_profile_page(request: Request):
   </div>
 
   <div class="you-tabs">
-    <button class="you-tab active" onclick="switchYouTab('taste')">Taste</button>
-    <button class="you-tab" onclick="switchYouTab('settings')">Settings</button>
+    <button class="you-tab" onclick="switchYouTab('taste')">Taste</button>
+    <button class="you-tab active" onclick="switchYouTab('settings')">Settings</button>
   </div>
 
   <!-- Taste tab -->
-  <div id="you-taste" class="you-panel active">
+  <div id="you-taste" class="you-panel">
     <div class="taste-section">
       <h2>Tell us about yourself</h2>
       <p style="font-size:13px;color:#888;margin-bottom:10px;">Paste anything — your YouTube feed, bands you like, hobbies. We'll figure it out.</p>
@@ -911,7 +910,7 @@ async def taste_profile_page(request: Request):
   </div>
 
   <!-- Settings tab -->
-  <div id="you-settings" class="you-panel">
+  <div id="you-settings" class="you-panel active">
     <div style="border:1px solid #e0e0e0;padding:20px;margin-bottom:20px;">
       <div class="field"><label>Name</label><input type="text" id="name" value="{name}"></div>
       <div class="field"><label>Email</label><input type="text" id="email" value="{email}" disabled style="background:#f9fafb;color:#999"></div>
@@ -940,8 +939,7 @@ async def taste_profile_page(request: Request):
       <h2 style="margin:0 0 6px;">Your calendar</h2>
       <p style="font-size:13px;color:#666;margin-bottom:14px;line-height:1.5;">Subscribe to see every event you've RSVP'd <em>going</em> to plus what your group-mates are going to — in your real calendar.</p>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
-        <a href="{webcal_url}" class="btn-primary" style="text-decoration:none;font-size:12px;padding:10px 16px;">Apple Calendar</a>
-        <a href="{gcal_url}" target="_blank" class="btn-primary" style="text-decoration:none;font-size:12px;padding:10px 16px;">Google Calendar</a>
+        <a href="{gcal_url}" target="_blank" class="btn-primary" style="text-decoration:none;font-size:12px;padding:10px 16px;">Add to Google Calendar</a>
         <button type="button" onclick="navigator.clipboard.writeText(&apos;{feed_url}&apos;);this.textContent=&apos;✓ Copied&apos;;setTimeout(()=>this.textContent=&apos;Copy iCal URL&apos;,1500);" class="btn-secondary" style="font-size:12px;padding:10px 16px;">Copy iCal URL</button>
       </div>
       <div class="toggle-row" style="padding-top:12px;border-top:1px solid #f0f0f0;">
@@ -979,11 +977,11 @@ function switchYouTab(tab) {{
 }}
 (function() {{
   const h = window.location.hash.slice(1);
-  if (h === 'settings') {{
+  if (h === 'taste') {{
     document.querySelectorAll('.you-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.you-panel').forEach(p => p.classList.remove('active'));
-    document.getElementById('you-settings').classList.add('active');
-    document.querySelectorAll('.you-tab')[1].classList.add('active');
+    document.getElementById('you-taste').classList.add('active');
+    document.querySelectorAll('.you-tab')[0].classList.add('active');
   }}
 }})();
 
