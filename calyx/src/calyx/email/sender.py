@@ -78,55 +78,6 @@ def send_invite_email(
     send_email(f"{inviter_name} invited you to {group_name}", html, settings, to=email)
 
 
-def send_group_ping(
-    to_email: str, to_token: str, pinger_name: str,
-    event: dict, dashboard_url: str, settings: Settings,
-) -> None:
-    """Send a 'Bring friends?' ping email to a group member with RSVP buttons."""
-    import urllib.parse as _urlparse
-    title = event.get("title", "Event")
-    start = event.get("start_time", "")
-    start_display = start[:16].replace("T", " ") if start else "Date TBD"
-    venue = event.get("location_name", "")
-    reason = event.get("match_reason", "")
-    event_id = event.get("event_id", "")
-    event_url = event.get("url", "")
-    enc_title = _urlparse.quote_plus(title[:60])
-
-    rsvp_going = f"{dashboard_url}/api/rsvp-link?event_id={event_id}&status=going&u={to_token}&title={enc_title}"
-    rsvp_maybe = f"{dashboard_url}/api/rsvp-link?event_id={event_id}&status=maybe&u={to_token}&title={enc_title}"
-    dismiss_url = f"{dashboard_url}/?u={to_token}"
-
-    subject = f"{pinger_name} is eyeing {title[:50]} \u2014 you in?"
-    html = f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;margin:0;padding:0;">
-<div style="max-width:480px;margin:0 auto;padding:32px 16px;">
-  <div style="text-align:center;margin-bottom:8px;">
-    <span style="font-size:11px;font-weight:700;letter-spacing:3px;color:#6366f1;text-transform:uppercase;">calyx</span>
-  </div>
-  <h1 style="font-size:20px;font-weight:800;color:#1e293b;text-align:center;margin:0 0 6px;">
-    {pinger_name} thinks this looks fun:
-  </h1>
-  <div style="background:white;border:2px solid #e2e8f0;border-radius:12px;padding:20px;margin:20px 0;text-align:center;">
-    <p style="margin:0 0 6px;font-size:18px;font-weight:700;color:#1e293b;">
-      {"<a href='" + event_url + "' style='color:#1e293b;text-decoration:none;'>" + title[:80] + "</a>" if event_url else title[:80]}
-    </p>
-    <p style="margin:0 0 4px;font-size:14px;color:#6b7280;">{start_display}{(' &middot; ' + venue) if venue else ''}</p>
-    {('<p style="margin:8px 0 0;font-size:13px;color:#6d28d9;background:#f5f3ff;padding:8px 12px;border-radius:8px;border-left:3px solid #8b5cf6;text-align:left;">' + reason + '</p>') if reason else ''}
-  </div>
-  <div style="text-align:center;margin-bottom:24px;">
-    <a href="{rsvp_going}" style="display:inline-block;padding:12px 28px;background:#16a34a;color:white;border-radius:10px;text-decoration:none;font-size:15px;font-weight:700;margin:0 4px;">I&rsquo;m in!</a>
-    <a href="{rsvp_maybe}" style="display:inline-block;padding:12px 28px;background:#f59e0b;color:white;border-radius:10px;text-decoration:none;font-size:15px;font-weight:700;margin:0 4px;">Maybe</a>
-    <a href="{dismiss_url}" style="display:inline-block;padding:12px 28px;background:#e2e8f0;color:#64748b;border-radius:10px;text-decoration:none;font-size:15px;font-weight:700;margin:0 4px;">Nah</a>
-  </div>
-  <div style="text-align:center;border-top:1px solid #e2e8f0;padding-top:16px;">
-    <a href="{dashboard_url}/?u={to_token}" style="font-size:13px;color:#6b7280;text-decoration:none;">View your calendar &rarr;</a>
-  </div>
-</div>
-</body></html>"""
-    send_email(subject, html, settings, to=to_email)
-
 
 def send_group_event_notification(
     to_emails: list[str], adder_name: str, event_title: str,

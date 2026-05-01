@@ -13,7 +13,7 @@ from starlette.responses import RedirectResponse
 from calyx.config import Settings
 from calyx.db import Database
 from calyx.dashboard.auth import build_login_url as google_login_url, exchange_code as google_exchange_code
-from calyx.email.sender import send_invite_email, send_rsvp_notify, send_group_ping, send_group_event_notification
+from calyx.email.sender import send_invite_email, send_rsvp_notify, send_group_event_notification
 from calyx.gcal import get_or_create_calendar, push_event as gcal_push_event, update_attendees as gcal_update_attendees, sync_rsvps_to_db as gcal_sync_rsvps
 
 logger = logging.getLogger(__name__)
@@ -2407,118 +2407,6 @@ async def rsvp_via_link(event_id: str, status: str, u: str = "", title: str = ""
     <a href="/?u={u}" style="color:#4f46e5;margin-top:12px;display:inline-block">Back to calendar</a></div></body></html>""")
 
 
-@app.get("/api/ping-group", response_class=HTMLResponse)
-async def ping_group(request: Request, event_id: str = "", u: str = "", group_id: int = 0):
-    """Send a 'Bring friends?' ping to group members from email link."""
-    db = get_db()
-    user = db.get_user_by_token(u) if u else None
-    if not user:
-        return HTMLResponse("<h1>Invalid link</h1><p>Please log in.</p>", status_code=401)
-    event = _find_event(db, event_id)
-    if not event:
-        return HTMLResponse("<h1>Event not found</h1>", status_code=404)
-
-    user_id = user["id"]
-    user_name = user.get("name") or user.get("email", "Someone")
-    groups = db.get_user_groups(user_id)
-
-    if not groups:
-        return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
-        <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
-        .box {{ background: white; border-radius: 16px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
-        <body><div class="box"><h2>No groups yet</h2>
-        <p style="color:#6b7280;">Create a group to share events with friends.</p>
-        <a href="/groups?u={u}" style="display:inline-block;padding:12px 24px;background:#4f46e5;color:white;border-radius:8px;text-decoration:none;font-weight:600;margin-top:12px;">Go to Groups</a>
-        </div></body></html>""")
-
-    # If multiple groups and no group_id specified, show picker
-    if len(groups) > 1 and group_id == 0:
-        title = event.get("title", "Event")[:60]
-        links = ""
-        for g in groups:
-            gid = g["id"]
-            gname = g["name"]
-            count = g.get("member_count", 0)
-            links += f'<a href="/api/ping-group?event_id={event_id}&u={u}&group_id={gid}" style="display:block;padding:14px 20px;margin:8px 0;background:#f1f5f9;border-radius:16px;text-decoration:none;color:#1e293b;font-weight:600;border:1px solid #e2e8f0;">{gname} <span style="color:#9ca3af;font-weight:400;">({count} members)</span></a>'
-        return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
-        <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
-        .box {{ background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
-        <body><div class="box"><h2>Which group?</h2>
-        <p style="color:#6b7280;margin-bottom:16px;">Share <strong>{title}</strong> with:</p>
-        {links}
-        </div></body></html>""")
-
-    # Use single group if only one, or the specified group_id
-    target_group = None
-    if group_id > 0:
-        for g in groups:
-            if g["id"] == group_id:
-                target_group = g
-                break
-        if not target_group:
-            return HTMLResponse("<h1>Group not found</h1>", status_code=404)
-    else:
-        target_group = groups[0]
-
-    gid = target_group["id"]
-
-    # Rate limit check
-    if not db.can_ping(user_id, event_id, gid):
-        # Determine which limit was hit
-        from datetime import datetime as _dt
-        row = db.conn.execute(
-            "SELECT 1 FROM ping_log WHERE event_id = ? AND group_id = ?",
-            (event_id, gid),
-        ).fetchone()
-        if row:
-            msg = "This event was already shared with this group."
-        else:
-            msg = "Daily ping limit reached (max 3 per day). Try again tomorrow."
-        return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
-        <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
-        .box {{ background: white; border-radius: 16px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
-        <body><div class="box"><h2 style="color:#f59e0b;">Already pinged</h2>
-        <p style="color:#6b7280;">{msg}</p>
-        <a href="/?u={u}" style="color:#4f46e5;margin-top:12px;display:inline-block;">Back to calendar</a>
-        </div></body></html>""")
-
-    # Send ping emails to all group members (skip the sender)
-    members = db.get_group_members(gid)
-    settings = Settings()
-    title = event.get("title", "Event")
-    sent_count = 0
-    for member in members:
-        if member["id"] == user_id:
-            continue
-        member_token = member.get("user_token", "")
-        member_email = member.get("email", "")
-        if not member_email:
-            continue
-        try:
-            send_group_ping(
-                to_email=member_email,
-                to_token=member_token,
-                pinger_name=user_name,
-                event=event,
-                dashboard_url=settings.dashboard_url,
-                settings=settings,
-            )
-            sent_count += 1
-        except Exception:
-            logger.exception("Failed to send ping to %s", member_email)
-
-    db.log_ping(user_id, event_id, gid)
-    group_name = target_group["name"]
-
-    return HTMLResponse(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
-    <style>body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 80vh; background: #f5f5f5; }}
-    .box {{ background: white; border-radius: 16px; padding: 32px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }}</style></head>
-    <body><div class="box"><h2 style="color:#059669;">Pinged {group_name}!</h2>
-    <p style="color:#6b7280;">Sent to {sent_count} friend{"s" if sent_count != 1 else ""} about <strong>{title[:60]}</strong></p>
-    <a href="/?u={u}" style="color:#4f46e5;margin-top:12px;display:inline-block;">Back to calendar</a>
-    </div></body></html>""")
-
-
 @app.get("/api/steer", response_class=HTMLResponse)
 async def steer(request: Request, target_type: str = "", target_value: str = "", action: str = "", u: str = ""):
     """One-click steering from email links. Shows confirmation page."""
@@ -2837,7 +2725,6 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                 if r.get("user_id") == current_user["id"]:
                     my_ue_rsvp = r["status"]
         rsvp_btns = ""
-        nudge_btn = ""
         if is_member and current_user:
             going_cls = " active" if my_ue_rsvp == "going" else ""
             maybe_cls = " active" if my_ue_rsvp == "maybe" else ""
@@ -2845,7 +2732,6 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                 <button onclick="rsvpGroupEvent({group_id}, &apos;{ue_eid}&apos;, &apos;going&apos;, this)" class="grp-rsvp-btn going{going_cls}">Going</button>
                 <button onclick="rsvpGroupEvent({group_id}, &apos;{ue_eid}&apos;, &apos;maybe&apos;, this)" class="grp-rsvp-btn maybe{maybe_cls}">Maybe</button>
             </div>'''
-            nudge_btn = f'<a href="/api/ping-group?event_id={ue_eid}&amp;u={user_token}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-top:6px;display:inline-block;" onmouseover="this.style.color=&apos;#4f46e5&apos;" onmouseout="this.style.color=&apos;#6b7280&apos;">Nudge group</a>'
         # Embed event data for inline edit (data-* read by openEditEvent)
         from html import escape as _esc
         _start_iso = (e.get("start_time") or "")
@@ -2872,7 +2758,6 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
             <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Added by {creator}</div>
             {ue_avatars}
             {rsvp_btns}
-            {nudge_btn}
             {actions_row}
         </div>'''
 
@@ -2888,16 +2773,11 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         loc = (e.get("location_name") or "")[:35]
         rsvp_list = e.get("_rsvps", [])
         pe_avatars = _rsvp_avatars(rsvp_list)
-        pe_nudge = ""
-        pe_eid = e.get("event_id", "")
-        if is_member and current_user and pe_eid:
-            pe_nudge = f'<a href="/api/ping-group?event_id={pe_eid}&amp;u={user_token}" style="font-size:11px;color:#6b7280;text-decoration:none;margin-top:6px;display:inline-block;" onmouseover="this.style.color=&apos;#4f46e5&apos;" onmouseout="this.style.color=&apos;#6b7280&apos;">Nudge group</a>'
         upcoming_html += f'''<div class="card" style="padding:14px 16px;margin-bottom:8px;">
             <div style="flex:1;min-width:0;">
                 <a href="{url}" target="_blank" style="font-weight:700;font-size:15px;color:#1e293b;text-decoration:none;">{title}</a>
                 <div style="font-size:13px;color:#6b7280;margin-top:2px;">{time_str}{" · " + loc if loc else ""}</div>
                 {pe_avatars}
-                {pe_nudge}
             </div>
         </div>'''
 
