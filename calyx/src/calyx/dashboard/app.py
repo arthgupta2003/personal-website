@@ -2822,12 +2822,12 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         is_event_creator = current_user and e.get("created_by") == current_user["id"]
         is_group_creator = current_user and group.get("created_by") == current_user["id"]
         if is_event_creator or is_group_creator:
-            edit_btn = f'<button type="button" onclick="openEditEvent({group_id},{e["id"]})" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:12px;padding:4px 8px;">edit</button>'
-            delete_btn = f'<form action="/api/group/{group_id}/delete-event" method="post" style="margin:0;" onsubmit="return confirm(&apos;Remove this event?&apos;)"><input type="hidden" name="event_id" value="{e["id"]}"><button type="submit" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px;padding:4px 8px;">remove</button></form>'
+            edit_btn = f'<button type="button" onclick="openEditEvent({group_id},{e["id"]})" class="evt-action-btn" title="Edit event">✎ Edit</button>'
+            delete_btn = f'<form action="/api/group/{group_id}/delete-event" method="post" style="margin:0;" onsubmit="return confirm(&apos;Remove this event?&apos;)"><input type="hidden" name="event_id" value="{e["id"]}"><button type="submit" class="evt-action-btn evt-action-danger" title="Remove event">✕ Remove</button></form>'
         share_btn = ""
         if is_member and group.get("invite_code"):
             _share_url = f'{Settings().dashboard_url}/share/event/{group_id}/{e["id"]}/{group["invite_code"]}'
-            share_btn = f'<button type="button" onclick="shareEvent(this, &quot;{_share_url}&quot;, &quot;{e["title"][:60].replace(chr(34), "&quot;")}&quot;)" style="background:none;border:none;color:#4a6741;cursor:pointer;font-size:12px;padding:4px 8px;font-weight:600;">share</button>'
+            share_btn = f'<button type="button" onclick="shareEvent(this, &quot;{_share_url}&quot;, &quot;{e["title"][:60].replace(chr(34), "&quot;")}&quot;)" class="evt-action-btn evt-action-primary" title="Share this event">↗ Share</button>'
         ue_eid = f"grp_evt_{e['id']}"
         ue_rsvps = rsvps_map.get(ue_eid, [])
         ue_avatars = _rsvp_avatars(ue_rsvps)
@@ -2863,22 +2863,17 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
             f'data-url="{_esc(e.get("url") or "", quote=True)}" '
             f'data-notes="{_esc(e.get("notes") or "", quote=True)}"'
         )
+        actions_row = ""
+        if share_btn or edit_btn or delete_btn:
+            actions_row = f'<div class="evt-actions-row">{share_btn}{edit_btn}{delete_btn}</div>'
         upcoming_html += f'''<div class="card group-event-card" {_data_attrs} style="padding:14px 16px;margin-bottom:8px;">
-            <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">
-                <div style="flex:1;min-width:0;">
-                    {title_link}
-                    <div style="font-size:13px;color:#6b7280;margin-top:2px;">{time_str}{" · " + loc if loc else ""}</div>
-                    <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Added by {creator}</div>
-                    {ue_avatars}
-                    {rsvp_btns}
-                    {nudge_btn}
-                </div>
-                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;">
-                    {share_btn}
-                    {edit_btn}
-                    {delete_btn}
-                </div>
-            </div>
+            {title_link}
+            <div style="font-size:13px;color:#6b7280;margin-top:2px;">{time_str}{" · " + loc if loc else ""}</div>
+            <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Added by {creator}</div>
+            {ue_avatars}
+            {rsvp_btns}
+            {nudge_btn}
+            {actions_row}
         </div>'''
 
     # RSVPd pipeline events
@@ -3207,6 +3202,13 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     .grp-rsvp-btn:hover, .grp-rsvp-btn.active {{ color:#000; border-color:#000; }}
     .grp-rsvp-btn.going:hover, .grp-rsvp-btn.going.active {{ background:#000; color:#fff; border-color:#000; }}
     .grp-rsvp-btn.maybe:hover, .grp-rsvp-btn.maybe.active {{ background:#f5f5f5; color:#000; border-color:#000; }}
+    .evt-actions-row {{ display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px dashed #ececec; }}
+    .evt-action-btn {{ font-size:11px; font-weight:600; padding:6px 11px; border:1px solid #d4dbd1; background:#fafbf9; color:#4a6741; cursor:pointer; font-family:inherit; border-radius:999px; letter-spacing:.3px; transition:all .12s; min-height:28px; }}
+    .evt-action-btn:hover {{ background:#edf2eb; border-color:#4a6741; color:#3a5334; }}
+    .evt-action-primary {{ color:#4a6741; border-color:#9ec097; background:#edf2eb; }}
+    .evt-action-primary:hover {{ background:#d4e0d1; border-color:#4a6741; }}
+    .evt-action-danger {{ color:#a05439; border-color:#e6cdc1; background:#fbf6f3; }}
+    .evt-action-danger:hover {{ background:#f5e7df; border-color:#c4734f; color:#8a3f25; }}
     </style>
     <script>
     async function autofillFromUrl(groupId) {{
