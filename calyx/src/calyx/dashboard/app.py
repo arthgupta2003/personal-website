@@ -2861,111 +2861,106 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         else:
             default_date = (_now + _td2(days=1)).strftime("%Y-%m-%d")
         default_time = "19:00"
+        _empty_group = not upcoming_user and not tentative_user
+        _panel_display = "block" if _empty_group else "none"
+        _toggle_inner = ('<span style="font-size:18px;line-height:1;">×</span><span>Close</span>'
+                         if _empty_group else
+                         '<span style="font-size:18px;line-height:1;">+</span><span>Add event</span>')
         add_event_html = f'''<div style="margin-bottom:28px;">
             <button type="button" onclick="toggleAddEvent({group_id})" id="ae-toggle-{group_id}"
                     class="btn-primary" style="width:100%;padding:14px;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px;">
-                <span style="font-size:18px;line-height:1;">+</span><span>Add event</span>
+                {_toggle_inner}
             </button>
-            <div id="ae-panel-{group_id}" style="display:none;border:1px solid #e0e0e0;border-top:none;padding:18px 16px;background:#fafafa;">
-                <!-- URL paste (primary path) -->
-                <label style="display:block;font-size:12px;font-weight:700;color:#4a6741;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Paste a link</label>
-                <div class="form-row" style="display:flex;gap:8px;margin-bottom:6px;">
-                    <input id="url-paste-{group_id}" type="url" placeholder="https://lu.ma/..., eventbrite.com/..., etc."
-                           style="flex:1;min-width:0;padding:11px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;background:#fff;">
-                    <button type="button" onclick="autofillFromUrl({group_id})" id="ae-fill-{group_id}"
-                            class="btn-primary" style="padding:11px 16px;white-space:nowrap;">Autofill</button>
-                </div>
-                <p id="ae-url-status-{group_id}" style="font-size:12px;color:#888;margin-bottom:14px;min-height:16px;"></p>
-
-                <!-- Manual fields -->
-                <label id="ae-manual-label-{group_id}" style="display:block;font-size:12px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Or fill manually</label>
+            <div id="ae-panel-{group_id}" style="display:{_panel_display};border:1px solid #e0e0e0;border-top:none;padding:18px 16px;background:#fafafa;">
                 <div id="ae-edit-banner-{group_id}" style="display:none;padding:10px 12px;background:#edf2eb;border-left:3px solid #4a6741;font-size:13px;color:#1a1a1a;margin-bottom:10px;">
                     Editing <strong id="ae-edit-banner-title-{group_id}"></strong>
-                    · <button type="button" onclick="cancelEdit({group_id})" style="background:none;border:none;color:#4a6741;cursor:pointer;font-size:13px;font-weight:600;text-decoration:underline;padding:0;">cancel edit</button>
                 </div>
-                <form action="/api/group/{group_id}/add-event" method="post" id="add-event-form-{group_id}" style="display:flex;flex-direction:column;gap:12px;">
+                <form action="/api/group/{group_id}/add-event" method="post" id="add-event-form-{group_id}" class="ae-form">
                     <input type="hidden" name="edit_id" id="ae-edit-id-{group_id}" value="">
-                    <div class="ae-field">
-                        <label class="ae-label" for="ae-title-{group_id}">Title</label>
-                        <input name="title" id="ae-title-{group_id}" placeholder="Event name" required class="ae-input">
-                    </div>
 
-                    <div class="ae-field">
-                        <label class="ae-label">When</label>
-                        <div class="ae-chips" id="ae-chips-{group_id}">
-                            <button type="button" data-day="0" data-time="19:00" onclick="setQuickWhen({group_id}, this)" class="ae-chip">Tonight 7pm</button>
-                            <button type="button" data-day="1" data-time="19:00" onclick="setQuickWhen({group_id}, this)" class="ae-chip">Tomorrow 7pm</button>
-                            <button type="button" data-day="fri" data-time="20:00" onclick="setQuickWhen({group_id}, this)" class="ae-chip">Fri 8pm</button>
-                            <button type="button" data-day="sat" data-time="20:00" onclick="setQuickWhen({group_id}, this)" class="ae-chip">Sat 8pm</button>
-                            <button type="button" data-day="sun" data-time="14:00" onclick="setQuickWhen({group_id}, this)" class="ae-chip">Sun 2pm</button>
+                    <input name="title" id="ae-title-{group_id}" placeholder="What's the plan?" required class="ae-title-input" autocomplete="off">
+
+                    <div class="ae-when-row">
+                        <input name="date" id="ae-date-{group_id}" type="date" value="{default_date}" class="ae-when-input" aria-label="Date">
+                        <span class="ae-when-sep">·</span>
+                        <input name="time" id="ae-time-{group_id}" type="time" value="{default_time}" class="ae-when-input" aria-label="Start time">
+                        <span class="ae-when-sep">→</span>
+                        <input name="end_time" id="ae-end-{group_id}" type="time" class="ae-when-input" aria-label="End time">
+                        <button type="button" data-day="tentative" onclick="setQuickWhen({group_id}, this)" class="ae-skip-date" id="ae-skip-date-{group_id}">No date</button>
+                    </div>
+                    <div id="ae-when-readout-{group_id}" class="ae-readout"></div>
+
+                    <input name="location" id="ae-loc-{group_id}" placeholder="Where? (optional)" class="ae-line-input" autocomplete="off">
+
+                    <button type="button" id="ae-more-toggle-{group_id}" onclick="toggleAeMore({group_id})" class="ae-more-toggle">
+                        <span class="ae-more-caret">▸</span> More
+                    </button>
+
+                    <div id="ae-more-{group_id}" class="ae-more-panel" style="display:none;">
+                        <textarea name="notes" id="ae-notes-{group_id}" placeholder="Notes — anything to know?" rows="2" class="ae-line-input" style="resize:vertical;"></textarea>
+                        <input name="prerequisites" id="ae-prereq-{group_id}" placeholder="Prereqs (e.g. comfortable swimmer)" class="ae-line-input" maxlength="240">
+                        <input name="capacity" id="ae-cap-{group_id}" type="number" min="1" max="999" placeholder="Cap — max # going (extras waitlist)" class="ae-line-input">
+                        <input name="url" id="ae-url-{group_id}" type="url" placeholder="Link (https://…)" class="ae-line-input">
+                        <div id="ae-recurring-field-{group_id}" style="display:flex;align-items:center;gap:8px;">
+                            <label for="ae-recurring-{group_id}" style="font-size:13px;color:#666;">Repeat:</label>
+                            <select name="recurring" id="ae-recurring-{group_id}" class="ae-line-input" style="flex:1;">
+                                <option value="">One time</option>
+                                <option value="2">Weekly · 2 weeks</option>
+                                <option value="4">Weekly · 4 weeks</option>
+                                <option value="8">Weekly · 8 weeks</option>
+                                <option value="12">Weekly · 12 weeks</option>
+                            </select>
                         </div>
-                        <div class="ae-when-row">
-                            <div class="ae-when-cell">
-                                <span class="ae-sublabel">Date</span>
-                                <input name="date" id="ae-date-{group_id}" type="date" value="{default_date}" required class="ae-input">
-                            </div>
-                            <div class="ae-when-cell">
-                                <span class="ae-sublabel">Start</span>
-                                <input name="time" id="ae-time-{group_id}" type="time" value="{default_time}" class="ae-input">
-                            </div>
-                            <div class="ae-when-cell">
-                                <span class="ae-sublabel">End <span style="color:#bbb;font-weight:400;">(optional)</span></span>
-                                <input name="end_time" id="ae-end-{group_id}" type="time" class="ae-input">
-                            </div>
-                        </div>
-                        <div id="ae-when-readout-{group_id}" class="ae-readout"></div>
                     </div>
 
-                    <div class="ae-field">
-                        <label class="ae-label" for="ae-loc-{group_id}">Location</label>
-                        <input name="location" id="ae-loc-{group_id}" placeholder="Where? (optional)" class="ae-input">
-                    </div>
-
-                    <div class="ae-field">
-                        <label class="ae-label" for="ae-url-{group_id}">Link</label>
-                        <input name="url" id="ae-url-{group_id}" type="url" placeholder="https:// (optional)" class="ae-input">
-                    </div>
-
-                    <div class="ae-field">
-                        <label class="ae-label" for="ae-notes-{group_id}">Notes</label>
-                        <textarea name="notes" id="ae-notes-{group_id}" placeholder="Anything to know? (optional)" rows="2" class="ae-input" style="resize:vertical;"></textarea>
-                    </div>
-
-                    <div class="ae-field" id="ae-recurring-field-{group_id}">
-                        <label class="ae-label" for="ae-recurring-{group_id}">Repeat</label>
-                        <select name="recurring" id="ae-recurring-{group_id}" class="ae-input">
-                            <option value="">One time</option>
-                            <option value="2">Weekly · 2 weeks</option>
-                            <option value="4">Weekly · 4 weeks</option>
-                            <option value="8">Weekly · 8 weeks</option>
-                            <option value="12">Weekly · 12 weeks</option>
-                        </select>
-                    </div>
-
-                    <div class="form-row" style="display:flex;gap:8px;margin-top:6px;">
-                        <button type="button" onclick="toggleAddEvent({group_id})"
-                                style="flex:1;padding:12px;background:#fff;color:#666;border:1px solid #ccc;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.5px;">Cancel</button>
-                        <button type="submit" id="ae-submit-{group_id}" class="btn-primary" style="flex:2;">Add event</button>
+                    <div class="ae-actions">
+                        <button type="button" onclick="toggleAddEvent({group_id})" class="ae-btn-secondary">Cancel</button>
+                        <button type="submit" id="ae-submit-{group_id}" class="ae-btn-primary">Add event</button>
                     </div>
                 </form>
             </div>
             <style>
-            .ae-field {{ display: flex; flex-direction: column; gap: 6px; }}
-            .ae-label {{ font-size: 11px; font-weight: 700; color: #4a6741; text-transform: uppercase; letter-spacing: .8px; }}
-            .ae-sublabel {{ font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 4px; display: block; }}
-            .ae-input {{ width: 100%; padding: 11px 12px; border: 1px solid #ccc; font-size: 14px; font-family: inherit; background: #fff; color: #1a1a1a; transition: border-color .12s, box-shadow .12s; }}
-            .ae-input:focus {{ outline: none; border-color: #4a6741; box-shadow: 0 0 0 3px rgba(74,103,65,.12); }}
-            .ae-when-row {{ display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }}
-            @media (max-width: 480px) {{ .ae-when-row {{ grid-template-columns: 1fr 1fr; }} .ae-when-row .ae-when-cell:first-child {{ grid-column: 1 / -1; }} }}
-            .ae-when-cell {{ display: flex; flex-direction: column; min-width: 0; }}
-            .ae-chips {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }}
-            .ae-chip {{ padding: 6px 12px; font-size: 12px; font-weight: 600; color: #4a6741; background: #fff; border: 1px solid #d4e0d1; cursor: pointer; font-family: inherit; min-height: 32px; transition: all .12s; border-radius: 999px; }}
-            .ae-chip:hover {{ background: #edf2eb; border-color: #4a6741; }}
-            .ae-chip.active {{ background: #4a6741; color: #fff; border-color: #4a6741; }}
-            .ae-readout {{ font-size: 12px; color: #4a6741; font-weight: 600; min-height: 16px; }}
+            .ae-form {{ display: flex; flex-direction: column; gap: 14px; }}
+            .ae-title-input {{ width: 100%; padding: 8px 0; border: none; border-bottom: 1.5px solid #e0e0e0; font-size: 20px; font-weight: 700; font-family: inherit; background: transparent; color: #1a1a1a; outline: none; transition: border-color .12s; box-sizing: border-box; }}
+            .ae-title-input:focus {{ border-bottom-color: #4a6741; }}
+            .ae-title-input::placeholder {{ color: #bbb; font-weight: 500; }}
+            .ae-when-row {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
+            .ae-when-input {{ padding: 8px 10px; border: 1px solid #e0e0e0; font-size: 14px; font-family: inherit; background: #fff; color: #1a1a1a; outline: none; transition: border-color .12s, box-shadow .12s; min-width: 0; }}
+            .ae-when-input:focus {{ border-color: #4a6741; box-shadow: 0 0 0 3px rgba(74,103,65,.10); }}
+            .ae-when-sep {{ color: #ccc; font-weight: 600; }}
+            .ae-skip-date {{ background: none; border: none; color: #8a3f25; cursor: pointer; font-size: 12px; font-weight: 600; font-family: inherit; padding: 6px 8px; letter-spacing: .3px; border-bottom: 1px dashed #c4734f; margin-left: auto; }}
+            .ae-skip-date:hover {{ color: #c4734f; }}
+            .ae-skip-date.active {{ color: #c4734f; border-bottom-style: solid; }}
+            .ae-line-input {{ width: 100%; padding: 9px 0; border: none; border-bottom: 1px solid #e0e0e0; font-size: 14px; font-family: inherit; background: transparent; color: #1a1a1a; outline: none; transition: border-color .12s; box-sizing: border-box; }}
+            .ae-line-input:focus {{ border-bottom-color: #4a6741; }}
+            .ae-line-input::placeholder {{ color: #aaa; }}
+            .ae-readout {{ font-size: 12px; color: #4a6741; font-weight: 500; min-height: 16px; margin-top: -4px; }}
+            .ae-more-toggle {{ background: none; border: none; color: #888; cursor: pointer; font-size: 12px; font-weight: 600; padding: 4px 0; text-align: left; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; letter-spacing: .2px; align-self: flex-start; }}
+            .ae-more-toggle:hover {{ color: #4a6741; }}
+            .ae-more-caret {{ font-size: 10px; transition: transform .15s; display: inline-block; color: #888; }}
+            .ae-more-toggle.open .ae-more-caret {{ transform: rotate(90deg); color: #4a6741; }}
+            .ae-more-panel {{ display: flex; flex-direction: column; gap: 12px; padding: 4px 0 4px; }}
+            .ae-actions {{ display: flex; gap: 8px; margin-top: 6px; align-items: center; }}
+            .ae-btn-secondary {{ background: none; color: #888; border: none; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; padding: 10px 14px; }}
+            .ae-btn-secondary:hover {{ color: #1a1a1a; }}
+            .ae-btn-primary {{ flex: 1; padding: 12px 18px; background: #4a6741; color: #fff; border: none; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; letter-spacing: .3px; transition: background .12s; }}
+            .ae-btn-primary:hover {{ background: #3a5334; }}
             </style>
             <script>
+            function toggleAeMore(gid) {{
+                const panel = document.getElementById('ae-more-' + gid);
+                const toggle = document.getElementById('ae-more-toggle-' + gid);
+                const isOpen = panel.style.display !== 'none';
+                panel.style.display = isOpen ? 'none' : 'flex';
+                toggle.classList.toggle('open', !isOpen);
+            }}
+
             function toggleAddEvent(gid) {{
+                const editIdEl = document.getElementById('ae-edit-id-' + gid);
+                if (editIdEl && editIdEl.value) {{
+                    cancelEdit(gid);
+                    return;
+                }}
                 const panel = document.getElementById('ae-panel-' + gid);
                 const toggle = document.getElementById('ae-toggle-' + gid);
                 const isOpen = panel.style.display !== 'none';
@@ -2974,83 +2969,89 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                     ? '<span style="font-size:18px;line-height:1;">+</span><span>Add event</span>'
                     : '<span style="font-size:18px;line-height:1;">×</span><span>Close</span>';
                 if (!isOpen) {{
-                    setTimeout(() => document.getElementById('url-paste-' + gid).focus(), 50);
+                    setTimeout(() => document.getElementById('ae-title-' + gid).focus(), 50);
                     updateWhenReadout(gid);
                 }}
             }}
 
             function setQuickWhen(gid, btn) {{
                 const dayCode = btn.dataset.day;
-                const t = btn.dataset.time;
-                const today = new Date(); today.setHours(0,0,0,0);
-                let target = new Date(today);
-                if (dayCode === '0') {{ /* tonight */ }}
-                else if (dayCode === '1') {{ target.setDate(today.getDate() + 1); }}
-                else {{
-                    const dowMap = {{sun:0, mon:1, tue:2, wed:3, thu:4, fri:5, sat:6}};
-                    const want = dowMap[dayCode];
-                    let delta = (want - today.getDay() + 7) % 7;
-                    if (delta === 0) delta = 7;  // always upcoming
-                    target.setDate(today.getDate() + delta);
+                const t = btn.dataset.time || '';
+                const dateEl = document.getElementById('ae-date-' + gid);
+                const timeEl = document.getElementById('ae-time-' + gid);
+                if (dayCode === 'tentative') {{
+                    const endEl = document.getElementById('ae-end-' + gid);
+                    const isActive = btn.classList.contains('active');
+                    if (isActive) {{
+                        const today = new Date();
+                        const yyyy = today.getFullYear();
+                        const mm = String(today.getMonth()+1).padStart(2,'0');
+                        const dd = String(today.getDate()).padStart(2,'0');
+                        dateEl.value = yyyy + '-' + mm + '-' + dd;
+                        timeEl.value = '19:00';
+                        btn.classList.remove('active');
+                    }} else {{
+                        dateEl.value = '';
+                        timeEl.value = '';
+                        if (endEl) endEl.value = '';
+                        btn.classList.add('active');
+                    }}
+                    updateWhenReadout(gid);
+                    return;
                 }}
-                const yyyy = target.getFullYear();
-                const mm = String(target.getMonth()+1).padStart(2,'0');
-                const dd = String(target.getDate()).padStart(2,'0');
-                document.getElementById('ae-date-' + gid).value = yyyy + '-' + mm + '-' + dd;
-                document.getElementById('ae-time-' + gid).value = t;
-                // Toggle active state
-                document.querySelectorAll('#ae-chips-' + gid + ' .ae-chip').forEach(c => c.classList.remove('active'));
-                btn.classList.add('active');
-                updateWhenReadout(gid);
+            }}
+
+            function autoFillEnd(gid) {{
+                const tEl = document.getElementById('ae-time-' + gid);
+                const eEl = document.getElementById('ae-end-' + gid);
+                if (!tEl || !eEl || !tEl.value || eEl.value) return;
+                const [h, m] = tEl.value.split(':').map(Number);
+                const endH = (h + 2) % 24;
+                eEl.value = String(endH).padStart(2,'0') + ':' + String(m || 0).padStart(2,'0');
             }}
 
             function updateWhenReadout(gid) {{
                 const dEl = document.getElementById('ae-date-' + gid);
                 const tEl = document.getElementById('ae-time-' + gid);
-                const eEl = document.getElementById('ae-end-' + gid);
                 const readout = document.getElementById('ae-when-readout-' + gid);
-                if (!dEl || !dEl.value) {{ readout.textContent = ''; return; }}
+                const skipBtn = document.getElementById('ae-skip-date-' + gid);
+                if (!dEl || !dEl.value) {{
+                    readout.textContent = 'Tentative — pick a date later';
+                    readout.style.color = '#8a3f25';
+                    if (skipBtn) skipBtn.classList.add('active');
+                    return;
+                }}
+                if (skipBtn) skipBtn.classList.remove('active');
+                readout.style.color = '#4a6741';
+                const eEl = document.getElementById('ae-end-' + gid);
                 const d = new Date(dEl.value + 'T' + (tEl.value || '00:00') + ':00');
                 if (isNaN(d)) {{ readout.textContent = ''; return; }}
-                const dayLabel = d.toLocaleDateString(undefined, {{weekday:'long', month:'short', day:'numeric'}});
+                const dayLabel = d.toLocaleDateString(undefined, {{weekday:'short', month:'short', day:'numeric'}});
                 const timeLabel = tEl.value ? d.toLocaleTimeString(undefined, {{hour:'numeric', minute:'2-digit'}}) : '';
                 let s = dayLabel + (timeLabel ? ' · ' + timeLabel : '');
                 if (eEl && eEl.value) {{
                     const end = new Date(dEl.value + 'T' + eEl.value + ':00');
                     if (!isNaN(end)) {{
-                        s += ' – ' + end.toLocaleTimeString(undefined, {{hour:'numeric', minute:'2-digit'}});
+                        s += ' → ' + end.toLocaleTimeString(undefined, {{hour:'numeric', minute:'2-digit'}});
                     }}
                 }}
                 readout.textContent = s;
             }}
 
-            // Wire date/time change → live readout (after DOM ready)
             (function() {{
                 const gid = {group_id};
                 ['ae-date-', 'ae-time-', 'ae-end-'].forEach(prefix => {{
                     const el = document.getElementById(prefix + gid);
                     if (el) el.addEventListener('input', () => updateWhenReadout(gid));
                 }});
+                const tEl = document.getElementById('ae-time-' + gid);
+                if (tEl) tEl.addEventListener('change', () => autoFillEnd(gid));
             }})();
             </script>
         </div>'''
 
-    # --- Invite + Calendar subscribe (members only) ---
+    # actions_html intentionally empty — the actions cluster lives below alongside mute/leave.
     actions_html = ""
-    if is_member:
-        settings = Settings()
-        invite_code = group.get("invite_code", "")
-        group_link = f"{settings.dashboard_url}/group/{group_id}/join/{invite_code}"
-
-        actions_html = f'''<div style="border-top:1px solid #e0e0e0;padding-top:24px;margin-top:28px;">
-            <div style="display:flex;gap:8px;margin-bottom:8px;">
-                <button onclick="navigator.clipboard.writeText(&apos;{group_link}&apos;);this.textContent=&apos;Copied!&apos;;setTimeout(()=>this.textContent=&apos;Copy invite link&apos;,1500)"
-                        class="btn-primary" style="flex:1;text-align:center;">Copy invite link</button>
-                <button onclick="navigator.share({{title:&apos;Join {group_name} on Calyx&apos;,text:&apos;Join our group to coordinate plans&apos;,url:&apos;{group_link}&apos;}}).catch(()=>{{}})"
-                        class="btn-secondary" style="flex:1;text-align:center;">Share</button>
-            </div>
-            <p style="font-size:11px;color:#aaa;margin-top:6px;">Subscribe to your calendar feed in <a href="/taste-profile" style="color:#888;">You</a>.</p>
-        </div>'''
 
     # --- Join CTA for non-members (only if they arrived via valid invite link) ---
     invite_code = group.get("invite_code", "")
@@ -3077,13 +3078,35 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                 </form>
             </div>'''
 
-    # --- Editable group name (inline) ---
+    # --- Editable group name + quick invite (inline) ---
     name_html = f'<h1>{group_name}</h1>'
     if is_member:
-        name_html = f'''<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;">
+        _settings_for_link = Settings()
+        _invite_code = group.get("invite_code", "")
+        _group_link = f"{_settings_for_link.dashboard_url}/group/{group_id}/join/{_invite_code}"
+        name_html = f'''<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
             <h1 style="margin:0;" id="groupName">{group_name}</h1>
-            <button onclick="editGroupName()" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:13px;padding:4px 8px;">edit</button>
+            <button onclick="editGroupName()" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:13px;padding:4px 8px;" title="Rename group">edit</button>
+            <button onclick="quickShareGroup(this, &apos;{_group_link}&apos;, &apos;{group_name}&apos;)" style="background:none;border:1px solid #d4e0d1;cursor:pointer;color:#4a6741;font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;margin-left:auto;display:inline-flex;align-items:center;gap:5px;" title="Invite someone">
+                <span style="font-size:14px;">↗</span> Invite
+            </button>
         </div>
+        <script>
+        async function quickShareGroup(btn, link, title) {{
+            const txt = 'Join ' + title + ' on Calyx';
+            if (navigator.share) {{
+                try {{ await navigator.share({{title: txt, url: link}}); return; }} catch(e) {{}}
+            }}
+            try {{
+                await navigator.clipboard.writeText(link);
+                const orig = btn.innerHTML;
+                btn.innerHTML = '<span style="font-size:14px;">✓</span> Copied!';
+                setTimeout(() => {{ btn.innerHTML = orig; }}, 1600);
+            }} catch(e) {{
+                window.prompt('Copy this invite link:', link);
+            }}
+        }}
+        </script>
         <script>
         function editGroupName() {{
             const h1 = document.getElementById('groupName');
@@ -3114,41 +3137,50 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         }}
         </script>'''
 
-    # --- Leave / Delete group button ---
-    # Notification mute toggle
+    # --- Bottom cluster: invite link, share, mute, leave/delete (members only) ---
+    group_actions_html = ""
     mute_html = ""
+    leave_html = ""
     if is_member and current_user:
+        settings = Settings()
+        invite_code = group.get("invite_code", "")
+        group_link = f"{settings.dashboard_url}/group/{group_id}/join/{invite_code}"
+
         notif_row = db.conn.execute(
             "SELECT notifications FROM group_members WHERE group_id=? AND user_id=?",
             (group_id, current_user["id"]),
         ).fetchone()
         notifs_on = notif_row["notifications"] if notif_row else 1
         mute_label = "Mute notifications" if notifs_on else "Unmute notifications"
-        mute_html = f'<div style="text-align:center;margin-top:20px;"><button onclick="fetch(&apos;/api/group/{group_id}/mute&apos;,{{method:&apos;POST&apos;}}).then(()=>location.reload())" style="background:none;border:none;color:#888;cursor:pointer;font-size:12px;padding:4px 12px;font-family:inherit;">{mute_label}</button></div>'
 
-    leave_html = ""
-    if is_member and current_user and group.get("created_by") == current_user["id"]:
-        leave_html = f'''<div style="text-align:center;margin-top:32px;margin-bottom:16px;">
-            <form action="/api/group/{group_id}/delete" method="post" style="margin:0;">
-                <button type="submit" onclick="return confirm(&apos;Delete this group and all its events? This cannot be undone.&apos;)"
-                        style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:13px;padding:8px 16px;font-family:inherit;">Delete group</button>
-            </form>
-        </div>'''
-    elif is_member and current_user and group.get("created_by") != current_user["id"]:
-        leave_html = f'''<div style="text-align:center;margin-top:32px;margin-bottom:16px;">
-            <form action="/api/group/{group_id}/leave" method="post" style="margin:0;">
-                <button type="submit" onclick="return confirm(&apos;Leave this group?&apos;)"
-                        style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:13px;padding:8px 16px;font-family:inherit;">Leave group</button>
-            </form>
+        if group.get("created_by") == current_user["id"]:
+            danger_action = f'<form action="/api/group/{group_id}/delete" method="post" style="margin:0;"><button type="submit" onclick="return confirm(&apos;Delete this group and all its events? This cannot be undone.&apos;)" style="background:none;border:none;color:#a05439;cursor:pointer;font-size:12px;padding:4px 8px;font-family:inherit;text-decoration:underline;">Delete group</button></form>'
+        else:
+            danger_action = f'<form action="/api/group/{group_id}/leave" method="post" style="margin:0;"><button type="submit" onclick="return confirm(&apos;Leave this group?&apos;)" style="background:none;border:none;color:#a05439;cursor:pointer;font-size:12px;padding:4px 8px;font-family:inherit;text-decoration:underline;">Leave group</button></form>'
+
+        group_actions_html = f'''<div style="margin-top:18px;padding-top:14px;border-top:1px dashed #e0e0e0;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                <button onclick="navigator.clipboard.writeText(&apos;{group_link}&apos;);this.textContent=&apos;Copied!&apos;;setTimeout(()=>this.textContent=&apos;Copy invite link&apos;,1500)"
+                        class="evt-action-btn evt-action-primary" style="flex:1;min-width:140px;padding:8px 14px;">Copy invite link</button>
+                <button onclick="navigator.share({{title:&apos;Join {group_name} on Calyx&apos;,text:&apos;Join our group to coordinate plans&apos;,url:&apos;{group_link}&apos;}}).catch(()=>{{}})"
+                        class="evt-action-btn" style="flex:1;min-width:120px;padding:8px 14px;">Share</button>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#888;">
+                <button onclick="fetch(&apos;/api/group/{group_id}/mute&apos;,{{method:&apos;POST&apos;}}).then(()=>location.reload())" style="background:none;border:none;color:#888;cursor:pointer;font-size:12px;padding:4px 8px;font-family:inherit;text-decoration:underline;">{mute_label}</button>
+                {danger_action}
+            </div>
         </div>'''
 
-    # Group RSVP button CSS + JS
+    # Group RSVP + chat-modal CSS + JS
     group_rsvp_extras = f"""
     <style>
-    .grp-rsvp-btn {{ font-size:11px; padding:4px 14px; border:1px solid #ccc; background:white; cursor:pointer; color:#888; font-weight:700; transition:all .15s; font-family:inherit; text-transform:uppercase; letter-spacing:.3px; }}
-    .grp-rsvp-btn:hover, .grp-rsvp-btn.active {{ color:#000; border-color:#000; }}
-    .grp-rsvp-btn.going:hover, .grp-rsvp-btn.going.active {{ background:#000; color:#fff; border-color:#000; }}
-    .grp-rsvp-btn.maybe:hover, .grp-rsvp-btn.maybe.active {{ background:#f5f5f5; color:#000; border-color:#000; }}
+    .grp-rsvp-btn {{ font-size:13px; padding:9px 20px; border:1.5px solid #d4e0d1; background:#fff; cursor:pointer; color:#4a6741; font-weight:700; transition:all .15s; font-family:inherit; letter-spacing:.2px; min-height:40px; }}
+    .grp-rsvp-btn:hover {{ background:#edf2eb; border-color:#4a6741; }}
+    .grp-rsvp-btn.going.active {{ background:#4a6741; color:#fff; border-color:#4a6741; }}
+    .grp-rsvp-btn.maybe.active {{ background:#fbf6f3; color:#8a3f25; border-color:#c4734f; }}
+    .grp-rsvp-btn.cant {{ color:#888; border-color:#e0e0e0; }}
+    .grp-rsvp-btn.cant:hover {{ background:#f5f5f5; border-color:#888; color:#1a1a1a; }}
+    .grp-rsvp-btn.cant.active {{ background:#f0f0f0; color:#666; border-color:#bbb; text-decoration:line-through; }}
     .evt-actions-row {{ display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px dashed #ececec; }}
     .evt-action-btn {{ font-size:11px; font-weight:600; padding:6px 11px; border:1px solid #d4dbd1; background:#fafbf9; color:#4a6741; cursor:pointer; font-family:inherit; border-radius:999px; letter-spacing:.3px; transition:all .12s; min-height:28px; }}
     .evt-action-btn:hover {{ background:#edf2eb; border-color:#4a6741; color:#3a5334; }}
@@ -3156,55 +3188,55 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     .evt-action-primary:hover {{ background:#d4e0d1; border-color:#4a6741; }}
     .evt-action-danger {{ color:#a05439; border-color:#e6cdc1; background:#fbf6f3; }}
     .evt-action-danger:hover {{ background:#f5e7df; border-color:#c4734f; color:#8a3f25; }}
+
+    /* --- Chat affordance + pop-out modal --- */
+    .chat-row-wrap {{ margin-top:14px; padding-top:12px; border-top:1px solid #f0f0f0; display:flex; flex-direction:column; gap:8px; align-items:flex-start; }}
+    .chat-preview {{ font-size:12px; color:#666; line-height:1.4; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+    .chat-preview strong {{ color:#1a1a1a; font-weight:700; }}
+    .chat-open {{ display:inline-flex; align-items:center; gap:7px; background:none; border:none; padding:0; font-size:13px; font-weight:600; color:#4a6741; cursor:pointer; font-family:inherit; letter-spacing:.2px; transition:color .12s; }}
+    .chat-open:hover {{ color:#3a5334; }}
+    .chat-open:hover span {{ text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:3px; }}
+    .chat-open svg {{ flex-shrink:0; opacity:.85; }}
+    .chat-count-chip {{ display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 6px; background:#4a6741; color:#fff; font-size:10px; font-weight:700; border-radius:999px; margin-left:2px; letter-spacing:0; }}
+    .chat-backdrop {{ position:fixed; inset:0; background:rgba(20,20,20,0); pointer-events:none; transition:background .18s; z-index:90; }}
+    .chat-sheet {{ position:fixed; right:0; top:0; bottom:0; width:min(420px, 100vw); background:#fff; box-shadow:-8px 0 24px rgba(0,0,0,.08); transform:translateX(100%); transition:transform .22s ease-out; z-index:100; display:flex; flex-direction:column; }}
+    .chat-sheet.open {{ transform:translateX(0); }}
+    .chat-header {{ display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid #e0e0e0; background:#fafafa; }}
+    .chat-header h3 {{ flex:1; margin:0; font-size:15px; font-weight:700; color:#1a1a1a; letter-spacing:0; text-transform:none; line-height:1.3; }}
+    .chat-close {{ background:none; border:none; cursor:pointer; color:#888; font-size:22px; padding:4px 8px; line-height:1; font-family:inherit; }}
+    .chat-close:hover {{ color:#1a1a1a; }}
+    .chat-body {{ flex:1; overflow-y:auto; padding:16px; background:#f8f7f4; display:flex; flex-direction:column; gap:8px; }}
+    .chat-empty {{ color:#888; font-size:13px; text-align:center; padding:32px 12px; }}
+    .chat-row {{ display:flex; flex-direction:column; max-width:78%; }}
+    .chat-row.them {{ align-self:flex-start; align-items:flex-start; }}
+    .chat-row.me {{ align-self:flex-end; align-items:flex-end; }}
+    .chat-row.grouped {{ margin-top:-4px; }}
+    .chat-name {{ font-size:11px; color:#888; font-weight:600; margin-bottom:2px; padding:0 4px; }}
+    .chat-bubble {{ position:relative; padding:8px 12px; font-size:14px; line-height:1.4; word-wrap:break-word; white-space:pre-wrap; color:#1a1a1a; }}
+    .chat-row.them .chat-bubble {{ background:#fff; border:1px solid #e0e0e0; border-radius:14px 14px 14px 4px; }}
+    .chat-row.me .chat-bubble {{ background:#4a6741; color:#fff; border-radius:14px 14px 4px 14px; }}
+    .chat-row.grouped.them .chat-bubble, .chat-row.grouped.me .chat-bubble {{ border-radius:14px; }}
+    .chat-time {{ font-size:10px; color:#aaa; margin-top:2px; padding:0 6px; }}
+    .chat-del {{ display:none; position:absolute; top:-8px; right:-8px; background:#fff; border:1px solid #e0e0e0; color:#888; cursor:pointer; border-radius:50%; width:22px; height:22px; font-size:13px; line-height:1; font-family:inherit; }}
+    .chat-row.me:hover .chat-del {{ display:inline-block; }}
+    .chat-form {{ display:flex; gap:8px; padding:12px 14px; border-top:1px solid #e0e0e0; background:#fff; }}
+    .chat-form input {{ flex:1; min-width:0; padding:11px 14px; border:1px solid #ccc; font-size:14px; font-family:inherit; background:#fff; color:#1a1a1a; outline:none; border-radius:999px; }}
+    .chat-form input:focus {{ border-color:#4a6741; box-shadow:0 0 0 3px rgba(74,103,65,.12); }}
+    .chat-form button {{ padding:0 18px; background:#4a6741; color:#fff; border:none; font-weight:700; font-size:13px; cursor:pointer; font-family:inherit; text-transform:uppercase; letter-spacing:.5px; border-radius:999px; }}
+    .chat-form button:hover {{ background:#3a5334; }}
+    @media (max-width:520px) {{ .chat-sheet {{ width:100vw; }} }}
     </style>
     <script>
-    async function autofillFromUrl(groupId) {{
-        const urlInput = document.getElementById('url-paste-' + groupId);
-        const fillBtn = document.getElementById('ae-fill-' + groupId);
-        const status = document.getElementById('ae-url-status-' + groupId);
-        const url = urlInput.value.trim();
-        if (!url) {{ status.textContent = 'Paste a URL first.'; status.style.color = '#c4734f'; return; }}
-        urlInput.disabled = true; fillBtn.disabled = true; fillBtn.textContent = 'Reading…';
-        status.textContent = 'Fetching event details…'; status.style.color = '#888';
-        try {{
-            const resp = await fetch('/api/extract-event-url', {{
-                method: 'POST',
-                headers: {{'Content-Type': 'application/json'}},
-                body: JSON.stringify({{url}})
-            }});
-            const d = await resp.json();
-            if (d.ok) {{
-                if (d.title) document.getElementById('ae-title-' + groupId).value = d.title;
-                if (d.date) document.getElementById('ae-date-' + groupId).value = d.date;
-                if (d.time) document.getElementById('ae-time-' + groupId).value = d.time;
-                if (d.location) document.getElementById('ae-loc-' + groupId).value = d.location;
-                document.getElementById('ae-url-' + groupId).value = url;
-                status.textContent = '✓ Filled. Tweak as needed and submit.'; status.style.color = '#4a6741';
-            }} else {{
-                status.textContent = d.error || 'Could not extract details. Fill manually below.';
-                status.style.color = '#c4734f';
-            }}
-        }} catch(e) {{
-            status.textContent = 'Network error. Fill manually below.'; status.style.color = '#c4734f';
+    window.__aeHome = window.__aeHome || null;
+    function restoreAeHome(groupId) {{
+        if (!window.__aeHome) return;
+        const toggle = document.getElementById('ae-toggle-' + groupId);
+        const wrapper = toggle && toggle.parentNode;
+        const home = window.__aeHome;
+        if (wrapper && home.parent && wrapper !== home.nextSibling) {{
+            try {{ home.parent.insertBefore(wrapper, home.nextSibling); }} catch(e) {{}}
         }}
-        urlInput.disabled = false; fillBtn.disabled = false; fillBtn.textContent = 'Autofill';
-    }}
-
-    async function shareEvent(btn, url, title) {{
-        if (navigator.share) {{
-            try {{
-                await navigator.share({{title: title, text: 'RSVP for ' + title, url: url}});
-                return;
-            }} catch(e) {{ /* fall through to copy */ }}
-        }}
-        try {{
-            await navigator.clipboard.writeText(url);
-            const orig = btn.textContent;
-            btn.textContent = 'copied!';
-            setTimeout(() => {{ btn.textContent = orig; }}, 1500);
-        }} catch(e) {{
-            window.prompt('Copy this link:', url);
-        }}
+        window.__aeHome = null;
     }}
 
     function openEditEvent(groupId, eventId) {{
@@ -3212,66 +3244,69 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         if (!card) return;
         const panel = document.getElementById('ae-panel-' + groupId);
         const toggle = document.getElementById('ae-toggle-' + groupId);
-        // Open the panel if closed
+        const wrapper = toggle.parentNode;
+        if (wrapper && card.nextSibling !== wrapper) {{
+            if (!window.__aeHome) {{
+                window.__aeHome = {{parent: wrapper.parentNode, nextSibling: wrapper.nextSibling}};
+            }}
+            card.parentNode.insertBefore(wrapper, card.nextSibling);
+        }}
         if (panel.style.display === 'none' || !panel.style.display) {{
             panel.style.display = 'block';
-            toggle.innerHTML = '<span style="font-size:18px;line-height:1;">×</span><span>Close</span>';
         }}
-        // Populate fields
+        toggle.style.display = 'none';
         document.getElementById('ae-edit-id-' + groupId).value = eventId;
         document.getElementById('ae-title-' + groupId).value = card.dataset.title || '';
         document.getElementById('ae-date-' + groupId).value = card.dataset.date || '';
         document.getElementById('ae-time-' + groupId).value = card.dataset.time || '';
-        document.getElementById('ae-end-' + groupId).value = card.dataset.end || '';
+        const endEl = document.getElementById('ae-end-' + groupId);
+        if (endEl) endEl.value = card.dataset.end || '';
         document.getElementById('ae-loc-' + groupId).value = card.dataset.location || '';
-        document.getElementById('ae-url-' + groupId).value = card.dataset.url || '';
+        const urlEl = document.getElementById('ae-url-' + groupId);
+        if (urlEl) urlEl.value = card.dataset.url || '';
         document.getElementById('ae-notes-' + groupId).value = card.dataset.notes || '';
-        // Reset chip active states (none active in edit mode)
-        document.querySelectorAll('#ae-chips-' + groupId + ' .ae-chip').forEach(c => c.classList.remove('active'));
-        // Hide URL-paste + recurring (don't apply when editing)
-        const urlPaste = document.getElementById('url-paste-' + groupId).closest('div');
-        if (urlPaste) urlPaste.style.display = 'none';
-        const urlStatus = document.getElementById('ae-url-status-' + groupId);
-        if (urlStatus) urlStatus.style.display = 'none';
-        const pasteLabel = urlPaste && urlPaste.previousElementSibling;
-        if (pasteLabel && pasteLabel.tagName === 'LABEL') pasteLabel.style.display = 'none';
-        const manualLabel = document.getElementById('ae-manual-label-' + groupId);
-        if (manualLabel) manualLabel.style.display = 'none';
+        const prereqEl = document.getElementById('ae-prereq-' + groupId);
+        if (prereqEl) prereqEl.value = card.dataset.prerequisites || '';
+        const capEl = document.getElementById('ae-cap-' + groupId);
+        if (capEl) capEl.value = card.dataset.capacity || '';
+        const needsMore = (card.dataset.notes || card.dataset.prerequisites || card.dataset.capacity || card.dataset.url);
+        if (needsMore) {{
+            const morePanel = document.getElementById('ae-more-' + groupId);
+            const moreToggle = document.getElementById('ae-more-toggle-' + groupId);
+            if (morePanel && morePanel.style.display === 'none') {{
+                morePanel.style.display = 'flex';
+                if (moreToggle) moreToggle.classList.add('open');
+            }}
+        }}
         const recurringField = document.getElementById('ae-recurring-field-' + groupId);
         if (recurringField) recurringField.style.display = 'none';
-        // Show edit banner
         const banner = document.getElementById('ae-edit-banner-' + groupId);
         const bannerTitle = document.getElementById('ae-edit-banner-title-' + groupId);
         if (banner) banner.style.display = 'block';
         if (bannerTitle) bannerTitle.textContent = card.dataset.title || '';
-        // Submit button label
         const submit = document.getElementById('ae-submit-' + groupId);
         if (submit) submit.textContent = 'Save changes';
-        // Live readout
         updateWhenReadout(groupId);
-        // Scroll panel into view
-        setTimeout(() => panel.scrollIntoView({{behavior: 'smooth', block: 'start'}}), 60);
+        setTimeout(() => panel.scrollIntoView({{behavior: 'smooth', block: 'nearest'}}), 60);
     }}
 
     function cancelEdit(groupId) {{
-        // Reset edit state, restore create mode
         document.getElementById('ae-edit-id-' + groupId).value = '';
         document.getElementById('add-event-form-' + groupId).reset();
         const banner = document.getElementById('ae-edit-banner-' + groupId);
         if (banner) banner.style.display = 'none';
-        // Restore hidden sections
-        const urlPaste = document.getElementById('url-paste-' + groupId).closest('div');
-        if (urlPaste) urlPaste.style.display = '';
-        const urlStatus = document.getElementById('ae-url-status-' + groupId);
-        if (urlStatus) urlStatus.style.display = '';
-        const pasteLabel = urlPaste && urlPaste.previousElementSibling;
-        if (pasteLabel && pasteLabel.tagName === 'LABEL') pasteLabel.style.display = '';
-        const manualLabel = document.getElementById('ae-manual-label-' + groupId);
-        if (manualLabel) manualLabel.style.display = '';
         const recurringField = document.getElementById('ae-recurring-field-' + groupId);
         if (recurringField) recurringField.style.display = '';
         const submit = document.getElementById('ae-submit-' + groupId);
         if (submit) submit.textContent = 'Add event';
+        const toggle = document.getElementById('ae-toggle-' + groupId);
+        if (toggle) {{
+            toggle.style.display = '';
+            toggle.innerHTML = '<span style="font-size:18px;line-height:1;">+</span><span>Add event</span>';
+        }}
+        const panel = document.getElementById('ae-panel-' + groupId);
+        if (panel) panel.style.display = 'none';
+        restoreAeHome(groupId);
         updateWhenReadout(groupId);
     }}
 
@@ -3284,6 +3319,118 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         }});
         if (resp.ok) location.reload();
     }}
+
+    /* --- Pop-out chat modal --- */
+    const __ME_ID__ = {current_user["id"] if current_user else 0};
+    let __chatEid = null;
+    let __chatPollTimer = null;
+
+    function openChat(eid, eventTitle) {{
+        __chatEid = eid;
+        const sheet = document.getElementById('chat-sheet');
+        document.getElementById('chat-title').textContent = eventTitle || 'Chat';
+        sheet.classList.add('open');
+        document.body.style.overflow = 'hidden';
+        renderChat();
+        if (__chatPollTimer) clearInterval(__chatPollTimer);
+        __chatPollTimer = setInterval(renderChat, 5000);
+        setTimeout(() => {{
+            const input = document.getElementById('chat-input');
+            if (input) input.focus();
+        }}, 80);
+    }}
+
+    function closeChat() {{
+        const sheet = document.getElementById('chat-sheet');
+        sheet.classList.remove('open');
+        document.body.style.overflow = '';
+        if (__chatPollTimer) {{ clearInterval(__chatPollTimer); __chatPollTimer = null; }}
+        __chatEid = null;
+    }}
+
+    function fmtChatTime(iso) {{
+        try {{
+            const d = new Date(iso);
+            const today = new Date(); today.setHours(0,0,0,0);
+            const day = new Date(d); day.setHours(0,0,0,0);
+            const sameDay = day.getTime() === today.getTime();
+            const t = d.toLocaleTimeString(undefined, {{hour:'numeric', minute:'2-digit'}});
+            return sameDay ? t : d.toLocaleDateString(undefined, {{month:'short', day:'numeric'}}) + ' · ' + t;
+        }} catch(e) {{ return ''; }}
+    }}
+
+    async function renderChat() {{
+        if (!__chatEid) return;
+        const body = document.getElementById('chat-body');
+        try {{
+            const resp = await fetch('/api/event/' + encodeURIComponent(__chatEid) + '/comments');
+            const data = await resp.json();
+            const msgs = data.comments || [];
+            if (!msgs.length) {{
+                body.innerHTML = '<div class="chat-empty">No messages yet. Be the first.</div>';
+                return;
+            }}
+            const rows = [];
+            let prevUid = null;
+            msgs.forEach(m => {{
+                const isMe = m.user_id === __ME_ID__;
+                const same = m.user_id === prevUid;
+                const name = m.user_name || (m.user_email || '').split('@')[0] || '?';
+                const safeBody = (m.body || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br>');
+                const delBtn = isMe ? '<button class="chat-del" title="Delete" onclick="deleteChatMsg(' + m.id + ')">×</button>' : '';
+                rows.push(
+                    '<div class="chat-row ' + (isMe ? 'me' : 'them') + (same ? ' grouped' : '') + '">' +
+                    (same ? '' : '<div class="chat-name">' + (isMe ? 'You' : name) + '</div>') +
+                    '<div class="chat-bubble">' + safeBody + delBtn + '</div>' +
+                    '<div class="chat-time">' + fmtChatTime(m.created_at) + '</div>' +
+                    '</div>'
+                );
+                prevUid = m.user_id;
+            }});
+            body.innerHTML = rows.join('');
+            body.scrollTop = body.scrollHeight;
+        }} catch(e) {{
+            body.innerHTML = '<div class="chat-empty">Couldn\\'t load messages.</div>';
+        }}
+    }}
+
+    async function sendChat(ev) {{
+        ev.preventDefault();
+        if (!__chatEid) return false;
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        if (!text) return false;
+        input.disabled = true;
+        try {{
+            const resp = await fetch('/api/event/' + encodeURIComponent(__chatEid) + '/comments', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{body: text}})
+            }});
+            if (resp.ok) {{
+                input.value = '';
+                await renderChat();
+            }}
+        }} catch(e) {{}}
+        input.disabled = false;
+        input.focus();
+        return false;
+    }}
+
+    async function deleteChatMsg(commentId) {{
+        if (!confirm('Delete this message?')) return;
+        try {{
+            const resp = await fetch('/api/comment/' + commentId, {{method: 'DELETE'}});
+            if (resp.ok) renderChat();
+        }} catch(e) {{}}
+    }}
+
+    document.addEventListener('keydown', (e) => {{
+        if (e.key === 'Escape') {{
+            const sheet = document.getElementById('chat-sheet');
+            if (sheet && sheet.classList.contains('open')) closeChat();
+        }}
+    }});
 
     async function rsvpGroupEvent(groupId, eventId, status, btn) {{
         const container = btn.parentElement;
@@ -3298,17 +3445,16 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                 headers: {{'Content-Type': 'application/json'}},
                 body: JSON.stringify({{event_id: eventId, status: newStatus, user_token: '{user_token}'}})
             }});
-            if (!wasActive) setTimeout(() => location.reload(), 300);
-            else setTimeout(() => location.reload(), 300);
+            setTimeout(() => location.reload(), 300);
         }} catch(e) {{ console.error(e); }}
     }}
     </script>
     """
 
     member_count = len(members)
-    # Build members HTML
     _colors = ["#4a6741", "#c4734f", "#5b7fa5", "#8b6b47", "#7a5c8a", "#5a8a6e"]
     _members_html = ""
+    from html import escape as _esc_m
     for i, m in enumerate(members):
         initial = ((m.get("name") or m.get("email") or "?")[0]).upper()
         mname = m.get("name") or m.get("email", "").split("@")[0]
@@ -3318,9 +3464,19 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
         if is_creator and current_user and m["id"] != current_user["id"]:
             kick = f'<button onclick="kickMember({group_id},{m["id"]},this)" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:16px;padding:0 4px;margin-left:auto;" title="Remove">&times;</button>'
         border = f"border:2px solid {color};" if is_me else ""
+        phone = (m.get("phone") or "").strip()
+        phone_html = ""
+        if phone:
+            _tel = "".join(ch for ch in phone if ch.isdigit() or ch == "+")
+            phone_html = f'<a href="tel:{_tel}" style="font-size:12px;color:#6b7280;text-decoration:none;margin-left:6px;">{_esc_m(phone)}</a>'
+        elif is_me:
+            phone_html = f'<a href="/taste-profile#settings" style="font-size:11px;color:#c4734f;text-decoration:none;margin-left:6px;border-bottom:1px dashed #c4734f;">+ add your phone</a>'
         _members_html += f'''<div style="display:flex;align-items:center;gap:10px;padding:8px 0;{"border-bottom:1px solid #f0f0f0;" if i < len(members)-1 else ""}">
             <div style="width:36px;height:36px;background:{color}15;color:{color};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;flex-shrink:0;{border}">{initial}</div>
-            <span style="font-size:14px;font-weight:{"700" if is_me else "500"};color:#1a1a1a;">{mname}{"  (you)" if is_me else ""}</span>
+            <div style="display:flex;flex-direction:column;flex:1;min-width:0;">
+                <span style="font-size:14px;font-weight:{"700" if is_me else "500"};color:#1a1a1a;">{_esc_m(mname)}{"  (you)" if is_me else ""}</span>
+                {phone_html}
+            </div>
             {kick}
         </div>'''
 
@@ -3341,10 +3497,17 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     <div class="group-page">
     {name_html}
 
-    <div style="margin-bottom:28px;">
-        <h2 style="margin:0 0 8px;">{len(members)} member{"s" if len(members) != 1 else ""}</h2>
-        {_members_html}
-    </div>
+    <details class="group-meta" style="margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid #e0e0e0;">
+        <summary style="cursor:pointer;font-size:13px;color:#888;letter-spacing:.5px;padding:6px 0;display:flex;align-items:center;gap:8px;">
+            <span class="meta-caret" style="font-size:11px;color:#888;transition:transform .15s;">▸</span>
+            <span>{len(members)} member{"s" if len(members) != 1 else ""} · settings</span>
+        </summary>
+        <div style="margin-top:12px;">
+            {_members_html}
+            {group_actions_html}
+        </div>
+    </details>
+    <style>.group-meta[open] .meta-caret {{ transform: rotate(90deg); }} .group-meta summary::-webkit-details-marker {{ display:none; }} .group-meta summary {{ list-style: none; }}</style>
 
     {join_cta}
 
@@ -3352,11 +3515,22 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
 
     {add_event_html}
 
+    {past_html}
 
-    {actions_html}
-    {mute_html}
-    {leave_html}
+    {deleted_html}
     </div>
+    <div class="chat-backdrop" onclick="closeChat()"></div>
+    <aside id="chat-sheet" class="chat-sheet" role="dialog" aria-modal="true" aria-labelledby="chat-title">
+      <div class="chat-header">
+        <h3 id="chat-title">Chat</h3>
+        <button class="chat-close" onclick="closeChat()" aria-label="Close">×</button>
+      </div>
+      <div id="chat-body" class="chat-body"></div>
+      <form class="chat-form" onsubmit="return sendChat(event)">
+        <input id="chat-input" type="text" maxlength="1000" placeholder="Message…" autocomplete="off" {'' if current_user else 'disabled'}>
+        <button type="submit">Send</button>
+      </form>
+    </aside>
     {group_rsvp_extras}
     """, user=current_user, og=og))
     return _maybe_set_cookie(request, resp, current_user)
@@ -3621,71 +3795,6 @@ async def og_event_image(group_id: int, event_id: int, invite_code: str):
         media_type="image/png",
         headers={"Cache-Control": "public, max-age=3600"},
     )
-
-
-@app.post("/api/extract-event-url")
-async def extract_event_from_url(request: Request):
-    """Fetch a URL and use Claude to extract event details."""
-    user = _get_current_user(request)
-    if not user:
-        return JSONResponse({"ok": False}, status_code=401)
-    body = await request.json()
-    url = (body.get("url") or "").strip()
-    if not url:
-        return JSONResponse({"ok": False, "error": "No URL"})
-
-    settings = Settings()
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            if resp.status_code != 200:
-                return JSONResponse({"ok": False, "error": f"Could not fetch URL ({resp.status_code})"})
-            # Extract the most useful parts: title, meta tags, main content
-            from bs4 import BeautifulSoup as _BS
-            soup = _BS(resp.text, "lxml")
-            # Grab structured data, meta, and visible text
-            parts = []
-            for s in soup.find_all("script", type="application/ld+json"):
-                if s.string:
-                    parts.append(s.string[:500])
-            meta_desc = soup.find("meta", attrs={"name": "description"})
-            if meta_desc and meta_desc.get("content"):
-                parts.append(meta_desc["content"])
-            title_tag = soup.find("title")
-            if title_tag:
-                parts.append(title_tag.get_text())
-            # Get text from time/date/location elements
-            import re as _re2
-            for el in soup.find_all(class_=_re2.compile(r"time|date|door|venue|location|address", _re2.I)):
-                parts.append(el.get_text(strip=True)[:100])
-            # Fallback: page text
-            parts.append(soup.get_text(" ", strip=True)[:3000])
-            html = "\n".join(parts)[:8000]
-    except Exception as exc:
-        return JSONResponse({"ok": False, "error": str(exc)})
-
-    # Use Claude to extract event details
-    import anthropic
-    try:
-        ac = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        result = ac.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=300,
-            messages=[{"role": "user", "content":
-                f"Extract event details from this webpage HTML. Return ONLY JSON: "
-                f"{{\"title\":\"\",\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\",\"location\":\"\"}}\n\n{html}"}],
-        )
-        import json as _json, re as _re
-        text = result.content[0].text
-        match = _re.search(r'\{.*\}', text, _re.DOTALL)
-        if match:
-            data = _json.loads(match.group())
-            return JSONResponse({"ok": True, **data})
-    except Exception:
-        pass
-
-    return JSONResponse({"ok": False, "error": "Could not extract event details"})
 
 
 @app.post("/api/group/{group_id:int}/add-event")
