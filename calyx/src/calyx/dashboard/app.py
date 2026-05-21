@@ -3984,7 +3984,7 @@ async def youtube_callback(code: str = "", error: str = "", state: str = ""):
     return resp
 
 
-def _google_signin_cta(next_url: str = "/calendar", heading: str | None = None, subhead: str | None = None) -> str:
+def _google_signin_cta(next_url: str = "/groups", heading: str | None = None, subhead: str | None = None) -> str:
     """Render the standard Google sign-in CTA card. Used by /login and invite flows."""
     from urllib.parse import quote
     href = f"/auth/google/login?next={quote(next_url, safe='/')}"
@@ -4010,14 +4010,14 @@ def _google_signin_cta(next_url: str = "/calendar", heading: str | None = None, 
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(next: str = "/calendar"):
+async def login_page(next: str = "/groups"):
     body = _google_signin_cta(next_url=next)
     page_html = LAYOUT_STYLE.replace("__TITLE__", "Sign in to Calyx").replace("__OG_TAGS__", "") + render_nav(None) + body + LAYOUT_FOOT
     return HTMLResponse(page_html)
 
 
 @app.get("/auth/google/login")
-async def auth_google_login(request: Request, next: str = "/calendar"):
+async def auth_google_login(request: Request, next: str = "/groups"):
     settings = Settings()
     if not settings.google_client_id or not settings.google_client_secret:
         return HTMLResponse(
@@ -4030,8 +4030,65 @@ async def auth_google_login(request: Request, next: str = "/calendar"):
     response = RedirectResponse(url, status_code=302)
     response.set_cookie("oauth_state", state, max_age=600, httponly=True, samesite="lax")
     response.set_cookie("oauth_verifier", verifier, max_age=600, httponly=True, samesite="lax")
-    response.set_cookie("oauth_next", next if next.startswith("/") else "/calendar", max_age=600, httponly=True, samesite="lax")
+    response.set_cookie("oauth_next", next if next.startswith("/") else "/groups", max_age=600, httponly=True, samesite="lax")
     return response
+
+
+@app.get("/welcome", response_class=HTMLResponse)
+async def welcome_page(request: Request, next: str = "/groups"):
+    """Post-signup phone collection. New users land here before reaching their actual destination."""
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(f"/login?next={next}", status_code=303)
+    if (user.get("phone") or "").strip():
+        return RedirectResponse(next if next.startswith("/") else "/groups", status_code=303)
+    nxt_safe = next if next.startswith("/") else "/groups"
+    name = (user.get("name") or "").split()[0] or "there"
+    body = f"""
+    <style>
+      .welcome-card {{ max-width: 460px; margin: 60px auto 0; padding: 32px 28px; border: 1px solid #e0e0e0; }}
+      .welcome-card h1 {{ font-size: 1.6rem; font-weight: 800; color: #1a1a1a; letter-spacing: -.5px; margin: 0 0 8px; }}
+      .welcome-card p.sub {{ font-size: 14px; color: #555; line-height: 1.55; margin: 0 0 24px; }}
+      .welcome-card label {{ display:block; font-size: 11px; font-weight: 700; color: #4a6741; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px; }}
+      .welcome-card input {{ width: 100%; padding: 12px 14px; border: 1px solid #ccc; font-size: 16px; font-family: inherit; background: #fff; color: #1a1a1a; outline: none; transition: border-color .12s, box-shadow .12s; box-sizing: border-box; }}
+      .welcome-card input:focus {{ border-color: #4a6741; box-shadow: 0 0 0 3px rgba(74,103,65,.12); }}
+      .welcome-card .actions {{ display:flex; gap:8px; margin-top:18px; align-items:center; }}
+      .welcome-card .primary {{ flex:1; padding: 13px 18px; background: #4a6741; color: #fff; border: none; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; letter-spacing: .3px; }}
+      .welcome-card .primary:hover {{ background: #3a5334; }}
+      .welcome-card .skip {{ background: none; border: none; color: #888; cursor: pointer; font-size: 13px; padding: 12px 14px; font-family: inherit; }}
+      .welcome-card .skip:hover {{ color: #1a1a1a; text-decoration: underline; }}
+    </style>
+    <form class="welcome-card" action="/welcome" method="post">
+      <input type="hidden" name="next" value="{nxt_safe}">
+      <h1>Welcome, {name}.</h1>
+      <p class="sub">One thing before you head in: drop your phone so your group-mates can reach you without re-pasting it everywhere.</p>
+      <label for="phone">Phone</label>
+      <input id="phone" name="phone" type="tel" placeholder="+1 555 123 4567" autocomplete="tel" autofocus>
+      <div class="actions">
+        <button type="submit" class="primary">Continue →</button>
+        <a href="{nxt_safe}" class="skip">Skip for now</a>
+      </div>
+    </form>
+    """
+    return HTMLResponse(_layout("Welcome", body, user))
+
+
+@app.post("/welcome")
+async def welcome_submit(request: Request):
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    form = await request.form()
+    phone = (form.get("phone") or "").strip()[:30]
+    nxt = (form.get("next") or "/groups").strip() or "/groups"
+    if not nxt.startswith("/"):
+        nxt = "/groups"
+    if phone:
+        import re as _re
+        cleaned = _re.sub(r"[^\d+\-\s()]", "", phone)
+        db = get_db()
+        db.update_user(user["id"], phone=cleaned)
+    return RedirectResponse(nxt, status_code=303)
 
 
 @app.get("/auth/google/callback")
@@ -4060,14 +4117,14 @@ async def auth_google_callback(request: Request, code: str = "", state: str = ""
         user_id = db.create_user(email, info.get("name", ""))
         db.seed_taste_items(user_id)
         user = db.get_user(user_id)
-    nxt = request.cookies.get("oauth_next", "/calendar") or "/calendar"
+    nxt = request.cookies.get("oauth_next", "/groups") or "/groups"
     if not nxt.startswith("/"):
-        nxt = "/calendar"
-    # First-time sign-in via the generic /login (not via an invite link) → drop them on
-    # the You page with a welcome banner that highlights the calendar subscribe section.
-    # Invite-link signups have a specific `next` (the invite URL) and should follow that.
-    if is_new and nxt == "/calendar":
-        nxt = "/taste-profile?welcome=1"
+        nxt = "/groups"
+    # Force phone collection as part of signup. Existing users with no phone get caught too —
+    # the persistent banner is the fallback; this is the first-class flow.
+    if not (user.get("phone") or "").strip():
+        from urllib.parse import quote as _q
+        nxt = f"/welcome?next={_q(nxt, safe='/')}"
     response = RedirectResponse(nxt, status_code=303)
     _set_token_cookie(response, user["user_token"])
     response.delete_cookie("oauth_state")
