@@ -134,8 +134,8 @@ LAYOUT_STYLE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#4a6741">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="apple-touch-icon" href="/favicon.svg">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="apple-touch-icon" href="/static/favicon.svg">
 <link rel="manifest" href="/static/manifest.json">
 __OG_TAGS__
 <title>Calyx — __TITLE__</title>
@@ -1098,7 +1098,7 @@ async def favicon_svg():
 @app.get("/favicon.ico")
 async def favicon_ico():
     """Some browsers/clients fetch /favicon.ico regardless of <link> hints; just redirect."""
-    return RedirectResponse("/favicon.svg", status_code=301)
+    return RedirectResponse("/static/favicon.svg", status_code=301)
 
 
 @app.get("/landing", response_class=HTMLResponse)
