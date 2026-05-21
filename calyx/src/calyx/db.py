@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
     active INTEGER DEFAULT 1,
     email_digest INTEGER DEFAULT 1,
     filter_work_hours INTEGER DEFAULT 1,
-    feed_include_recs INTEGER DEFAULT 0
+    feed_include_recs INTEGER DEFAULT 0,
+    phone TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -129,7 +130,7 @@ CREATE TABLE IF NOT EXISTS rsvps (
     user_id INTEGER NOT NULL,
     event_id TEXT NOT NULL,
     run_id INTEGER NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('going', 'maybe', 'cant')),
+    status TEXT NOT NULL CHECK(status IN ('going', 'maybe', 'cant', 'waitlist')),
     created_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id),
     UNIQUE(user_id, event_id)
@@ -285,6 +286,16 @@ CREATE TABLE IF NOT EXISTS retro_log (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS event_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_event_comments_event_id ON event_comments(event_id);
+
 """
 
 
@@ -307,6 +318,8 @@ class Database:
             self.conn.commit()
         if "feed_include_recs" not in user_cols:
             self.conn.execute("ALTER TABLE users ADD COLUMN feed_include_recs INTEGER DEFAULT 0")
+        if "phone" not in user_cols:
+            self.conn.execute("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''")
         self.conn.commit()
 
         # --- Unify manual group events into the main events table ---
@@ -321,8 +334,43 @@ class Database:
         if "notes" not in events_cols:
             self.conn.execute("ALTER TABLE events ADD COLUMN notes TEXT DEFAULT ''")
             added = True
+        if "capacity" not in events_cols:
+            self.conn.execute("ALTER TABLE events ADD COLUMN capacity INTEGER")
+            added = True
+        if "prerequisites" not in events_cols:
+            self.conn.execute("ALTER TABLE events ADD COLUMN prerequisites TEXT DEFAULT ''")
+            added = True
+        if "gcal_sequence" not in events_cols:
+            self.conn.execute("ALTER TABLE events ADD COLUMN gcal_sequence INTEGER DEFAULT 0")
+            added = True
+        if "deleted_at" not in events_cols:
+            self.conn.execute("ALTER TABLE events ADD COLUMN deleted_at TEXT")
+            added = True
         if added:
             self.conn.execute("CREATE INDEX IF NOT EXISTS idx_events_group_id ON events(group_id)")
+            self.conn.commit()
+
+        # Rebuild rsvps if its CHECK constraint lacks 'waitlist'
+        rsvps_def = self.conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='rsvps'"
+        ).fetchone()
+        if rsvps_def and "waitlist" not in (rsvps_def["sql"] or ""):
+            self.conn.executescript("""
+                CREATE TABLE rsvps_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    event_id TEXT NOT NULL,
+                    run_id INTEGER NOT NULL,
+                    status TEXT NOT NULL CHECK(status IN ('going', 'maybe', 'cant', 'waitlist')),
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    UNIQUE(user_id, event_id)
+                );
+                INSERT INTO rsvps_new (id, user_id, event_id, run_id, status, created_at)
+                    SELECT id, user_id, event_id, run_id, status, created_at FROM rsvps;
+                DROP TABLE rsvps;
+                ALTER TABLE rsvps_new RENAME TO rsvps;
+            """)
             self.conn.commit()
         # If legacy group_events table still exists, copy rows into events and drop it.
         # Preserve RSVPs by remapping event_id from grp_evt_<old_id> to grp_evt_<new_id>.
@@ -1184,15 +1232,19 @@ class Database:
         return group.get("display_name") or group.get("name") or ""
 
     def add_group_event(self, group_id: int, user_id: int, title: str,
-                        start_time: str, end_time: str = "", location: str = "",
-                        url: str = "", notes: str = "") -> int:
-        """Insert a manual group event into the unified `events` table. Returns the new int id."""
+                        start_time: str = "", end_time: str = "", location: str = "",
+                        url: str = "", notes: str = "",
+                        capacity: int | None = None, prerequisites: str = "") -> int:
+        """Insert a manual group event into the unified `events` table. Returns the new int id.
+        start_time may be empty/None — those events render as 'tentative'."""
         cur = self.conn.execute(
             """INSERT INTO events
                    (run_id, event_id, source, title, start_time, end_time,
-                    location_name, url, notes, group_id, created_by)
-               VALUES (0, '', 'manual', ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (title, start_time, end_time or None, location, url, notes, group_id, user_id),
+                    location_name, url, notes, group_id, created_by,
+                    capacity, prerequisites)
+               VALUES (0, '', 'manual', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (title, start_time or None, end_time or None, location, url, notes,
+             group_id, user_id, capacity, prerequisites),
         )
         new_id = cur.lastrowid
         self.conn.execute(
@@ -1201,15 +1253,25 @@ class Database:
         self.conn.commit()
         return new_id
 
-    def get_group_event_by_id(self, event_id: int) -> dict | None:
-        """Look up a manual event by its int PK. Returns dict with creator info, or None."""
-        row = self.conn.execute(
-            """SELECT e.*, u.name as creator_name, u.email as creator_email
-               FROM events e
-               JOIN users u ON u.id = e.created_by
-               WHERE e.id = ? AND e.source = 'manual'""",
-            (event_id,),
-        ).fetchone()
+    def get_group_event_by_id(self, event_id: int, include_deleted: bool = False) -> dict | None:
+        """Look up a manual event by its int PK. Returns dict with creator info, or None.
+        Hides soft-deleted events unless include_deleted=True."""
+        if include_deleted:
+            row = self.conn.execute(
+                """SELECT e.*, u.name as creator_name, u.email as creator_email, u.phone as creator_phone
+                   FROM events e
+                   JOIN users u ON u.id = e.created_by
+                   WHERE e.id = ? AND e.source = 'manual'""",
+                (event_id,),
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                """SELECT e.*, u.name as creator_name, u.email as creator_email, u.phone as creator_phone
+                   FROM events e
+                   JOIN users u ON u.id = e.created_by
+                   WHERE e.id = ? AND e.source = 'manual' AND e.deleted_at IS NULL""",
+                (event_id,),
+            ).fetchone()
         if not row:
             return None
         d = dict(row)
@@ -1217,12 +1279,12 @@ class Database:
         return d
 
     def get_group_user_events(self, group_id: int) -> list[dict]:
-        """All manual events for a group, oldest first, with creator info."""
+        """Live manual events for a group, oldest first, with creator info. Excludes soft-deleted."""
         rows = self.conn.execute(
-            """SELECT e.*, u.name as creator_name, u.email as creator_email
+            """SELECT e.*, u.name as creator_name, u.email as creator_email, u.phone as creator_phone
                FROM events e
                JOIN users u ON u.id = e.created_by
-               WHERE e.group_id = ? AND e.source = 'manual'
+               WHERE e.group_id = ? AND e.source = 'manual' AND e.deleted_at IS NULL
                ORDER BY e.start_time ASC""",
             (group_id,),
         ).fetchall()
@@ -1234,32 +1296,169 @@ class Database:
         return out
 
     def delete_group_event(self, event_id: int, user_id: int):
-        """Allow deletion if user created the event OR created the group."""
+        """Soft-delete: any group member may delete any event. Sets deleted_at so it can be restored.
+        Use purge_group_event to drop the row permanently."""
         self.conn.execute(
-            """DELETE FROM events
-               WHERE id = ? AND source = 'manual' AND (
-                   created_by = ? OR group_id IN (
-                       SELECT id FROM groups WHERE created_by = ?
-                   )
-               )""",
-            (event_id, user_id, user_id),
+            """UPDATE events SET deleted_at = ?
+               WHERE id = ? AND source = 'manual' AND deleted_at IS NULL
+                 AND group_id IN (
+                     SELECT group_id FROM group_members WHERE user_id = ?
+                 )""",
+            (datetime.now().isoformat(), event_id, user_id),
         )
         self.conn.commit()
 
+    def restore_group_event(self, event_id: int, user_id: int) -> bool:
+        """Restore a soft-deleted event. Any group member may restore."""
+        cur = self.conn.execute(
+            """UPDATE events SET deleted_at = NULL
+               WHERE id = ? AND source = 'manual' AND deleted_at IS NOT NULL
+                 AND group_id IN (
+                     SELECT group_id FROM group_members WHERE user_id = ?
+                 )""",
+            (event_id, user_id),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def purge_group_event(self, event_id: int, user_id: int) -> bool:
+        """Permanently remove a soft-deleted event (no undo). Any group member may purge."""
+        cur = self.conn.execute(
+            """DELETE FROM events
+               WHERE id = ? AND source = 'manual' AND deleted_at IS NOT NULL
+                 AND group_id IN (
+                     SELECT group_id FROM group_members WHERE user_id = ?
+                 )""",
+            (event_id, user_id),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def get_deleted_group_events(self, group_id: int) -> list[dict]:
+        """Soft-deleted events for a group, newest-deleted first."""
+        rows = self.conn.execute(
+            """SELECT e.*, u.name as creator_name, u.email as creator_email, u.phone as creator_phone
+               FROM events e
+               JOIN users u ON u.id = e.created_by
+               WHERE e.group_id = ? AND e.source = 'manual' AND e.deleted_at IS NOT NULL
+               ORDER BY e.deleted_at DESC""",
+            (group_id,),
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["location"] = d.get("location_name") or ""
+            out.append(d)
+        return out
+
     def update_group_event(self, event_id: int, user_id: int, *, title: str,
-                           start_time: str, end_time: str = "", location: str = "",
-                           url: str = "", notes: str = "") -> bool:
-        """Update fields on a manual event. Only the event creator or group creator may edit."""
+                           start_time: str = "", end_time: str = "", location: str = "",
+                           url: str = "", notes: str = "",
+                           capacity: int | None = None, prerequisites: str = "") -> bool:
+        """Any group member may edit any event in their group. Bumps gcal_sequence so
+        calendar invite updates propagate. start_time may be empty (→ tentative)."""
         cur = self.conn.execute(
             """UPDATE events
-               SET title = ?, start_time = ?, end_time = ?, location_name = ?, url = ?, notes = ?
-               WHERE id = ? AND source = 'manual' AND (
-                   created_by = ? OR group_id IN (
-                       SELECT id FROM groups WHERE created_by = ?
-                   )
+               SET title = ?, start_time = ?, end_time = ?, location_name = ?, url = ?,
+                   notes = ?, capacity = ?, prerequisites = ?,
+                   gcal_sequence = COALESCE(gcal_sequence, 0) + 1
+               WHERE id = ? AND source = 'manual' AND group_id IN (
+                   SELECT group_id FROM group_members WHERE user_id = ?
                )""",
-            (title, start_time, end_time or None, location, url, notes,
-             event_id, user_id, user_id),
+            (title, start_time or None, end_time or None, location, url, notes,
+             capacity, prerequisites, event_id, user_id),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    # --- Capacity-aware RSVP + waitlist promotion ---
+
+    def count_rsvps(self, event_id: str, status: str) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM rsvps WHERE event_id = ? AND status = ?",
+            (event_id, status),
+        ).fetchone()
+        return int(row["n"]) if row else 0
+
+    def get_event_capacity(self, event_id: str) -> int | None:
+        row = self.conn.execute(
+            "SELECT capacity FROM events WHERE event_id = ? LIMIT 1", (event_id,)
+        ).fetchone()
+        return row["capacity"] if row and row["capacity"] is not None else None
+
+    def set_rsvp_with_capacity(self, user_id: int, event_id: str, run_id: int,
+                               status: str) -> tuple[str, str | None]:
+        """Set RSVP, applying capacity → waitlist promotion logic.
+
+        Returns (effective_status, previous_status). If the requested status is
+        'going' but the event is full (and this user isn't already counted as
+        going), the effective status becomes 'waitlist'."""
+        prev_row = self.conn.execute(
+            "SELECT status FROM rsvps WHERE user_id = ? AND event_id = ?",
+            (user_id, event_id),
+        ).fetchone()
+        prev = prev_row["status"] if prev_row else None
+
+        effective = status
+        if status == "going":
+            cap = self.get_event_capacity(event_id)
+            if cap is not None and prev != "going":
+                going_count = self.count_rsvps(event_id, "going")
+                if going_count >= cap:
+                    effective = "waitlist"
+
+        self.set_rsvp(user_id, event_id, run_id, effective)
+
+        # If we just freed a going slot, promote oldest waitlister.
+        if prev == "going" and effective != "going":
+            self._promote_waitlist(event_id)
+        return effective, prev
+
+    def _promote_waitlist(self, event_id: str):
+        cap = self.get_event_capacity(event_id)
+        if cap is None:
+            return
+        going_count = self.count_rsvps(event_id, "going")
+        slots = cap - going_count
+        if slots <= 0:
+            return
+        rows = self.conn.execute(
+            """SELECT id, user_id FROM rsvps
+               WHERE event_id = ? AND status = 'waitlist'
+               ORDER BY created_at ASC LIMIT ?""",
+            (event_id, slots),
+        ).fetchall()
+        for r in rows:
+            self.conn.execute(
+                "UPDATE rsvps SET status = 'going' WHERE id = ?", (r["id"],),
+            )
+        if rows:
+            self.conn.commit()
+
+    # --- Event comments ---
+
+    def add_event_comment(self, event_id: str, user_id: int, body: str) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO event_comments (event_id, user_id, body) VALUES (?, ?, ?)",
+            (event_id, user_id, body),
+        )
+        self.conn.commit()
+        return cur.lastrowid
+
+    def get_event_comments(self, event_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            """SELECT c.id, c.body, c.created_at, c.user_id,
+                      u.name AS user_name, u.email AS user_email
+               FROM event_comments c JOIN users u ON u.id = c.user_id
+               WHERE c.event_id = ? ORDER BY c.created_at ASC""",
+            (event_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_event_comment(self, comment_id: int, user_id: int) -> bool:
+        cur = self.conn.execute(
+            "DELETE FROM event_comments WHERE id = ? AND user_id = ?",
+            (comment_id, user_id),
         )
         self.conn.commit()
         return cur.rowcount > 0
@@ -1278,12 +1477,12 @@ class Database:
         rows = self.conn.execute(
             """SELECT e.*, g.id as g_id, g.display_name as group_display_name,
                       g.slug as group_slug, g.invite_code as group_invite_code,
-                      u.name as creator_name, u.email as creator_email
+                      u.name as creator_name, u.email as creator_email, u.phone as creator_phone
                FROM events e
                JOIN groups g ON g.id = e.group_id
                JOIN group_members gm ON gm.group_id = g.id AND gm.user_id = ?
                JOIN users u ON u.id = e.created_by
-               WHERE e.source = 'manual'
+               WHERE e.source = 'manual' AND e.deleted_at IS NULL
                  AND e.start_time >= date('now', '-1 day')
                  AND e.start_time <= date('now', ?)
                ORDER BY e.start_time ASC""",
