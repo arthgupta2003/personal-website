@@ -2214,10 +2214,38 @@ async def api_rsvp(request: Request):
             ).fetchone()
             event_title = event_row["title"] if event_row else data["event_id"]
             event_url = event_row["url"] if event_row else ""
-            # Get group-mates
+            # Build human-friendly when/where strings
+            event_when = ""
+            event_location = ""
+            if event_row:
+                try:
+                    from datetime import datetime as _dt
+                    st = (event_row["start_time"] or "").strip()
+                    if st:
+                        d = _dt.fromisoformat(st)
+                        event_when = d.strftime("%a %b %-d, %-I:%M %p")
+                except (ValueError, TypeError):
+                    pass
+                event_location = (event_row["location_name"] or "").strip()
+
+            # Resolve the originating group (for the event being RSVP'd to, if it's a group event).
+            event_group_id = None
+            event_group_row = db.conn.execute(
+                "SELECT group_id FROM events WHERE event_id = ? AND group_id IS NOT NULL LIMIT 1",
+                (data["event_id"],),
+            ).fetchone()
+            if event_group_row:
+                event_group_id = event_group_row["group_id"]
+
             user_groups = db.get_user_groups(user["id"])
             notified: set[int] = set()
             for g in user_groups:
+                gname = db.get_group_display_name(g) if hasattr(db, "get_group_display_name") else (g.get("display_name") or g.get("name") or "")
+                # Prefer the actual originating group name when the event belongs to one.
+                if event_group_id and g["id"] == event_group_id:
+                    display_group_name = gname
+                else:
+                    display_group_name = gname
                 members = db.get_group_members(g["id"])
                 for m in members:
                     if m["id"] != user["id"] and m["id"] not in notified:
@@ -2226,6 +2254,8 @@ async def api_rsvp(request: Request):
                             send_rsvp_notify(
                                 m["email"], m.get("user_token", ""), rsvper_name,
                                 event_title, event_url, settings.dashboard_url, settings,
+                                event_when=event_when, event_location=event_location,
+                                group_name=display_group_name,
                             )
                         except Exception:
                             logger.exception("Failed to send RSVP notify to %s", m["email"])

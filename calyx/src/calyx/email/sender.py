@@ -105,11 +105,41 @@ def send_group_event_notification(
 def send_rsvp_notify(
     to_email: str, to_token: str, rsvper_name: str,
     event_title: str, event_url: str, dashboard_url: str, settings: Settings,
+    *, event_when: str = "", event_location: str = "", group_name: str = "",
 ) -> None:
+    """Notify a group-mate that someone RSVP'd 'going'. Tasteful Calyx-design email
+    with a sage header, event card, and clear primary action."""
+    from html import escape
     cal_link = f"{dashboard_url}/?u={to_token}"
-    html = f"""<div style="font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-    <p><strong>{rsvper_name}</strong> is going to
-       <a href="{event_url}" style="color:#1e40af;">{event_title}</a></p>
-    <a href="{cal_link}" style="color:#2563eb;font-size:13px;">View your calendar</a>
-    </div>"""
-    send_email(f"{rsvper_name} is going to {event_title[:50]}", html, settings, to=to_email)
+    initial = (rsvper_name[:1] or "?").upper()
+    first = (rsvper_name.split() or [rsvper_name])[0]
+    title_link_open = f'<a href="{event_url}" style="color:#1a1a1a;text-decoration:none;">' if event_url else ''
+    title_link_close = '</a>' if event_url else ''
+    meta_bits = []
+    if event_when:
+        meta_bits.append(escape(event_when))
+    if event_location:
+        meta_bits.append(escape(event_location))
+    meta_line = (" &middot; ".join(meta_bits)) or ""
+    group_tag = f'<span style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#4a6741;background:#edf2eb;padding:3px 10px;margin-bottom:14px;">{escape(group_name)}</span>' if group_name else ""
+
+    html = f"""\
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#fafafa;padding:32px 20px;">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #e0e0e0;">
+    <div style="padding:24px 24px 8px;">
+      {group_tag}
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+        <div style="width:40px;height:40px;background:#edf2eb;color:#4a6741;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;border-radius:50%;flex-shrink:0;">{escape(initial)}</div>
+        <div style="font-size:15px;color:#1a1a1a;line-height:1.4;"><strong style="font-weight:700;">{escape(first)}</strong> is going.</div>
+      </div>
+      <div style="border-left:3px solid #4a6741;padding:6px 14px;margin-bottom:20px;">
+        <div style="font-size:17px;font-weight:700;color:#1a1a1a;line-height:1.3;">{title_link_open}{escape(event_title)}{title_link_close}</div>
+        {f'<div style="font-size:13px;color:#6b7280;margin-top:4px;">{meta_line}</div>' if meta_line else ''}
+      </div>
+      <a href="{cal_link}" style="display:inline-block;padding:11px 22px;background:#4a6741;color:#fff;text-decoration:none;font-weight:700;font-size:13px;letter-spacing:.5px;text-transform:uppercase;">Open in Calyx &rarr;</a>
+    </div>
+    <div style="padding:14px 24px;background:#fafafa;border-top:1px solid #f0f0f0;font-size:11px;color:#999;letter-spacing:1.5px;text-transform:uppercase;">Calyx</div>
+  </div>
+</div>"""
+    subject = f"{first} is going — {event_title[:60]}"
+    send_email(subject, html, settings, to=to_email)
