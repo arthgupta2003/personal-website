@@ -2708,27 +2708,31 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                     <button onclick="rsvpGroupEvent({group_id}, &apos;{ue_eid}&apos;, &apos;cant&apos;, this)" class="grp-rsvp-btn cant{cant_cls}">Can't</button>
                 </div>'''
 
-        # Chat affordance pill
+        # Chat affordance — the whole row is the click target, styled like an iMessage row.
         comments = comments_by_event.get(ue_eid, [])
         chat_count = len(comments)
         comments_block = ""
         if is_member and current_user:
-            count_chip = f'<span class="chat-count-chip">{chat_count}</span>' if chat_count else ""
-            preview_line = ""
             if chat_count:
                 last = comments[-1]
                 last_name = (last.get("user_name") or "").split()[0] or "?"
-                last_body = (last.get("body") or "")[:60]
-                truncated = "…" if len(last.get("body") or "") > 60 else ""
-                preview_line = f'<div class="chat-preview"><strong>{_esc(last_name)}:</strong> {_esc(last_body)}{truncated}</div>'
-            comments_block = f'''<div class="chat-row-wrap">
-                {preview_line}
-                <button type="button" onclick="openChat(&apos;{ue_eid}&apos;, this.closest('.group-event-card').dataset.title)" class="chat-open">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                    <span>Open chat</span>
-                    {count_chip}
-                </button>
-            </div>'''
+                last_body = (last.get("body") or "")[:80]
+                truncated = "…" if len(last.get("body") or "") > 80 else ""
+                primary = f"{chat_count} message{'s' if chat_count != 1 else ''}"
+                preview = f'<span class="chat-row-preview"><strong>{_esc(last_name)}:</strong> {_esc(last_body)}{truncated}</span>'
+            else:
+                primary = "Open chat"
+                preview = '<span class="chat-row-preview chat-row-empty">Start the thread for this event</span>'
+            comments_block = f'''<button type="button" class="chat-row-btn" onclick="openChat(&apos;{ue_eid}&apos;, this.closest('.group-event-card').dataset.title)">
+                <span class="chat-row-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </span>
+                <span class="chat-row-text">
+                    <span class="chat-row-primary">{primary}</span>
+                    {preview}
+                </span>
+                <span class="chat-row-arrow">›</span>
+            </button>'''
 
         _start_iso = st
         _end_iso = (e.get("end_time") or "") or ""
@@ -3189,15 +3193,16 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     .evt-action-danger {{ color:#a05439; border-color:#e6cdc1; background:#fbf6f3; }}
     .evt-action-danger:hover {{ background:#f5e7df; border-color:#c4734f; color:#8a3f25; }}
 
-    /* --- Chat affordance + pop-out modal --- */
-    .chat-row-wrap {{ margin-top:14px; padding-top:12px; border-top:1px solid #f0f0f0; display:flex; flex-direction:column; gap:8px; align-items:flex-start; }}
-    .chat-preview {{ font-size:12px; color:#666; line-height:1.4; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
-    .chat-preview strong {{ color:#1a1a1a; font-weight:700; }}
-    .chat-open {{ display:inline-flex; align-items:center; gap:7px; background:none; border:none; padding:0; font-size:13px; font-weight:600; color:#4a6741; cursor:pointer; font-family:inherit; letter-spacing:.2px; transition:color .12s; }}
-    .chat-open:hover {{ color:#3a5334; }}
-    .chat-open:hover span {{ text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:3px; }}
-    .chat-open svg {{ flex-shrink:0; opacity:.85; }}
-    .chat-count-chip {{ display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 6px; background:#4a6741; color:#fff; font-size:10px; font-weight:700; border-radius:999px; margin-left:2px; letter-spacing:0; }}
+    /* --- Chat affordance — full-width row, looks like a chat preview --- */
+    .chat-row-btn {{ display:flex; align-items:center; gap:12px; width:100%; margin-top:14px; padding:11px 14px; background:#fafafa; border:1px solid #e8e8e8; cursor:pointer; font-family:inherit; text-align:left; transition:background .12s, border-color .12s; }}
+    .chat-row-btn:hover {{ background:#edf2eb; border-color:#d4e0d1; }}
+    .chat-row-icon {{ display:flex; align-items:center; justify-content:center; width:34px; height:34px; flex-shrink:0; background:#edf2eb; color:#4a6741; border-radius:50%; }}
+    .chat-row-text {{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }}
+    .chat-row-primary {{ font-size:13px; font-weight:700; color:#1a1a1a; letter-spacing:.1px; }}
+    .chat-row-preview {{ font-size:12px; color:#666; line-height:1.4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+    .chat-row-preview strong {{ color:#1a1a1a; font-weight:600; }}
+    .chat-row-empty {{ color:#999; font-style:italic; }}
+    .chat-row-arrow {{ color:#aaa; font-size:22px; line-height:1; flex-shrink:0; font-weight:400; }}
     .chat-backdrop {{ position:fixed; inset:0; background:rgba(20,20,20,0); pointer-events:none; transition:background .18s; z-index:90; }}
     .chat-sheet {{ position:fixed; right:0; top:0; bottom:0; width:min(420px, 100vw); background:#fff; box-shadow:-8px 0 24px rgba(0,0,0,.08); transform:translateX(100%); transition:transform .22s ease-out; z-index:100; display:flex; flex-direction:column; }}
     .chat-sheet.open {{ transform:translateX(0); }}
