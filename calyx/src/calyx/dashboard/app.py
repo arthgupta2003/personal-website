@@ -2554,15 +2554,20 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     from datetime import datetime as dt
     now_str = dt.now().strftime("%Y-%m-%dT%H:%M:%S")
 
-    # User-added group events
+    # User-added group events — split into tentative (no date), upcoming, past
     user_events = db.get_group_user_events(group["id"])
-    upcoming_user = [e for e in user_events if (e.get("start_time") or "") >= now_str]
+    tentative_user = [e for e in user_events if not (e.get("start_time") or "").strip()]
+    dated_events = [e for e in user_events if (e.get("start_time") or "").strip()]
+    upcoming_user = [e for e in dated_events if e["start_time"] >= now_str]
+    past_user = sorted(
+        (e for e in dated_events if e["start_time"] < now_str),
+        key=lambda x: x["start_time"], reverse=True,
+    )
 
     # Pipeline events where members RSVPd
     pipeline_events = db.get_group_events(group["id"])
     event_ids = [e.get("event_id", "") for e in pipeline_events if e.get("event_id")]
-    # Also fetch RSVPs for user-added events (keyed as "grp_evt_{id}")
-    user_evt_ids = [f"grp_evt_{e['id']}" for e in upcoming_user]
+    user_evt_ids = [f"grp_evt_{e['id']}" for e in (tentative_user + upcoming_user + past_user)]
     all_rsvp_ids = event_ids + user_evt_ids
     rsvps_map = db.get_rsvps_for_events(all_rsvp_ids) if all_rsvp_ids else {}
     user_token = current_user.get("user_token", "") if current_user else ""
@@ -2600,49 +2605,132 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
             summary += f'<span style="color:#92400e;">{len(maybe)} maybe</span>'
         return f'<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">{avatars}<span style="font-size:11px;color:#6b7280;">{summary}</span></div>'
 
-    # Build unified upcoming list
-    upcoming_html = ""
-    # User-added events
-    for e in upcoming_user[:8]:
-        try:
-            d = dt.fromisoformat(e["start_time"])
-            time_str = d.strftime("%a %b %-d, %-I:%M %p")
-        except (ValueError, TypeError):
-            time_str = e.get("start_time", "")[:16]
+    # Bulk-fetch comments across tentative, upcoming, and past events shown on this page
+    _shown_user_events = (tentative_user[:8] + upcoming_user[:8] + past_user[:12])
+    _shown_ev_ids = [f"grp_evt_{e['id']}" for e in _shown_user_events]
+    comments_by_event: dict[str, list[dict]] = {}
+    if _shown_ev_ids:
+        ph = ",".join("?" * len(_shown_ev_ids))
+        crows = db.conn.execute(
+            f"""SELECT c.event_id, c.id, c.body, c.created_at, c.user_id,
+                       u.name AS user_name, u.email AS user_email
+                FROM event_comments c JOIN users u ON u.id = c.user_id
+                WHERE c.event_id IN ({ph})
+                ORDER BY c.created_at ASC""",
+            _shown_ev_ids,
+        ).fetchall()
+        for c in crows:
+            c = dict(c)
+            comments_by_event.setdefault(c.pop("event_id"), []).append(c)
+
+    # Render a single user-added group event card. Used for tentative, upcoming, past lists.
+    from html import escape as _esc
+
+    def _render_user_event(e: dict, mode: str = "upcoming") -> str:
+        """mode: 'tentative' (no date), 'upcoming' (future), 'past' (history)."""
+        st = (e.get("start_time") or "").strip()
+        et = (e.get("end_time") or "").strip()
+        if mode == "tentative":
+            time_str = "Tentative · no date yet"
+            time_color = "#8a3f25"
+        else:
+            try:
+                d = dt.fromisoformat(st)
+                time_str = d.strftime("%a %b %-d, %-I:%M %p")
+                if et:
+                    try:
+                        ed = dt.fromisoformat(et)
+                        time_str += " → " + ed.strftime("%-I:%M %p")
+                    except (ValueError, TypeError):
+                        pass
+            except (ValueError, TypeError):
+                time_str = st[:16]
+            time_color = "#6b7280"
         creator = e.get("creator_name") or ""
         loc = e.get("location") or ""
         url = e.get("url") or ""
-        title_link = f'<a href="{url}" target="_blank" style="font-weight:700;font-size:15px;color:#1e293b;text-decoration:none;">{e["title"][:55]}</a>' if url else f'<span style="font-weight:700;font-size:15px;color:#1e293b;">{e["title"][:55]}</span>'
-        delete_btn = ""
-        edit_btn = ""
-        is_event_creator = current_user and e.get("created_by") == current_user["id"]
-        is_group_creator = current_user and group.get("created_by") == current_user["id"]
-        if is_event_creator or is_group_creator:
+        title_color = "#888" if mode == "past" else "#1a1a1a"
+        title_link = (f'<a href="{url}" target="_blank" style="font-weight:700;font-size:15px;color:{title_color};text-decoration:none;">{_esc(e["title"][:65])}</a>'
+                      if url else f'<span style="font-weight:700;font-size:15px;color:{title_color};">{_esc(e["title"][:65])}</span>')
+
+        # Any group member may edit/remove — trust the group.
+        edit_btn = delete_btn = ""
+        if is_member and mode != "past":
             edit_btn = f'<button type="button" onclick="openEditEvent({group_id},{e["id"]})" class="evt-action-btn" title="Edit event">✎ Edit</button>'
             delete_btn = f'<form action="/api/group/{group_id}/delete-event" method="post" style="margin:0;" onsubmit="return confirm(&apos;Remove this event?&apos;)"><input type="hidden" name="event_id" value="{e["id"]}"><button type="submit" class="evt-action-btn evt-action-danger" title="Remove event">✕ Remove</button></form>'
-        share_btn = ""
-        if is_member and group.get("invite_code"):
-            _share_url = f'{Settings().dashboard_url}/share/event/{group_id}/{e["id"]}/{group["invite_code"]}'
-            share_btn = f'<button type="button" onclick="shareEvent(this, &quot;{_share_url}&quot;, &quot;{e["title"][:60].replace(chr(34), "&quot;")}&quot;)" class="evt-action-btn evt-action-primary" title="Share this event">↗ Share</button>'
+
         ue_eid = f"grp_evt_{e['id']}"
         ue_rsvps = rsvps_map.get(ue_eid, [])
         ue_avatars = _rsvp_avatars(ue_rsvps)
+
+        capacity = e.get("capacity")
+        going_n = sum(1 for r in ue_rsvps if r["status"] == "going")
+        waitlist_n = sum(1 for r in ue_rsvps if r["status"] == "waitlist")
+        cap_html = ""
+        if capacity and mode != "past":
+            if going_n >= capacity:
+                cap_html = f'<span style="display:inline-block;padding:3px 10px;background:#fbf6f3;color:#8a3f25;border:1px solid #e6cdc1;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;">Full · {going_n}/{capacity}</span>'
+            else:
+                cap_html = f'<span style="display:inline-block;padding:3px 10px;background:#edf2eb;color:#4a6741;border:1px solid #d4e0d1;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;">{going_n}/{capacity} going</span>'
+            if waitlist_n:
+                cap_html += f' <span style="font-size:11px;color:#8a3f25;margin-left:6px;font-weight:600;">+{waitlist_n} on waitlist</span>'
+
+        prereq = (e.get("prerequisites") or "").strip()
+        prereq_html = ""
+        if prereq and mode != "past":
+            prereq_html = f'<div style="margin-top:8px;padding:9px 11px;background:#fbf6f3;border-left:3px solid #c4734f;font-size:12px;color:#5a2a18;line-height:1.45;"><strong style="font-weight:700;color:#8a3f25;text-transform:uppercase;letter-spacing:.5px;font-size:10px;">Prereqs</strong> &nbsp;{_esc(prereq)}</div>'
+
+        notes = (e.get("notes") or "").strip()
+        notes_html = f'<div style="font-size:13px;color:#475569;margin-top:6px;line-height:1.45;white-space:pre-wrap;">{_esc(notes)}</div>' if notes and mode != "past" else ""
+
+        host_link = f'<span style="font-weight:600;color:#4a6741;">{_esc(creator)}</span>' if creator else ""
+
         my_ue_rsvp = ""
         if current_user:
             for r in ue_rsvps:
                 if r.get("user_id") == current_user["id"]:
                     my_ue_rsvp = r["status"]
         rsvp_btns = ""
+        my_status_label = ""
+        if mode != "past":
+            if my_ue_rsvp == "waitlist":
+                my_status_label = '<span style="display:inline-block;margin-top:8px;padding:3px 10px;background:#fbf6f3;color:#8a3f25;border:1px solid #e6cdc1;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;">You\'re on the waitlist</span>'
+            if is_member and current_user:
+                going_cls = " active" if my_ue_rsvp == "going" else ""
+                maybe_cls = " active" if my_ue_rsvp == "maybe" else ""
+                cant_cls = " active" if my_ue_rsvp == "cant" else ""
+                going_label = "Going"
+                if capacity and going_n >= capacity and my_ue_rsvp != "going":
+                    going_label = "Join waitlist"
+                rsvp_btns = f'''<div style="display:flex;gap:6px;margin-top:8px;">
+                    <button onclick="rsvpGroupEvent({group_id}, &apos;{ue_eid}&apos;, &apos;going&apos;, this)" class="grp-rsvp-btn going{going_cls}">{going_label}</button>
+                    <button onclick="rsvpGroupEvent({group_id}, &apos;{ue_eid}&apos;, &apos;maybe&apos;, this)" class="grp-rsvp-btn maybe{maybe_cls}">Maybe</button>
+                    <button onclick="rsvpGroupEvent({group_id}, &apos;{ue_eid}&apos;, &apos;cant&apos;, this)" class="grp-rsvp-btn cant{cant_cls}">Can't</button>
+                </div>'''
+
+        # Chat affordance pill
+        comments = comments_by_event.get(ue_eid, [])
+        chat_count = len(comments)
+        comments_block = ""
         if is_member and current_user:
-            going_cls = " active" if my_ue_rsvp == "going" else ""
-            maybe_cls = " active" if my_ue_rsvp == "maybe" else ""
-            rsvp_btns = f'''<div style="display:flex;gap:6px;margin-top:8px;">
-                <button onclick="rsvpGroupEvent({group_id}, &apos;{ue_eid}&apos;, &apos;going&apos;, this)" class="grp-rsvp-btn going{going_cls}">Going</button>
-                <button onclick="rsvpGroupEvent({group_id}, &apos;{ue_eid}&apos;, &apos;maybe&apos;, this)" class="grp-rsvp-btn maybe{maybe_cls}">Maybe</button>
+            count_chip = f'<span class="chat-count-chip">{chat_count}</span>' if chat_count else ""
+            preview_line = ""
+            if chat_count:
+                last = comments[-1]
+                last_name = (last.get("user_name") or "").split()[0] or "?"
+                last_body = (last.get("body") or "")[:60]
+                truncated = "…" if len(last.get("body") or "") > 60 else ""
+                preview_line = f'<div class="chat-preview"><strong>{_esc(last_name)}:</strong> {_esc(last_body)}{truncated}</div>'
+            comments_block = f'''<div class="chat-row-wrap">
+                {preview_line}
+                <button type="button" onclick="openChat(&apos;{ue_eid}&apos;, this.closest('.group-event-card').dataset.title)" class="chat-open">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <span>Open chat</span>
+                    {count_chip}
+                </button>
             </div>'''
-        # Embed event data for inline edit (data-* read by openEditEvent)
-        from html import escape as _esc
-        _start_iso = (e.get("start_time") or "")
+
+        _start_iso = st
         _end_iso = (e.get("end_time") or "") or ""
         _date_part = _start_iso[:10]
         _start_part = _start_iso[11:16] if len(_start_iso) >= 16 else ""
@@ -2655,19 +2743,36 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
             f'data-end="{_end_part}" '
             f'data-location="{_esc(e.get("location") or "", quote=True)}" '
             f'data-url="{_esc(e.get("url") or "", quote=True)}" '
-            f'data-notes="{_esc(e.get("notes") or "", quote=True)}"'
+            f'data-notes="{_esc(e.get("notes") or "", quote=True)}" '
+            f'data-capacity="{capacity if capacity else ""}" '
+            f'data-prerequisites="{_esc(prereq, quote=True)}"'
         )
         actions_row = ""
-        if share_btn or edit_btn or delete_btn:
-            actions_row = f'<div class="evt-actions-row">{share_btn}{edit_btn}{delete_btn}</div>'
-        upcoming_html += f'''<div class="card group-event-card" {_data_attrs} style="padding:14px 16px;margin-bottom:8px;">
+        if edit_btn or delete_btn:
+            actions_row = f'<div class="evt-actions-row">{edit_btn}{delete_btn}</div>'
+        host_row = f'<div style="font-size:12px;color:#9ca3af;margin-top:4px;">Hosted by {host_link}</div>' if host_link else ""
+        cap_row = f'<div style="margin-top:6px;">{cap_html}</div>' if cap_html else ""
+        card_bg = "#fafafa" if mode == "past" else "#fff"
+        card_opacity = "opacity:.78;" if mode == "past" else ""
+        return f'''<div class="card group-event-card" {_data_attrs} style="padding:18px 18px;margin-bottom:18px;background:{card_bg};{card_opacity}">
             {title_link}
-            <div style="font-size:13px;color:#6b7280;margin-top:2px;">{time_str}{" · " + loc if loc else ""}</div>
-            <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Added by {creator}</div>
+            <div style="font-size:13px;color:{time_color};margin-top:2px;font-weight:{'600' if mode == 'tentative' else '400'};">{time_str}{" · " + _esc(loc) if loc else ""}</div>
+            {host_row}
+            {notes_html}
+            {prereq_html}
+            {cap_row}
             {ue_avatars}
+            {my_status_label}
             {rsvp_btns}
+            {comments_block}
             {actions_row}
         </div>'''
+
+    upcoming_html = ""
+    for e in tentative_user[:8]:
+        upcoming_html += _render_user_event(e, mode="tentative")
+    for e in upcoming_user[:8]:
+        upcoming_html += _render_user_event(e, mode="upcoming")
 
     # RSVPd pipeline events
     for e in rsvpd_events[:8]:
@@ -2691,6 +2796,60 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
 
     if not upcoming_html:
         upcoming_html = '<p style="color:#9ca3af;font-size:14px;">No upcoming events yet.</p>'
+
+    # Recently deleted (soft-deleted) events — restore or purge
+    deleted_html = ""
+    if is_member:
+        deleted_events = db.get_deleted_group_events(group["id"])
+        if deleted_events:
+            from html import escape as _esc_d
+            rows = ""
+            for de in deleted_events[:50]:
+                try:
+                    dt_del = dt.fromisoformat(de["deleted_at"])
+                    when_del = dt_del.strftime("%b %-d, %-I:%M %p")
+                except (ValueError, TypeError):
+                    when_del = ""
+                st_d = (de.get("start_time") or "").strip()
+                if st_d:
+                    try:
+                        sd = dt.fromisoformat(st_d)
+                        when_evt = sd.strftime("%a %b %-d")
+                    except (ValueError, TypeError):
+                        when_evt = ""
+                else:
+                    when_evt = "Tentative"
+                rows += f'''<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid #f0f0f0;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:14px;font-weight:600;color:#1a1a1a;">{_esc_d(de.get("title") or "")}</div>
+                        <div style="font-size:12px;color:#888;margin-top:2px;">{when_evt} · deleted {when_del}</div>
+                    </div>
+                    <form action="/api/group/{group_id}/restore-event" method="post" style="margin:0;"><input type="hidden" name="event_id" value="{de["id"]}"><button type="submit" class="evt-action-btn evt-action-primary" style="white-space:nowrap;">↩ Restore</button></form>
+                    <form action="/api/group/{group_id}/purge-event" method="post" style="margin:0;" onsubmit="return confirm(&apos;Permanently delete this event? Cannot be undone.&apos;)"><input type="hidden" name="event_id" value="{de["id"]}"><button type="submit" class="evt-action-btn evt-action-danger" style="white-space:nowrap;">✕ Purge</button></form>
+                </div>'''
+            count_d = len(deleted_events)
+            deleted_html = f'''<details class="past-events" style="margin-bottom:28px;border-top:1px solid #e0e0e0;padding-top:18px;">
+                <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#8a3f25;letter-spacing:.5px;padding:8px 0;display:flex;align-items:center;gap:8px;">
+                    <span class="past-caret" style="font-size:11px;color:#8a3f25;transition:transform .15s;">▸</span>
+                    <span>Recently deleted <span style="color:#888;font-weight:500;">· {count_d}</span></span>
+                </summary>
+                <div style="margin-top:8px;">{rows}</div>
+            </details>'''
+
+    # Past events — collapsed memory lane (auto-expanded when short)
+    past_html = ""
+    if past_user:
+        past_cards = "".join(_render_user_event(e, mode="past") for e in past_user[:30])
+        count = len(past_user)
+        open_attr = " open" if count <= 3 else ""
+        past_html = f'''<details class="past-events"{open_attr} style="margin-bottom:28px;border-top:1px solid #e0e0e0;padding-top:18px;">
+            <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#4a6741;letter-spacing:.5px;padding:8px 0;display:flex;align-items:center;gap:8px;">
+                <span class="past-caret" style="font-size:11px;color:#4a6741;transition:transform .15s;">▸</span>
+                <span>Past events <span style="color:#888;font-weight:500;">· {count}</span></span>
+            </summary>
+            <div style="margin-top:14px;">{past_cards}</div>
+        </details>
+        <style>.past-events[open] .past-caret {{ transform: rotate(90deg); }} .past-events summary::-webkit-details-marker {{ display: none; }} .past-events summary {{ list-style: none; }}</style>'''
 
     # --- Add event form (members only) ---
     add_event_html = ""
