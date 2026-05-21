@@ -134,8 +134,8 @@ LAYOUT_STYLE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#4a6741">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-<link rel="apple-touch-icon" href="/static/favicon.svg">
+<link rel="icon" type="image/svg+xml" href="/static/favicon-v1.svg">
+<link rel="apple-touch-icon" href="/static/favicon-v1.svg">
 <link rel="manifest" href="/static/manifest.json">
 __OG_TAGS__
 <title>Calyx — __TITLE__</title>
