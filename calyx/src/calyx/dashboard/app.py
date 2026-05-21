@@ -2176,12 +2176,18 @@ async def api_rsvp(request: Request):
     if not event_id:
         return JSONResponse({"error": "event_id required"}, status_code=400)
     if not status:
-        # Clear the RSVP
+        # Clear the RSVP — if user was 'going' on a capacity-limited event, promote a waitlister.
+        prev_row = db.conn.execute(
+            "SELECT status FROM rsvps WHERE user_id = ? AND event_id = ?",
+            (user["id"], event_id),
+        ).fetchone()
         db.conn.execute(
             "DELETE FROM rsvps WHERE user_id = ? AND event_id = ?",
             (user["id"], event_id),
         )
         db.conn.commit()
+        if prev_row and prev_row["status"] == "going":
+            db._promote_waitlist(event_id)
         return {"ok": True, "status": ""}
     # Resolve run_id: caller may pass it; otherwise look it up from the event
     run_id = data.get("run_id")
@@ -2191,8 +2197,9 @@ async def api_rsvp(request: Request):
             (event_id,),
         ).fetchone()
         run_id = row["run_id"] if row else 0
-    db.set_rsvp(user["id"], event_id, run_id, status)
-    data["status"] = status  # keep older code path below working unchanged
+    effective_status, _prev = db.set_rsvp_with_capacity(user["id"], event_id, run_id, status)
+    data["status"] = effective_status
+    status = effective_status
 
     # Notify group-mates and push to GCal when RSVP is "going"
     if data["status"] == "going":
@@ -3604,6 +3611,72 @@ async def api_group_add_event(group_id: int, request: Request):
     return RedirectResponse(f"/group/{group_id}?success=Event+added", status_code=303)
 
 
+@app.get("/api/event/{event_id}/comments", response_class=JSONResponse)
+async def api_get_event_comments(event_id: str):
+    db = get_db()
+    return {"comments": db.get_event_comments(event_id)}
+
+
+@app.post("/api/event/{event_id}/comments", response_class=JSONResponse)
+async def api_post_event_comment(event_id: str, request: Request):
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Sign in required"}, status_code=401)
+    db = get_db()
+    ev = db.conn.execute(
+        "SELECT group_id, source FROM events WHERE event_id = ? LIMIT 1", (event_id,)
+    ).fetchone()
+    if ev and ev["group_id"] and not db.is_group_member(ev["group_id"], user["id"]):
+        return JSONResponse({"error": "Not a group member"}, status_code=403)
+    data = await request.json()
+    body = (data.get("body") or "").strip()
+    if not body or len(body) > 1000:
+        return JSONResponse({"error": "Comment must be 1–1000 chars"}, status_code=400)
+    cid = db.add_event_comment(event_id, user["id"], body)
+    return {"ok": True, "id": cid}
+
+
+@app.delete("/api/comment/{comment_id:int}", response_class=JSONResponse)
+async def api_delete_comment(comment_id: int, request: Request):
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Sign in required"}, status_code=401)
+    db = get_db()
+    if not db.delete_event_comment(comment_id, user["id"]):
+        return JSONResponse({"error": "Not allowed"}, status_code=403)
+    return {"ok": True}
+
+
+@app.post("/api/group/{group_id:int}/restore-event")
+async def api_group_restore_event(group_id: int, request: Request):
+    user = _get_current_user(request)
+    db = get_db()
+    if not user:
+        return HTMLResponse("<h1>Unauthorized</h1>", status_code=401)
+    if not db.is_group_member(group_id, user["id"]):
+        return HTMLResponse("<h1>Not a member</h1>", status_code=403)
+    form = await request.form()
+    event_id = int(form.get("event_id") or 0)
+    if event_id:
+        db.restore_group_event(event_id, user["id"])
+    return RedirectResponse(f"/group/{group_id}?success=Event+restored", status_code=303)
+
+
+@app.post("/api/group/{group_id:int}/purge-event")
+async def api_group_purge_event(group_id: int, request: Request):
+    user = _get_current_user(request)
+    db = get_db()
+    if not user:
+        return HTMLResponse("<h1>Unauthorized</h1>", status_code=401)
+    if not db.is_group_member(group_id, user["id"]):
+        return HTMLResponse("<h1>Not a member</h1>", status_code=403)
+    form = await request.form()
+    event_id = int(form.get("event_id") or 0)
+    if event_id:
+        db.purge_group_event(event_id, user["id"])
+    return RedirectResponse(f"/group/{group_id}?success=Event+permanently+removed", status_code=303)
+
+
 @app.post("/api/group/{group_id:int}/delete-event")
 async def api_group_delete_event(group_id: int, request: Request):
     user = _get_current_user(request)
@@ -3613,6 +3686,23 @@ async def api_group_delete_event(group_id: int, request: Request):
     form = await request.form()
     event_id = int(form.get("event_id") or 0)
     if event_id:
+        existing = db.get_group_event_by_id(event_id)
+        if existing and existing["group_id"] == group_id and (existing.get("start_time") or "").strip():
+            ue_eid = f"grp_evt_{event_id}"
+            try:
+                settings = Settings()
+                members = db.get_group_members(group_id)
+                send_event_invites_to_members(
+                    settings=settings, event_id=ue_eid, title=existing.get("title") or "",
+                    start_time=existing.get("start_time"), end_time=existing.get("end_time"),
+                    location=existing.get("location") or "", description=existing.get("notes") or "",
+                    url=existing.get("url") or "", members=members, organizer_user=user,
+                    accepted_user_ids=set(), method="CANCEL",
+                    sequence=int(existing.get("gcal_sequence") or 0) + 1,
+                    group_name="",
+                )
+            except Exception:
+                logger.exception("Failed to send CANCEL invite for event %d", event_id)
         db.delete_group_event(event_id, user["id"])
     return RedirectResponse(f"/group/{group_id}?success=Event+removed", status_code=303)
 
