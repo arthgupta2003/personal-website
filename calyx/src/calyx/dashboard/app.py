@@ -3548,15 +3548,24 @@ async def api_group_add_event(group_id: int, request: Request):
     location = (form.get("location") or "").strip()
     event_url = (form.get("url") or "").strip()
     notes = (form.get("notes") or "").strip()
+    prerequisites = (form.get("prerequisites") or "").strip()
+    capacity_raw = (form.get("capacity") or "").strip()
+    try:
+        capacity = int(capacity_raw) if capacity_raw else None
+        if capacity is not None and capacity <= 0:
+            capacity = None
+    except ValueError:
+        capacity = None
     edit_id_str = (form.get("edit_id") or "").strip()
-    if not title or not date:
-        return HTMLResponse("<h1>Title and date required</h1>", status_code=400)
+    if not title:
+        return HTMLResponse("<h1>Title required</h1>", status_code=400)
     repeat_weeks = int(form.get("recurring") or "0")
     from datetime import datetime as _dt, timedelta as _td
-    start_time = f"{date}T{time}:00"
-    end_time = f"{date}T{end_time_input}:00" if end_time_input else ""
+    settings = Settings()
+    start_time = f"{date}T{time}:00" if date else ""
+    end_time = f"{date}T{end_time_input}:00" if (date and end_time_input) else ""
 
-    # --- Edit mode: update existing event, no recurring expansion, no notification ---
+    # --- Edit mode: update existing event, no recurring expansion ---
     if edit_id_str:
         try:
             edit_id = int(edit_id_str)
@@ -3566,48 +3575,92 @@ async def api_group_add_event(group_id: int, request: Request):
         if not existing or existing["group_id"] != group_id:
             return HTMLResponse("<h1>Event not found</h1>", status_code=404)
         ok = db.update_group_event(edit_id, user["id"], title=title, start_time=start_time,
-                                   end_time=end_time, location=location, url=event_url, notes=notes)
+                                   end_time=end_time, location=location, url=event_url,
+                                   notes=notes, capacity=capacity, prerequisites=prerequisites)
         if not ok:
             return HTMLResponse("<h1>Not allowed</h1>", status_code=403)
+        ue_eid = f"grp_evt_{edit_id}"
+        if capacity is not None:
+            going_count = db.count_rsvps(ue_eid, "going")
+            if going_count > capacity:
+                overflow = going_count - capacity
+                rows = db.conn.execute(
+                    "SELECT id FROM rsvps WHERE event_id = ? AND status = 'going' ORDER BY created_at DESC LIMIT ?",
+                    (ue_eid, overflow),
+                ).fetchall()
+                for r in rows:
+                    db.conn.execute("UPDATE rsvps SET status = 'waitlist' WHERE id = ?", (r["id"],))
+                db.conn.commit()
+            else:
+                db._promote_waitlist(ue_eid)
+        try:
+            updated = db.get_group_event_by_id(edit_id)
+            members = db.get_group_members(group_id)
+            going_ids = {r["user_id"] for r in db.conn.execute(
+                "SELECT user_id FROM rsvps WHERE event_id = ? AND status IN ('going','maybe')",
+                (ue_eid,)).fetchall()}
+            was_scheduled = bool((existing.get("start_time") or "").strip())
+            now_scheduled = bool(start_time)
+            if was_scheduled and not now_scheduled:
+                send_event_invites_to_members(
+                    settings=settings, event_id=ue_eid, title=existing.get("title") or title,
+                    start_time=existing.get("start_time"), end_time=existing.get("end_time"),
+                    location=existing.get("location") or "", description=notes,
+                    url=event_url, members=members, organizer_user=user,
+                    accepted_user_ids=set(), method="CANCEL",
+                    sequence=int(updated.get("gcal_sequence") or 0),
+                    group_name=group.get("display_name") or group.get("name") or "",
+                )
+            elif now_scheduled:
+                send_event_invites_to_members(
+                    settings=settings, event_id=ue_eid, title=title,
+                    start_time=start_time, end_time=end_time, location=location,
+                    description=notes, url=event_url, members=members,
+                    organizer_user=user, accepted_user_ids=going_ids,
+                    method="REQUEST", sequence=int(updated.get("gcal_sequence") or 0),
+                    group_name=group.get("display_name") or group.get("name") or "",
+                )
+        except Exception:
+            logger.exception("Failed to send updated calendar invite for event %d", edit_id)
         return RedirectResponse(f"/group/{group_id}?success=Event+updated", status_code=303)
 
     # --- Create mode ---
-    event_row_id = db.add_group_event(group_id, user["id"], title, start_time, end_time=end_time, location=location, url=event_url, notes=notes)
-    # Auto-RSVP "going" for the person who added it
+    event_row_id = db.add_group_event(group_id, user["id"], title, start_time,
+                                       end_time=end_time, location=location, url=event_url,
+                                       notes=notes, capacity=capacity, prerequisites=prerequisites)
     ue_eid = f"grp_evt_{event_row_id}"
     db.set_rsvp(user["id"], ue_eid, 0, "going")
-    if repeat_weeks > 1:
+    if repeat_weeks > 1 and start_time:
         base_date = _dt.fromisoformat(start_time)
         end_base = _dt.fromisoformat(end_time) if end_time else None
         for week in range(1, repeat_weeks):
             next_dt = base_date + _td(weeks=week)
             next_end = (end_base + _td(weeks=week)).isoformat() if end_base else ""
-            db.add_group_event(group_id, user["id"], title, next_dt.isoformat(), end_time=next_end, location=location, url=event_url, notes=notes)
-    # Notify other group members
-    try:
-        members = db.get_group_members(group_id)
-        # Respect mute preferences
-        muted_users = set()
-        for m in members:
-            mrow = db.conn.execute("SELECT notifications FROM group_members WHERE group_id=? AND user_id=?", (group_id, m["id"])).fetchone()
-            if mrow and not mrow["notifications"]:
-                muted_users.add(m["id"])
-        other_emails = [m["email"] for m in members if m["id"] != user["id"] and m.get("email") and m["id"] not in muted_users]
-        if other_emails:
-            adder_name = user.get("name") or user.get("email", "Someone")
-            event_date = f"{date} {time}"
-            send_group_event_notification(
-                to_emails=other_emails,
-                adder_name=adder_name,
-                event_title=title,
-                event_date=event_date,
-                group_name=group["name"],
-                group_id=group_id,
-                dashboard_url=settings.dashboard_url,
-                settings=settings,
+            db.add_group_event(group_id, user["id"], title, next_dt.isoformat(),
+                               end_time=next_end, location=location, url=event_url,
+                               notes=notes, capacity=capacity, prerequisites=prerequisites)
+    if start_time:
+        try:
+            members = db.get_group_members(group_id)
+            muted_users = set()
+            for m in members:
+                mrow = db.conn.execute(
+                    "SELECT notifications FROM group_members WHERE group_id=? AND user_id=?",
+                    (group_id, m["id"]),
+                ).fetchone()
+                if mrow and not mrow["notifications"]:
+                    muted_users.add(m["id"])
+            invitees = [m for m in members if m["id"] not in muted_users and m.get("email")]
+            send_event_invites_to_members(
+                settings=settings, event_id=ue_eid, title=title,
+                start_time=start_time, end_time=end_time, location=location,
+                description=notes, url=event_url, members=invitees,
+                organizer_user=user, accepted_user_ids={user["id"]},
+                method="REQUEST", sequence=0,
+                group_name=group.get("display_name") or group.get("name") or "",
             )
-    except Exception:
-        logger.exception("Failed to send group event notification for group %d", group_id)
+        except Exception:
+            logger.exception("Failed to send calendar invites for group %d", group_id)
     return RedirectResponse(f"/group/{group_id}?success=Event+added", status_code=303)
 
 
@@ -4584,6 +4637,7 @@ async def user_ical_feed(token: str):
             LEFT JOIN groups g ON g.id = e.group_id
             WHERE e.event_id IN ({placeholders})
               AND e.start_time IS NOT NULL
+              AND (e.deleted_at IS NULL OR e.source <> 'manual')
             GROUP BY e.event_id""",
         list(seen.keys()),
     ).fetchall()
