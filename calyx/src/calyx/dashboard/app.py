@@ -541,6 +541,12 @@ async def profile_update(request: Request):
     if "name" in body:
         updates.append("name = ?")
         params.append(body["name"])
+    if "phone" in body:
+        import re as _re
+        raw = (body.get("phone") or "").strip()[:30]
+        cleaned = _re.sub(r"[^\d+\-\s()]", "", raw)
+        updates.append("phone = ?")
+        params.append(cleaned)
     if "location" in body and body["location"]:
         location_text = body["location"].strip()
         updates.append("location_query = ?")
@@ -876,8 +882,8 @@ async def taste_profile_page(request: Request):
 .taste-section .tags{{line-height:2.2}}
 .field{{margin-bottom:14px}}
 .field label{{display:block;font-size:12px;font-weight:600;color:#333;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}}
-.field input[type=text]{{width:100%;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none}}
-.field input[type=text]:focus{{border-color:#4a6741}}
+.field input[type=text],.field input[type=tel],.field input[type=email],.field input[type=url],.field input[type=number]{{width:100%;padding:10px 12px;border:1px solid #ccc;font-size:14px;font-family:inherit;outline:none;background:#fff;color:#1a1a1a;transition:border-color .12s, box-shadow .12s;box-sizing:border-box}}
+.field input:focus{{border-color:#4a6741;box-shadow:0 0 0 3px rgba(74,103,65,.12)}}
 .toggle-row{{display:flex;align-items:center;justify-content:space-between;padding:4px 0}}
 .toggle-label div:first-child{{font-weight:700;font-size:14px;color:#000}}
 .toggle-label div:last-child{{font-size:12px;color:#888;margin-top:2px}}
@@ -925,6 +931,10 @@ async def taste_profile_page(request: Request):
     <div style="border:1px solid #e0e0e0;padding:20px;margin-bottom:20px;">
       <div class="field"><label>Name</label><input type="text" id="name" value="{name}"></div>
       <div class="field"><label>Email</label><input type="text" id="email" value="{email}" disabled style="background:#f9fafb;color:#999"></div>
+      <div class="field">
+        <label>Phone</label>
+        <input type="tel" id="phone" value="{current_user.get('phone') or ''}" placeholder="+1 555 123 4567">
+      </div>
       <button onclick="save()" class="btn-primary" style="padding:8px 16px;">Save</button>
       <div id="success" style="display:none;border:1px solid #4a6741;color:#4a6741;padding:10px 14px;font-size:13px;margin-top:12px;">Saved!</div>
     </div>
@@ -1001,7 +1011,10 @@ function save() {{
   fetch('/api/profile/update', {{
     method: 'POST',
     headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{ name: document.getElementById('name').value.trim() }}),
+    body: JSON.stringify({{
+      name: document.getElementById('name').value.trim(),
+      phone: document.getElementById('phone').value.trim(),
+    }}),
   }}).then(r => r.json()).then(d => {{
     if (d.ok) {{
       const s = document.getElementById('success');
@@ -1067,153 +1080,29 @@ function submitPaste() {{
 
 @app.get("/landing", response_class=HTMLResponse)
 async def landing_page(request: Request):
-    """Marketing / about page for Calyx — uses dashboard design language."""
     current_user = _get_current_user(request)
     body = """
 <style>
-  .landing-hero { text-align: center; padding: 40px 0 32px; }
-  .landing-hero h1 { font-size: 2.2rem; font-weight: 800; color: #1e293b; line-height: 1.15; letter-spacing: -1px; margin-bottom: 16px; }
-  .landing-hero h1 .accent { color: #4f46e5; }
-  .landing-hero .sub { font-size: 16px; color: #6b7280; max-width: 520px; margin: 0 auto 28px; line-height: 1.6; }
-  .landing-hero .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .landing-eyebrow { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #4f46e5; background: #ede9fe; padding: 5px 14px; border-radius: 20px; margin-bottom: 20px; }
-
-  .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 28px; }
-  .step-card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-  .step-card .step-num { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #4f46e5; margin-bottom: 10px; }
-  .step-card h3 { font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 6px; }
-  .step-card p { font-size: 13px; color: #6b7280; line-height: 1.55; }
-
-  .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 16px; }
-  .feat-item { display: flex; gap: 12px; align-items: flex-start; }
-  .feat-icon { width: 36px; height: 36px; border-radius: 10px; background: #ede9fe; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
-  .feat-item h4 { font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 2px; }
-  .feat-item p { font-size: 12px; color: #6b7280; line-height: 1.5; }
-
-  .vibe-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
-  .vibe-card { border-radius: 16px; padding: 20px; border: 1px solid #e2e8f0; background: white; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-  .vibe-card .vibe-label { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; }
-  .vibe-card.social .vibe-label { color: #d97706; }
-  .vibe-card.intellectual .vibe-label { color: #7c3aed; }
-  .vibe-card.mixed .vibe-label { color: #2563eb; }
-  .vibe-card.social { border-left: 3px solid #f59e0b; }
-  .vibe-card.intellectual { border-left: 3px solid #8b5cf6; }
-  .vibe-card.mixed { border-left: 3px solid #3b82f6; }
-  .vibe-card h4 { font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
-  .vibe-card p { font-size: 12px; color: #6b7280; line-height: 1.5; }
-  .vibe-score { display: inline-block; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 8px; margin-top: 8px; background: #f1f5f9; color: #374151; }
-
-  .landing-cta { text-align: center; padding: 36px 0 20px; }
-  .landing-cta h2 { font-size: 1.5rem; font-weight: 800; color: #1e293b; margin-bottom: 10px; letter-spacing: -.5px; }
-  .landing-cta p { font-size: 15px; color: #6b7280; margin-bottom: 24px; }
-  .landing-cta .note { font-size: 12px; color: #9ca3af; margin-top: 16px; }
-
-  .landing-footer { text-align: center; padding: 24px 0 0; border-top: 1px solid #e2e8f0; margin-top: 20px; }
-  .landing-footer p { font-size: 12px; color: #9ca3af; }
-  .landing-footer a { color: #4f46e5; }
-
-  @media (max-width: 640px) {
-    .vibe-cards { grid-template-columns: 1fr; }
-    .landing-hero h1 { font-size: 1.7rem; }
-  }
+  .lp { max-width: 520px; margin: 0 auto; padding: 96px 24px 64px; }
+  .lp h1 { font-size: 2.4rem; font-weight: 800; color: #1a1a1a; letter-spacing: -1.5px; line-height: 1.05; margin: 0 0 18px; }
+  .lp h1 em { font-style: normal; color: #4a6741; }
+  .lp p.sub { font-size: 16px; color: #555; line-height: 1.55; margin: 0 0 36px; max-width: 440px; }
+  .lp .cta { display: inline-block; padding: 14px 28px; background: #4a6741; color: #fff; text-decoration: none; font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; transition: background .15s; }
+  .lp .cta:hover { background: #3a5334; }
+  .lp .foot { margin-top: 80px; font-size: 11px; color: #aaa; letter-spacing: 1.5px; text-transform: uppercase; }
 </style>
-
-<!-- Hero -->
-<div class="landing-hero">
-  <div class="landing-eyebrow">The plans that keep them close</div>
-  <h1>Drop an event.<br>Your crew <span class="accent">taps in</span>.</h1>
-  <p class="sub">Every friend group has a rhythm: the dinners, the weekend plans, the spontaneous &quot;who&apos;s free tonight.&quot; Calyx is the shared calendar that quietly holds your people together &mdash; without the back-and-forth.</p>
-  <div class="cta-row">
-    <a href="/join" class="btn-primary btn-pill" style="padding:12px 28px;font-size:15px;">Create your group &rarr;</a>
-    <a href="/" class="btn-secondary btn-pill" style="padding:12px 28px;font-size:15px;">See what&apos;s happening</a>
-  </div>
-</div>
-
-<!-- How it works -->
-<h2>How it works</h2>
-<div class="steps-grid">
-  <div class="step-card">
-    <div class="step-num">01 &middot; Drop</div>
-    <h3>Share an event or browse recs</h3>
-    <p>Add something you found, or let Calyx surface what&apos;s happening from 13+ sources across Boston &amp; Cambridge.</p>
-  </div>
-  <div class="step-card">
-    <div class="step-num">02 &middot; Tap in</div>
-    <h3>Your crew RSVPs in real time</h3>
-    <p>Headcounts build instantly. See who&apos;s going, who&apos;s maybe, who needs a nudge. No group chat chaos.</p>
-  </div>
-  <div class="step-card">
-    <div class="step-num">03 &middot; Show up</div>
-    <h3>Everyone&apos;s synced</h3>
-    <p>Calendar feeds, daily digests, and nudge notifications keep the whole crew on the same page.</p>
-  </div>
-</div>
-
-<!-- Features -->
-<div class="card">
-  <h2 style="margin-top:0;">Everything your group chat wishes it could do</h2>
-  <div class="features-grid">
-    <div class="feat-item">
-      <div class="feat-icon">&#x1F465;</div>
-      <div><h4>Group calendar</h4><p>Shared events, live headcounts, one link to invite everyone.</p></div>
-    </div>
-    <div class="feat-item">
-      <div class="feat-icon">&#x1F44B;</div>
-      <div><h4>One-tap RSVP</h4><p>Going, maybe, or can&apos;t &mdash; your friends see instantly.</p></div>
-    </div>
-    <div class="feat-item">
-      <div class="feat-icon">&#x1F514;</div>
-      <div><h4>Nudge &amp; notify</h4><p>Poke your crew about events. Get notified when friends RSVP.</p></div>
-    </div>
-    <div class="feat-item">
-      <div class="feat-icon">&#x1F4E1;</div>
-      <div><h4>Calendar sync</h4><p>Subscribe in Apple Calendar, Google Calendar, or any app.</p></div>
-    </div>
-    <div class="feat-item">
-      <div class="feat-icon">&#x2728;</div>
-      <div><h4>Smart recommendations</h4><p>AI surfaces events matched to your taste from Spotify, YouTube, and newsletters.</p></div>
-    </div>
-    <div class="feat-item">
-      <div class="feat-icon">&#x1F4EC;</div>
-      <div><h4>Daily picks email</h4><p>A short digest of today&apos;s best events, sent every morning.</p></div>
-    </div>
-  </div>
-</div>
-
-<!-- The Calyx difference -->
-<h2>Named after what holds it together</h2>
-<p style="font-size:14px;color:#6b7280;margin-bottom:16px;max-width:520px;">A calyx is the part of a flower that holds all the petals together. That rhythm of dinners, weekend plans, and spontaneous nights out? It lives scattered across texts and half-made plans. Calyx is the structure underneath.</p>
-<div class="vibe-cards">
-  <div class="vibe-card social">
-    <div class="vibe-label">Not a to-do list</div>
-    <h4>Less scheduling, more showing up</h4>
-    <p>Plans shouldn&apos;t feel like work. Drop an event, friends tap in, done.</p>
-  </div>
-  <div class="vibe-card intellectual">
-    <div class="vibe-label">Not another group chat</div>
-    <h4>Signal without noise</h4>
-    <p>No &quot;who&apos;s free Saturday?&quot; threads. Just events, RSVPs, and a headcount.</p>
-  </div>
-  <div class="vibe-card mixed">
-    <div class="vibe-label">Not just your calendar</div>
-    <h4>Your crew&apos;s calendar</h4>
-    <p>See what friends are going to. Get nudged about things you&apos;d love.</p>
-  </div>
-</div>
-
-<!-- CTA -->
-<div class="landing-cta">
-  <h2>Because the best friendships aren&apos;t just people.</h2>
-  <p>They&apos;re the plans that keep them close.</p>
-  <a href="/join" class="btn-primary" style="padding:12px 32px;font-size:15px;border-radius:20px;">Get started &rarr;</a>
-  <p class="note">Free. No credit card. Boston &amp; Cambridge.</p>
-</div>
-
-<div class="landing-footer">
-  <p>&copy; 2026 Calyx</p>
+<div class="lp">
+  <h1>A shared calendar<br>for the people<br>you <em>actually see</em>.</h1>
+  <p class="sub">Drop an event. Everyone in the group RSVPs and it syncs to their calendar. That&rsquo;s it.</p>
+  __CTA__
+  <div class="foot">Calyx</div>
 </div>
 """
-    return HTMLResponse(_layout("About", body, current_user))
+    if current_user:
+        cta = '<a href="/groups" class="cta">Open your groups</a>'
+    else:
+        cta = '<a href="/login" class="cta">Sign in to start</a>'
+    return HTMLResponse(_layout("Calyx", body.replace("__CTA__", cta), current_user))
 
 
 @app.get("/")
