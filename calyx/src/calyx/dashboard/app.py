@@ -14,6 +14,7 @@ from calyx.config import Settings
 from calyx.db import Database
 from calyx.dashboard.auth import build_login_url as google_login_url, exchange_code as google_exchange_code
 from calyx.email.sender import send_invite_email, send_rsvp_notify, send_group_event_notification
+from calyx.email.invite import send_event_invites_to_members, send_calendar_invite, build_invite_ics, event_uid_for
 from calyx.gcal import get_or_create_calendar, push_event as gcal_push_event, update_attendees as gcal_update_attendees, sync_rsvps_to_db as gcal_sync_rsvps
 
 logger = logging.getLogger(__name__)
@@ -75,8 +76,8 @@ def render_nav(user: dict | None = None) -> str:
         name = user.get("name") or user.get("email", "")
         return f"""<nav class="app-nav"><div class="app-nav-inner">
           <a href="/" class="app-logo">{_LOGO_SVG} calyx</a>
-          <a href="/calendar" class="nav-link">Discover</a>
           <a href="/groups" class="nav-link">Groups</a>
+          <a href="/calendar" class="nav-link">Discover</a>
           <a href="/taste-profile" class="nav-link">You</a>
           <div class="nav-divider"></div>
           <span class="nav-user-name">{name}</span>
@@ -84,8 +85,8 @@ def render_nav(user: dict | None = None) -> str:
         </div></nav>"""
     return f"""<nav class="app-nav"><div class="app-nav-inner">
       <a href="/" class="app-logo">{_LOGO_SVG} calyx</a>
-      <a href="/calendar" class="nav-link">Discover</a>
       <a href="/groups" class="nav-link">Groups</a>
+      <a href="/calendar" class="nav-link">Discover</a>
       <a href="/login" class="nav-link">Log in</a>
     </div></nav>"""
 
@@ -114,7 +115,16 @@ def _layout(title: str, body: str, user: dict | None = None, og: dict | None = N
         og_tags += f'\n<meta property="og:url" content="{og_url}">'
         og_tags += f'\n<link rel="canonical" href="{og_url}">'
     html = LAYOUT_STYLE.replace("__TITLE__", title).replace("__OG_TAGS__", og_tags)
-    return html + nav + '<div class="app-content">' + body + LAYOUT_FOOT
+    phone_banner = ""
+    if user and not (user.get("phone") or "").strip():
+        phone_banner = (
+            '<div style="background:#fbf6f3;border-bottom:1px solid #e6cdc1;padding:10px 20px;font-size:13px;color:#5a2a18;text-align:center;">'
+            '<strong style="font-weight:700;color:#8a3f25;">📱 One thing left</strong> — '
+            '<a href="/taste-profile#settings" style="color:#c4734f;font-weight:600;text-decoration:none;border-bottom:1px dashed #c4734f;">add your phone</a> '
+            'so group-mates can reach you.'
+            '</div>'
+        )
+    return html + nav + phone_banner + '<div class="app-content">' + body + LAYOUT_FOOT
 
 
 LAYOUT_STYLE = """<!DOCTYPE html>
@@ -1210,7 +1220,7 @@ async def landing_page(request: Request):
 async def home_redirect(request: Request):
     user = _get_current_user(request)
     if user:
-        resp = RedirectResponse("/calendar", status_code=302)
+        resp = RedirectResponse("/groups", status_code=302)
         return _maybe_set_cookie(request, resp, user)
     return RedirectResponse("/landing", status_code=302)
 
@@ -4646,4 +4656,9 @@ async def user_ical_feed(token: str):
 def run():
     """Entry point for calyx-dashboard command."""
     import uvicorn
-    uvicorn.run("calyx.dashboard.app:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run(
+        "calyx.dashboard.app:app",
+        host="0.0.0.0", port=8000,
+        reload=True,
+        reload_dirs=["src/calyx"],
+    )
