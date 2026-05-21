@@ -134,6 +134,8 @@ LAYOUT_STYLE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#4a6741">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/favicon.svg">
 <link rel="manifest" href="/static/manifest.json">
 __OG_TAGS__
 <title>Calyx — __TITLE__</title>
@@ -1076,6 +1078,27 @@ function submitPaste() {{
 </script>
 """
     return HTMLResponse(_layout("You", body, current_user))
+
+
+@app.get("/favicon.svg")
+async def favicon_svg():
+    """Serve the Calyx logo as a tab favicon. SVG works in all modern browsers."""
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+        '<rect width="32" height="32" rx="6" fill="#4a6741"/>'
+        '<path d="M16 7c-3 3.5-6.5 5-6.5 9 0 3.5 3 6 6.5 6s6.5-2.5 6.5-6c0-4-3.5-5.5-6.5-9z" fill="#fff" opacity=".25"/>'
+        '<path d="M16 11c-2 2.5-4 3.5-4 6 0 2 1.8 3.8 4 3.8s4-1.8 4-3.8c0-2.5-2-3.5-4-6z" fill="#fff"/>'
+        '<path d="M16 15v6" stroke="#4a6741" stroke-width="1.2" stroke-linecap="round"/>'
+        '</svg>'
+    )
+    return Response(content=svg, media_type="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/favicon.ico")
+async def favicon_ico():
+    """Some browsers/clients fetch /favicon.ico regardless of <link> hints; just redirect."""
+    return RedirectResponse("/favicon.svg", status_code=301)
 
 
 @app.get("/landing", response_class=HTMLResponse)
