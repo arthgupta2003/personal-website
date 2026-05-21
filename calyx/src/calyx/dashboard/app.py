@@ -2224,6 +2224,18 @@ async def api_rsvp(request: Request):
     data["status"] = effective_status
     status = effective_status
 
+    # Append a system entry to the event's chat log when RSVP actually changes.
+    # Only for group events, and skip noisy duplicates (same status as before).
+    if event_id.startswith("grp_evt_") and effective_status != _prev:
+        try:
+            first = (user.get("name") or user.get("email", "")).split()[0] or "Someone"
+            label_map = {"going": "is going", "maybe": "might come", "cant": "can't make it",
+                         "waitlist": "joined the waitlist"}
+            label = label_map.get(effective_status, effective_status)
+            db.add_event_system_log(event_id, user["id"], f"{first} {label}")
+        except Exception:
+            logger.exception("Failed to log RSVP system entry for %s", event_id)
+
     # Notify group-mates and push to GCal when RSVP is "going"
     if data["status"] == "going":
         try:
@@ -3275,6 +3287,9 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     .chat-row.me .chat-bubble {{ background:#4a6741; color:#fff; border-radius:14px 14px 4px 14px; }}
     .chat-row.grouped.them .chat-bubble, .chat-row.grouped.me .chat-bubble {{ border-radius:14px; }}
     .chat-time {{ font-size:10px; color:#aaa; margin-top:2px; padding:0 6px; }}
+    .chat-system {{ display:flex; align-items:center; gap:8px; margin:6px 0; padding:0 4px; }}
+    .chat-system-line {{ flex:1; height:1px; background:#e0e0e0; }}
+    .chat-system-text {{ font-size:11px; color:#888; font-style:italic; letter-spacing:.1px; text-align:center; flex-shrink:0; }}
     .chat-del {{ display:none; position:absolute; top:-8px; right:-8px; background:#fff; border:1px solid #e0e0e0; color:#888; cursor:pointer; border-radius:50%; width:22px; height:22px; font-size:13px; line-height:1; font-family:inherit; }}
     .chat-row.me:hover .chat-del {{ display:inline-block; }}
     .chat-form {{ display:flex; gap:8px; padding:12px 14px; border-top:1px solid #e0e0e0; background:#fff; }}
@@ -3431,10 +3446,21 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
             const rows = [];
             let prevUid = null;
             msgs.forEach(m => {{
+                const safeBody = (m.body || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br>');
+                if (m.kind === 'system') {{
+                    rows.push(
+                        '<div class="chat-system">' +
+                        '<span class="chat-system-line"></span>' +
+                        '<span class="chat-system-text">' + safeBody + ' · ' + fmtChatTime(m.created_at) + '</span>' +
+                        '<span class="chat-system-line"></span>' +
+                        '</div>'
+                    );
+                    prevUid = null;
+                    return;
+                }}
                 const isMe = m.user_id === __ME_ID__;
                 const same = m.user_id === prevUid;
                 const name = m.user_name || (m.user_email || '').split('@')[0] || '?';
-                const safeBody = (m.body || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br>');
                 const delBtn = isMe ? '<button class="chat-del" title="Delete" onclick="deleteChatMsg(' + m.id + ')">×</button>' : '';
                 rows.push(
                     '<div class="chat-row ' + (isMe ? 'me' : 'them') + (same ? ' grouped' : '') + '">' +
@@ -3906,6 +3932,32 @@ async def api_group_add_event(group_id: int, request: Request):
         if not ok:
             return HTMLResponse("<h1>Not allowed</h1>", status_code=403)
         ue_eid = f"grp_evt_{edit_id}"
+        # Log a system entry describing what actually changed (compact diff).
+        try:
+            changes = []
+            if (existing.get("title") or "") != title:
+                changes.append("title")
+            if (existing.get("start_time") or "") != (start_time or ""):
+                changes.append("date")
+            if (existing.get("end_time") or "") != (end_time or ""):
+                changes.append("end time")
+            if (existing.get("location") or "") != location:
+                changes.append("location")
+            if (existing.get("notes") or "") != notes:
+                changes.append("notes")
+            if (existing.get("prerequisites") or "") != prerequisites:
+                changes.append("prereqs")
+            if (existing.get("capacity") or None) != capacity:
+                changes.append("capacity")
+            if (existing.get("url") or "") != event_url:
+                changes.append("link")
+            if changes:
+                first = (user.get("name") or user.get("email", "")).split()[0] or "Someone"
+                what = ", ".join(changes[:3]) + ("…" if len(changes) > 3 else "")
+                db.add_event_system_log(ue_eid, user["id"], f"{first} updated {what}")
+        except Exception:
+            logger.exception("Failed to log edit system entry for event %d", edit_id)
+
         if capacity is not None:
             going_count = db.count_rsvps(ue_eid, "going")
             if going_count > capacity:
@@ -3956,6 +4008,13 @@ async def api_group_add_event(group_id: int, request: Request):
                                        notes=notes, capacity=capacity, prerequisites=prerequisites)
     ue_eid = f"grp_evt_{event_row_id}"
     db.set_rsvp(user["id"], ue_eid, 0, "going")
+    # Seed the chat log with creation + auto-going RSVP.
+    try:
+        first = (user.get("name") or user.get("email", "")).split()[0] or "Someone"
+        db.add_event_system_log(ue_eid, user["id"], f"{first} added this event")
+        db.add_event_system_log(ue_eid, user["id"], f"{first} is going")
+    except Exception:
+        logger.exception("Failed to seed system log for event %d", event_row_id)
     if repeat_weeks > 1 and start_time:
         base_date = _dt.fromisoformat(start_time)
         end_base = _dt.fromisoformat(end_time) if end_time else None
@@ -4037,7 +4096,12 @@ async def api_group_restore_event(group_id: int, request: Request):
     form = await request.form()
     event_id = int(form.get("event_id") or 0)
     if event_id:
-        db.restore_group_event(event_id, user["id"])
+        if db.restore_group_event(event_id, user["id"]):
+            try:
+                first = (user.get("name") or user.get("email", "")).split()[0] or "Someone"
+                db.add_event_system_log(f"grp_evt_{event_id}", user["id"], f"{first} restored this event")
+            except Exception:
+                logger.exception("Failed to log restore system entry for event %d", event_id)
     return RedirectResponse(f"/group/{group_id}?success=Event+restored", status_code=303)
 
 

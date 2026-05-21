@@ -291,6 +291,7 @@ CREATE TABLE IF NOT EXISTS event_comments (
     event_id TEXT NOT NULL,
     user_id INTEGER NOT NULL,
     body TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'message',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -346,6 +347,15 @@ class Database:
         if "deleted_at" not in events_cols:
             self.conn.execute("ALTER TABLE events ADD COLUMN deleted_at TEXT")
             added = True
+
+        # event_comments may exist without the kind column (added later)
+        ec_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(event_comments)").fetchall()}
+        if "kind" not in ec_cols:
+            try:
+                self.conn.execute("ALTER TABLE event_comments ADD COLUMN kind TEXT NOT NULL DEFAULT 'message'")
+                self.conn.commit()
+            except Exception:
+                pass
         if added:
             self.conn.execute("CREATE INDEX IF NOT EXISTS idx_events_group_id ON events(group_id)")
             self.conn.commit()
@@ -1439,7 +1449,17 @@ class Database:
 
     def add_event_comment(self, event_id: str, user_id: int, body: str) -> int:
         cur = self.conn.execute(
-            "INSERT INTO event_comments (event_id, user_id, body) VALUES (?, ?, ?)",
+            "INSERT INTO event_comments (event_id, user_id, body, kind) VALUES (?, ?, ?, 'message')",
+            (event_id, user_id, body),
+        )
+        self.conn.commit()
+        return cur.lastrowid
+
+    def add_event_system_log(self, event_id: str, user_id: int, body: str) -> int:
+        """Append a system-generated log entry to an event's chat (RSVPs, edits, etc).
+        user_id records *who* triggered it; renderer styles based on kind='system'."""
+        cur = self.conn.execute(
+            "INSERT INTO event_comments (event_id, user_id, body, kind) VALUES (?, ?, ?, 'system')",
             (event_id, user_id, body),
         )
         self.conn.commit()
@@ -1447,7 +1467,7 @@ class Database:
 
     def get_event_comments(self, event_id: str) -> list[dict]:
         rows = self.conn.execute(
-            """SELECT c.id, c.body, c.created_at, c.user_id,
+            """SELECT c.id, c.body, c.created_at, c.user_id, c.kind,
                       u.name AS user_name, u.email AS user_email
                FROM event_comments c JOIN users u ON u.id = c.user_id
                WHERE c.event_id = ? ORDER BY c.created_at ASC""",
@@ -1456,8 +1476,9 @@ class Database:
         return [dict(r) for r in rows]
 
     def delete_event_comment(self, comment_id: int, user_id: int) -> bool:
+        """Delete a user-typed message. System log entries are immutable."""
         cur = self.conn.execute(
-            "DELETE FROM event_comments WHERE id = ? AND user_id = ?",
+            "DELETE FROM event_comments WHERE id = ? AND user_id = ? AND kind = 'message'",
             (comment_id, user_id),
         )
         self.conn.commit()
