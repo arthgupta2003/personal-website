@@ -2648,27 +2648,52 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
 
     # Helper: render RSVP avatar circles + summary text
     def _rsvp_avatars(rsvp_list: list[dict]) -> str:
+        """Avatars on row 1 (first 5), full named breakdown on row 2 — so it's obvious
+        who said what, not just a headcount + anonymous initials."""
         going = [r for r in rsvp_list if r["status"] == "going"]
         maybe = [r for r in rsvp_list if r["status"] == "maybe"]
-        if not going and not maybe:
+        cant = [r for r in rsvp_list if r["status"] == "cant"]
+        if not going and not maybe and not cant:
             return ""
+
+        from html import escape as _esc_a
+
+        def _first(r):
+            n = r.get("user_name") or (r.get("user_email", "") or "").split("@")[0] or "?"
+            return n.split()[0]
+
+        # Avatar stack — first 5 of going+maybe, others as "+N"
         avatars = ""
-        all_r = (going + maybe)[:5]
-        for i, r in enumerate(all_r):
-            bg = "#dcfce7" if r["status"] == "going" else "#fef3c7"
-            fg = "#166534" if r["status"] == "going" else "#92400e"
-            bd = "#86efac" if r["status"] == "going" else "#fde68a"
+        all_r = (going + maybe)
+        shown = all_r[:5]
+        overflow = max(0, len(all_r) - 5)
+        for i, r in enumerate(shown):
+            bg = "#edf2eb" if r["status"] == "going" else "#fbf6f3"
+            fg = "#4a6741" if r["status"] == "going" else "#8a3f25"
+            bd = "#d4e0d1" if r["status"] == "going" else "#e6cdc1"
             initial = ((r.get("user_name") or "?")[0]).upper()
             ml = "-6px" if i > 0 else "0"
-            avatars += f'<div title="{r.get("user_name", "")} ({r["status"]})" style="width:22px;height:22px;border-radius:50%;background:{bg};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:{fg};border:2px solid {bd};margin-left:{ml};position:relative;z-index:{5-i};flex-shrink:0;">{initial}</div>'
-        summary = ""
+            avatars += f'<div title="{_esc_a((r.get("user_name") or "") + " (" + r["status"] + ")")}" style="width:24px;height:24px;border-radius:50%;background:{bg};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:{fg};border:2px solid #fff;box-shadow:0 0 0 1px {bd};margin-left:{ml};position:relative;z-index:{5-i};flex-shrink:0;">{initial}</div>'
+        if overflow:
+            avatars += f'<div style="width:24px;height:24px;border-radius:50%;background:#f0f0f0;color:#666;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid #fff;box-shadow:0 0 0 1px #ddd;margin-left:-6px;flex-shrink:0;">+{overflow}</div>'
+
+        # Named breakdown lines (one per status that has people)
+        lines = []
         if going:
-            summary += f'<span style="color:#166534;font-weight:600;">{len(going)} going</span>'
-        if going and maybe:
-            summary += " &middot; "
+            names = ", ".join(_esc_a(_first(r)) for r in going)
+            lines.append(f'<div style="font-size:12px;color:#4a6741;line-height:1.45;"><strong style="font-weight:700;letter-spacing:.3px;">Going:</strong> {names}</div>')
         if maybe:
-            summary += f'<span style="color:#92400e;">{len(maybe)} maybe</span>'
-        return f'<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">{avatars}<span style="font-size:11px;color:#6b7280;">{summary}</span></div>'
+            names = ", ".join(_esc_a(_first(r)) for r in maybe)
+            lines.append(f'<div style="font-size:12px;color:#8a3f25;line-height:1.45;"><strong style="font-weight:700;letter-spacing:.3px;">Maybe:</strong> {names}</div>')
+        if cant:
+            names = ", ".join(_esc_a(_first(r)) for r in cant)
+            lines.append(f'<div style="font-size:12px;color:#888;line-height:1.45;"><strong style="font-weight:700;letter-spacing:.3px;">Can\'t:</strong> {names}</div>')
+
+        rows = "".join(lines)
+        return (f'<div style="margin-top:10px;display:flex;flex-direction:column;gap:4px;">'
+                f'<div style="display:flex;align-items:center;gap:4px;">{avatars}</div>'
+                f'{rows}'
+                f'</div>')
 
     # Bulk-fetch comments across tentative, upcoming, and past events shown on this page
     _shown_user_events = (tentative_user[:8] + upcoming_user[:8] + past_user[:12])
