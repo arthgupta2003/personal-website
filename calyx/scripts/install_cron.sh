@@ -18,17 +18,14 @@ WEEKLY_CMD="0 ${PIPELINE_HOUR} * * ${DOW} cd ${RECOM_DIR} && ${UV_PATH} run caly
 # Daily digest email (send today's picks from latest run)
 DAILY_CMD="0 ${DAILY_HOUR} * * * cd ${RECOM_DIR} && ${UV_PATH} run calyx-daily >> ${RECOM_DIR}/state/daily.log 2>&1"
 
-# Post-event rating emails (10pm daily)
-RATINGS_CMD="0 22 * * * cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_ratings.py --send >> ${RECOM_DIR}/state/ratings.log 2>&1"
-
 # Admin digest (Sunday 10am — source health, retros, TODOs)
 ADMIN_CMD="0 10 * * 0 cd ${RECOM_DIR} && ${UV_PATH} run python scripts/send_admin_digest.py >> ${RECOM_DIR}/state/admin.log 2>&1"
 
-# Remove existing calyx cron entries (also legacy "recom" entries) and install all fresh
+# Remove existing calyx cron entries (also legacy "recom" entries) and install all fresh.
+# Post-event rating emails were disabled — they were noisy.
 (crontab -l 2>/dev/null | grep -v "calyx\|recom\|send_daily_taste\|send_tonight\|send_ratings\|send_weekend\|send_admin"; \
   echo "$WEEKLY_CMD"; \
   echo "$DAILY_CMD"; \
-  echo "$RATINGS_CMD"; \
   echo "$ADMIN_CMD") | crontab -
 
 # Ensure log dir exists
@@ -41,9 +38,6 @@ echo "    uv run calyx --all-users"
 echo ""
 echo "  Daily digest (${DAILY_HOUR}:00 every day):"
 echo "    uv run calyx-daily"
-echo ""
-echo "  Post-event ratings (10pm daily):"
-echo "    uv run python scripts/send_ratings.py --send"
 echo ""
 echo "  Admin digest (Sunday 10am):"
 echo "    uv run python scripts/send_admin_digest.py"
