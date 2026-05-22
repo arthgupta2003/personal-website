@@ -2648,8 +2648,7 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
 
     # Helper: render RSVP avatar circles + summary text
     def _rsvp_avatars(rsvp_list: list[dict]) -> str:
-        """Avatars on row 1 (first 5), full named breakdown on row 2 — so it's obvious
-        who said what, not just a headcount + anonymous initials."""
+        """Quiet scan view: avatar stack + headcount. Click to expand the named breakdown."""
         going = [r for r in rsvp_list if r["status"] == "going"]
         maybe = [r for r in rsvp_list if r["status"] == "maybe"]
         cant = [r for r in rsvp_list if r["status"] == "cant"]
@@ -2662,7 +2661,7 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
             n = r.get("user_name") or (r.get("user_email", "") or "").split("@")[0] or "?"
             return n.split()[0]
 
-        # Avatar stack — first 5 of going+maybe, others as "+N"
+        # Avatar stack — first 5 of going+maybe, +N overflow chip.
         avatars = ""
         all_r = (going + maybe)
         shown = all_r[:5]
@@ -2673,27 +2672,43 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
             bd = "#d4e0d1" if r["status"] == "going" else "#e6cdc1"
             initial = ((r.get("user_name") or "?")[0]).upper()
             ml = "-6px" if i > 0 else "0"
-            avatars += f'<div title="{_esc_a((r.get("user_name") or "") + " (" + r["status"] + ")")}" style="width:24px;height:24px;border-radius:50%;background:{bg};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:{fg};border:2px solid #fff;box-shadow:0 0 0 1px {bd};margin-left:{ml};position:relative;z-index:{5-i};flex-shrink:0;">{initial}</div>'
+            avatars += f'<div title="{_esc_a((r.get("user_name") or "") + " (" + r["status"] + ")")}" style="width:22px;height:22px;border-radius:50%;background:{bg};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:{fg};border:2px solid #fff;box-shadow:0 0 0 1px {bd};margin-left:{ml};position:relative;z-index:{5-i};flex-shrink:0;">{initial}</div>'
         if overflow:
-            avatars += f'<div style="width:24px;height:24px;border-radius:50%;background:#f0f0f0;color:#666;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid #fff;box-shadow:0 0 0 1px #ddd;margin-left:-6px;flex-shrink:0;">+{overflow}</div>'
+            avatars += f'<div style="width:22px;height:22px;border-radius:50%;background:#f0f0f0;color:#666;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid #fff;box-shadow:0 0 0 1px #ddd;margin-left:-6px;flex-shrink:0;">+{overflow}</div>'
 
-        # Named breakdown lines (one per status that has people)
+        # Compact headcount summary (default scan view).
+        summary_bits = []
+        if going:
+            summary_bits.append(f'<span style="color:#4a6741;font-weight:600;">{len(going)} going</span>')
+        if maybe:
+            summary_bits.append(f'<span style="color:#8a3f25;">{len(maybe)} maybe</span>')
+        if cant:
+            summary_bits.append(f'<span style="color:#aaa;">{len(cant)} can\'t</span>')
+        summary = ' <span style="color:#ccc;">·</span> '.join(summary_bits)
+
+        # Named breakdown — hidden behind the click, shown when opened.
         lines = []
         if going:
             names = ", ".join(_esc_a(_first(r)) for r in going)
-            lines.append(f'<div style="font-size:12px;color:#4a6741;line-height:1.45;"><strong style="font-weight:700;letter-spacing:.3px;">Going:</strong> {names}</div>')
+            lines.append(f'<div style="font-size:12px;color:#4a6741;line-height:1.5;"><strong style="font-weight:700;">Going:</strong> {names}</div>')
         if maybe:
             names = ", ".join(_esc_a(_first(r)) for r in maybe)
-            lines.append(f'<div style="font-size:12px;color:#8a3f25;line-height:1.45;"><strong style="font-weight:700;letter-spacing:.3px;">Maybe:</strong> {names}</div>')
+            lines.append(f'<div style="font-size:12px;color:#8a3f25;line-height:1.5;"><strong style="font-weight:700;">Maybe:</strong> {names}</div>')
         if cant:
             names = ", ".join(_esc_a(_first(r)) for r in cant)
-            lines.append(f'<div style="font-size:12px;color:#888;line-height:1.45;"><strong style="font-weight:700;letter-spacing:.3px;">Can\'t:</strong> {names}</div>')
+            lines.append(f'<div style="font-size:12px;color:#888;line-height:1.5;"><strong style="font-weight:700;">Can\'t:</strong> {names}</div>')
+        names_block = "".join(lines)
 
-        rows = "".join(lines)
-        return (f'<div style="margin-top:10px;display:flex;flex-direction:column;gap:4px;">'
-                f'<div style="display:flex;align-items:center;gap:4px;">{avatars}</div>'
-                f'{rows}'
-                f'</div>')
+        return (
+            f'<details class="rsvp-roster" style="margin-top:8px;">'
+            f'<summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;">'
+            f'<div style="display:flex;align-items:center;">{avatars}</div>'
+            f'<span style="font-size:11px;color:#6b7280;">{summary}</span>'
+            f'</summary>'
+            f'<div style="margin-top:8px;padding-left:2px;display:flex;flex-direction:column;gap:4px;">{names_block}</div>'
+            f'</details>'
+            f'<style>.rsvp-roster summary::-webkit-details-marker {{ display:none; }}</style>'
+        )
 
     # Bulk-fetch comments across tentative, upcoming, and past events shown on this page
     _shown_user_events = (tentative_user[:8] + upcoming_user[:8] + past_user[:12])
