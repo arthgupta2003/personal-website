@@ -2984,7 +2984,7 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
                 <div id="ae-edit-banner-{group_id}" style="display:none;padding:10px 12px;background:#edf2eb;border-left:3px solid #4a6741;font-size:13px;color:#1a1a1a;margin-bottom:10px;">
                     Editing <strong id="ae-edit-banner-title-{group_id}"></strong>
                 </div>
-                <form action="/api/group/{group_id}/add-event" method="post" id="add-event-form-{group_id}" class="ae-form">
+                <form action="/api/group/{group_id}/add-event" method="post" id="add-event-form-{group_id}" class="ae-form" onsubmit="return aeFormSubmit(this, {group_id})">
                     <input type="hidden" name="edit_id" id="ae-edit-id-{group_id}" value="">
 
                     <input name="title" id="ae-title-{group_id}" placeholder="What's the plan?" required class="ae-title-input" autocomplete="off">
@@ -3056,6 +3056,18 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
             .ae-btn-primary:hover {{ background: #3a5334; }}
             </style>
             <script>
+            function aeFormSubmit(form, gid) {{
+                // Guard against double-click double-submit: lock the button on first submit.
+                const submit = document.getElementById('ae-submit-' + gid);
+                if (!submit) return true;
+                if (submit.dataset.submitting === '1') return false;
+                submit.dataset.submitting = '1';
+                submit.disabled = true;
+                submit.textContent = (document.getElementById('ae-edit-id-' + gid).value
+                                      ? 'Saving…' : 'Adding…');
+                return true;
+            }}
+
             function toggleAeMore(gid) {{
                 const panel = document.getElementById('ae-more-' + gid);
                 const toggle = document.getElementById('ae-more-toggle-' + gid);
@@ -4043,6 +4055,22 @@ async def api_group_add_event(group_id: int, request: Request):
         return RedirectResponse(f"/group/{group_id}?success=Event+updated", status_code=303)
 
     # --- Create mode ---
+    # Server-side dedupe: if the same user just created an identical event in this group
+    # in the last 60s, treat the new POST as a duplicate click and bail. Cheap defense
+    # against double-submits and rapid retries.
+    dup = db.conn.execute(
+        """SELECT id FROM events
+           WHERE group_id = ? AND created_by = ? AND source = 'manual'
+             AND deleted_at IS NULL AND title = ?
+             AND COALESCE(start_time, '') = COALESCE(?, '')
+             AND id IN (
+                 SELECT id FROM events WHERE group_id = ? AND created_by = ? AND source = 'manual'
+                 ORDER BY id DESC LIMIT 5
+             )""",
+        (group_id, user["id"], title, start_time or None, group_id, user["id"]),
+    ).fetchone()
+    if dup:
+        return RedirectResponse(f"/group/{group_id}?success=Event+added", status_code=303)
     event_row_id = db.add_group_event(group_id, user["id"], title, start_time,
                                        end_time=end_time, location=location, url=event_url,
                                        notes=notes, capacity=capacity, prerequisites=prerequisites)
