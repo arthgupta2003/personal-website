@@ -137,6 +137,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "cairosvg" },
+    { name = "httpx" },
     { name = "playwright" },
     { name = "pytest" },
 ]
@@ -169,6 +170,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "cairosvg", specifier = ">=2.9.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "playwright", specifier = ">=1.58.0" },
     { name = "pytest", specifier = ">=8.0" },
 ]

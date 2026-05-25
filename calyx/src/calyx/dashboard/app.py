@@ -2598,6 +2598,11 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
     is_member = current_user and any(m["id"] == current_user["id"] for m in members)
     is_creator = current_user and group.get("created_by") == current_user["id"]
     group_name = db.get_group_display_name(group)
+    # Don't leak member lists, events, or chats to randos. You need to either be a
+    # member, or arrive via the invite-link GET (which sets _valid_invite=True and
+    # auto-joins authed users in group_join_page).
+    if not is_member and not _valid_invite:
+        return HTMLResponse("<h1>Group not found</h1>", status_code=404)
 
     # --- Members list ---
     members_html = ""
@@ -3194,6 +3199,7 @@ async def group_page(group_id: int, request: Request, _valid_invite: bool = Fals
             # Authed but not a member and not on the auto-join path — fallback CTA
             join_cta = f'''<div class="card" style="margin-bottom:20px;">
                 <form action="/group/{group_id}/join" method="post" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                    <input type="hidden" name="invite_code" value="{invite_code}">
                     <span style="font-size:14px;color:#374151;">Join this group to add events and see plans.</span>
                     <button type="submit" class="btn-primary" style="white-space:nowrap;">Join</button>
                 </form>
@@ -4634,7 +4640,11 @@ async def auth_logout():
 async def groups_page(request: Request):
     db = get_db()
     current_user = _get_current_user(request)
-    groups = db.get_all_groups()
+    # Auth required — and you only see the groups you're actually in. No more
+    # browsing strangers' calendars by ID enumeration.
+    if not current_user:
+        return RedirectResponse("/login?next=/groups", status_code=303)
+    groups = db.get_user_groups(current_user["id"])
 
 
     # Upcoming with friends — only events where group-mates are actually going
@@ -4725,6 +4735,9 @@ async def groups_page(request: Request):
 
 @app.post("/group/{group_id:int}/join")
 async def group_join(group_id: int, request: Request):
+    """Bare POST join — requires a valid invite_code form field. The "happy path"
+    is the invite-link GET (/group/{id}/join/{invite_code}) which auto-joins; this
+    endpoint exists for the join-CTA form on the preview page."""
     user = _get_current_user(request)
     db = get_db()
     if not user:
@@ -4732,6 +4745,10 @@ async def group_join(group_id: int, request: Request):
     group = db.get_group_by_id(group_id)
     if not group:
         return HTMLResponse("<h1>Group not found</h1>", status_code=404)
+    form = await request.form()
+    submitted_code = (form.get("invite_code") or "").strip()
+    if not submitted_code or submitted_code != group.get("invite_code"):
+        return HTMLResponse("<h1>Invalid invite</h1>", status_code=403)
     db.add_group_member(group["id"], user["id"])
     return RedirectResponse(f"/group/{group_id}", status_code=303)
 

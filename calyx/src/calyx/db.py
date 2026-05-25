@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS group_members (
     group_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     joined_at TEXT NOT NULL,
+    notifications INTEGER DEFAULT 1,
     FOREIGN KEY (group_id) REFERENCES groups(id),
     FOREIGN KEY (user_id) REFERENCES users(id),
     UNIQUE(group_id, user_id)
@@ -303,7 +304,10 @@ CREATE INDEX IF NOT EXISTS idx_event_comments_event_id ON event_comments(event_i
 class Database:
     def __init__(self, db_path: str = "calyx.db"):
         self.db_path = db_path
-        self.conn = sqlite3.connect(db_path)
+        # check_same_thread=False so FastAPI's sync handlers (which may run in a worker
+        # thread pool) can share this connection. Writes are still serialized by SQLite's
+        # default locking.
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
         self.conn.commit()
@@ -356,6 +360,12 @@ class Database:
                 self.conn.commit()
             except Exception:
                 pass
+
+        # group_members.notifications was added in production but missing from older test DBs.
+        gm_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(group_members)").fetchall()}
+        if "notifications" not in gm_cols:
+            self.conn.execute("ALTER TABLE group_members ADD COLUMN notifications INTEGER DEFAULT 1")
+            self.conn.commit()
         if added:
             self.conn.execute("CREATE INDEX IF NOT EXISTS idx_events_group_id ON events(group_id)")
             self.conn.commit()
