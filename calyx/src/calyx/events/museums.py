@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -89,60 +90,96 @@ async def _fetch_ica(settings: Settings) -> list[Event]:
 
 # ── MFA Boston ────────────────────────────────────────────────────────────────
 
+_MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December"
+
+
+def _parse_mfa_date(text: str) -> datetime | None:
+    """Parse "Monday, June 29–Thursday, July 2, 2026 9:00 am–4:00 pm" → start datetime.
+
+    The year only appears once (after the last date); the start date has none.
+    """
+    year_m = re.search(r"\b(20\d{2})\b", text)
+    date_m = re.search(rf"({_MONTHS})\s+(\d{{1,2}})", text)
+    if not year_m or not date_m:
+        return None
+    try:
+        dt = datetime.strptime(f"{date_m.group(1)} {date_m.group(2)}, {year_m.group(1)}", "%B %d, %Y")
+    except ValueError:
+        return None
+    time_m = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", text, re.IGNORECASE)
+    if time_m:
+        hour = int(time_m.group(1)) % 12
+        if time_m.group(3).lower() == "pm":
+            hour += 12
+        dt = dt.replace(hour=hour, minute=int(time_m.group(2) or 0))
+    return dt
+
+
 async def _fetch_mfa(settings: Settings) -> list[Event]:
-    """Scrape MFA Boston programs/events."""
-    url = "https://www.mfa.org/programs"
+    """Scrape MFA Boston programs (a server-rendered Drupal view; paged ?page=N)."""
+    now = datetime.now(timezone.utc)
+    cutoff = now + timedelta(days=30)
     events: list[Event] = []
+    seen: set[str] = set()
+    seen_titles: set[str] = set()  # collapse repeating multi-session studio classes
 
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, follow_redirects=True) as client:
-        try:
-            resp = await client.get(url)
-            resp.raise_for_status()
-        except Exception as exc:
-            logger.warning("MFA fetch failed: %s", exc)
-            return []
+        for page in range(6):  # page 1 already reaches ~August; 6 covers a month
+            try:
+                resp = await client.get("https://www.mfa.org/programs", params={"page": page})
+                resp.raise_for_status()
+            except Exception as exc:
+                logger.warning("MFA page %d fetch failed: %s", page, exc)
+                break
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-    for card in soup.select(".program-card, .event-item, article, [class*='program'], [class*='event']")[:30]:
-        title_el = card.select_one("h2, h3, h4, .title, [class*='title']")
-        if not title_el:
-            continue
-        title = title_el.get_text(strip=True)
-        if not title or len(title) < 3:
-            continue
+            wells = BeautifulSoup(resp.text, "html.parser").select(".well")
+            if not wells:
+                break
 
-        link_el = card.select_one("a[href]")
-        event_url = ""
-        if link_el:
-            href = link_el.get("href", "")
-            event_url = href if href.startswith("http") else f"https://www.mfa.org{href}"
+            page_past_cutoff = True
+            for well in wells:
+                title_el = well.select_one("h2.field-content a, h2 a")
+                if not title_el:
+                    continue
+                title = title_el.get_text(strip=True)
+                href = title_el.get("href", "")
+                if not title or not href:
+                    continue
 
-        date_el = card.select_one("time, .date, [class*='date']")
-        start_time = None
-        if date_el:
-            dt_attr = date_el.get("datetime") or date_el.get_text(strip=True)
-            start_time = parse_event_dt(dt_attr)
+                info_el = well.select_one(".date-display-range, .date-display-single, p.field-content.info, .info")
+                start_time = _parse_mfa_date(info_el.get_text(" ", strip=True)) if info_el else None
+                if not start_time:
+                    continue
+                if start_time.replace(tzinfo=timezone.utc) < now - timedelta(days=1):
+                    continue
+                if start_time.replace(tzinfo=timezone.utc) > cutoff:
+                    continue
+                page_past_cutoff = False
 
-        desc_el = card.select_one("p, .description, [class*='desc']")
-        description = desc_el.get_text(strip=True)[:300] if desc_el else ""
+                event_url = href if href.startswith("http") else f"https://www.mfa.org{href}"
+                if event_url in seen or title.lower() in seen_titles:
+                    continue
+                seen.add(event_url)
+                seen_titles.add(title.lower())
 
-        img_el = card.select_one("img")
-        image_url = img_el.get("src") if img_el else None
+                img_el = well.select_one("picture img, img")
+                image_url = img_el.get("src") if img_el and img_el.get("src") else None
 
-        date_str = str(start_time.date()) if start_time else ""
-        events.append(Event(
-            id=make_event_id("mfa", title, date_str),
-            source=EventSource.ARTSBOSTON,
-            title=title,
-            description=description,
-            url=event_url,
-            start_time=start_time,
-            location_name="Museum of Fine Arts Boston",
-            location_address="465 Huntington Ave, Boston, MA 02115",
-            organizer="Museum of Fine Arts",
-            image_url=image_url,
-            category="arts",
-        ))
+                events.append(Event(
+                    id=make_event_id("mfa", title, str(start_time.date())),
+                    source=EventSource.ARTSBOSTON,
+                    title=title,
+                    url=event_url,
+                    start_time=start_time,
+                    location_name="Museum of Fine Arts Boston",
+                    location_address="465 Huntington Ave, Boston, MA 02115",
+                    organizer="Museum of Fine Arts",
+                    image_url=image_url,
+                    category="arts",
+                ))
+
+            if page_past_cutoff and page > 0:
+                break
 
     logger.info("MFA Boston returned %d events", len(events))
     return events
@@ -221,45 +258,56 @@ async def _fetch_gardner(settings: Settings) -> list[Event]:
             return []
 
     soup = BeautifulSoup(resp.text, "html.parser")
-    for card in soup.select("article, .event-card, .views-row, [class*='event'], .card")[:30]:
-        title_el = card.select_one("h2, h3, h4, .title, [class*='title']")
+    for card in soup.select(".isg-events-list__item-wrapper"):
+        title_el = card.select_one(".isg-card__title")
         if not title_el:
             continue
         title = title_el.get_text(strip=True)
         if not title or len(title) < 3:
             continue
 
-        link_el = card.select_one("a[href]")
+        # Date text like "Sunday July 5, 2026 10 am - 5 pm" — extract "July 5, 2026"
+        date_el = card.select_one(".isg-events-list__date")
+        start_time = None
+        if date_el:
+            m = re.search(r"([A-Z][a-z]+ \d{1,2}, \d{4})", date_el.get_text(" ", strip=True))
+            if m:
+                try:
+                    start_time = datetime.strptime(m.group(1), "%B %d, %Y")
+                except ValueError:
+                    start_time = None
+        if not start_time:
+            continue
+
+        # Canonical event URL = the "More info" (secondary) link, not the ticketing link
+        link_el = card.select_one("a.isg-btn--secondary") or card.select_one("a[href]")
         event_url = ""
         if link_el:
             href = link_el.get("href", "")
             event_url = href if href.startswith("http") else f"https://www.gardnermuseum.org{href}"
 
-        date_el = card.select_one("time, .date, [class*='date']")
-        start_time = None
-        if date_el:
-            dt_attr = date_el.get("datetime") or date_el.get_text(strip=True)
-            start_time = parse_event_dt(dt_attr)
+        cat_el = card.select_one(".isg-eyebrow__text")
+        category = cat_el.get_text(strip=True) if cat_el else "arts"
+        # the eyebrow sometimes has the date string concatenated on the end
+        category = re.sub(r"[A-Z][a-z]+ \d{1,2}, \d{4}.*$", "", category).strip() or "arts"
 
-        desc_el = card.select_one("p, .description, [class*='desc']")
-        description = desc_el.get_text(strip=True)[:300] if desc_el else ""
+        img_el = card.select_one(".isg-media picture img") or card.select_one("img")
+        image_url = None
+        if img_el and img_el.get("src"):
+            src = img_el["src"]
+            image_url = src if src.startswith("http") else f"https://www.gardnermuseum.org{src}"
 
-        img_el = card.select_one("img")
-        image_url = img_el.get("src") if img_el else None
-
-        date_str = str(start_time.date()) if start_time else ""
         events.append(Event(
-            id=make_event_id("gardner", title, date_str),
+            id=make_event_id("gardner", title, str(start_time.date())),
             source=EventSource.ARTSBOSTON,
             title=title,
-            description=description,
             url=event_url,
             start_time=start_time,
             location_name="Isabella Stewart Gardner Museum",
             location_address="25 Evans Way, Boston, MA 02115",
             organizer="Gardner Museum",
             image_url=image_url,
-            category="arts",
+            category=category,
         ))
 
     logger.info("Gardner Museum returned %d events", len(events))
@@ -268,9 +316,23 @@ async def _fetch_gardner(settings: Settings) -> list[Event]:
 
 # ── Harvard Art Museums ──────────────────────────────────────────────────────
 
+_HARVARD_ART_CATEGORIES = {
+    1: "Trip", 2: "Performance", 3: "Gallery Talk", 4: "Lecture",
+    5: "Supporter Event", 6: "Other", 7: "Special Event", 8: "Student Event",
+    9: "Symposium", 10: "Seminar", 11: "Workshop", 12: "Tour", 13: "Film",
+}
+
+
 async def _fetch_harvard_art(settings: Settings) -> list[Event]:
-    """Scrape Harvard Art Museums events."""
+    """Fetch Harvard Art Museums events.
+
+    The calendar is an Alpine.js SPA, but the full event list is server-rendered
+    into the page as a `var initialEvents = [].concat([...]);` JS array — parse
+    that JSON rather than scraping (non-existent) card markup.
+    """
     url = "https://harvardartmuseums.org/calendar"
+    now = datetime.now(timezone.utc)
+    cutoff = now + timedelta(days=30)
     events: list[Event] = []
 
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, follow_redirects=True) as client:
@@ -281,42 +343,57 @@ async def _fetch_harvard_art(settings: Settings) -> list[Event]:
             logger.warning("Harvard Art Museums fetch failed: %s", exc)
             return []
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-    for card in soup.select("article, .event-card, .listing-item, [class*='event'], .card")[:30]:
-        title_el = card.select_one("h2, h3, h4, .title, [class*='title']")
-        if not title_el:
+    m = re.search(r"var initialEvents\s*=\s*\[\]\.concat\((\[.*?\])\)\s*;", resp.text, re.DOTALL)
+    if not m:
+        logger.warning("Harvard Art Museums: initialEvents array not found")
+        return []
+    try:
+        items = json.loads(m.group(1))
+    except json.JSONDecodeError:
+        logger.warning("Harvard Art Museums: failed to parse initialEvents JSON")
+        return []
+
+    def _iso_z(raw: str | None) -> datetime | None:
+        # dates look like "2026-07-01T16:30:00.000000Z" (UTC, microseconds)
+        if not raw:
+            return None
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return parse_event_dt(raw)
+
+    for item in items:
+        title = (item.get("title") or "").strip()
+        if not title or "closed" in title.lower():
             continue
-        title = title_el.get_text(strip=True)
-        if not title or len(title) < 3:
+        start_time = _iso_z(item.get("date"))
+        if not start_time:
+            continue
+        start_aware = start_time if start_time.tzinfo else start_time.replace(tzinfo=timezone.utc)
+        if start_aware < now or start_aware > cutoff:
             continue
 
-        link_el = card.select_one("a[href]")
-        event_url = ""
-        if link_el:
-            href = link_el.get("href", "")
-            event_url = href if href.startswith("http") else f"https://harvardartmuseums.org{href}"
+        image = item.get("image")
+        image_url = None
+        if isinstance(image, dict):
+            image_url = (image.get("list") or image.get("hero") or image.get("original") or {}).get("url")
 
-        date_el = card.select_one("time, .date, [class*='date']")
-        start_time = None
-        if date_el:
-            dt_attr = date_el.get("datetime") or date_el.get_text(strip=True)
-            start_time = parse_event_dt(dt_attr)
+        addr_parts = [item.get("address"), item.get("city"), item.get("state")]
+        location_address = ", ".join(p for p in addr_parts if p) or "32 Quincy St, Cambridge, MA 02138"
 
-        desc_el = card.select_one("p, .description, [class*='desc']")
-        description = desc_el.get_text(strip=True)[:300] if desc_el else ""
-
-        date_str = str(start_time.date()) if start_time else ""
         events.append(Event(
-            id=make_event_id("harvard_art", title, date_str),
+            id=make_event_id("harvard_art", title, item.get("date") or ""),
             source=EventSource.ARTSBOSTON,
             title=title,
-            description=description,
-            url=event_url,
+            description=(item.get("summary") or "")[:300],
+            url=item.get("event_link") or f"https://harvardartmuseums.org/calendar/{item.get('slug', '')}",
             start_time=start_time,
-            location_name="Harvard Art Museums",
-            location_address="32 Quincy St, Cambridge, MA 02138",
+            end_time=_iso_z(item.get("end_date")),
+            location_name=item.get("institution") or "Harvard Art Museums",
+            location_address=location_address,
             organizer="Harvard Art Museums",
-            category="arts",
+            category=_HARVARD_ART_CATEGORIES.get(item.get("type"), "arts"),
+            image_url=image_url,
         ))
 
     logger.info("Harvard Art Museums returned %d events", len(events))
@@ -325,59 +402,95 @@ async def _fetch_harvard_art(settings: Settings) -> list[Event]:
 
 # ── Museum of Science ────────────────────────────────────────────────────────
 
+def _parse_mos_date(text: str) -> datetime | None:
+    """Parse MoS free-text dates like "Friday, July 10 | Doors at 7:00p.m." → datetime.
+
+    No year is given, so infer the current year and roll forward if already past.
+    """
+    m = re.search(rf"({_MONTHS})\s+(\d{{1,2}})", text)
+    if not m:
+        return None
+    now = datetime.now(timezone.utc)
+    try:
+        dt = datetime.strptime(f"{m.group(1)} {m.group(2)}, {now.year}", "%B %d, %Y")
+    except ValueError:
+        return None
+    if dt.replace(tzinfo=timezone.utc) < now - timedelta(days=2):
+        dt = dt.replace(year=now.year + 1)
+    tm = re.search(r"(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m", text, re.IGNORECASE)
+    if tm:
+        hour = int(tm.group(1)) % 12
+        if tm.group(3).lower() == "p":
+            hour += 12
+        dt = dt.replace(hour=hour, minute=int(tm.group(2) or 0))
+    return dt
+
+
 async def _fetch_mos(settings: Settings) -> list[Event]:
-    """Scrape Museum of Science Boston events."""
-    url = "https://www.mos.org/events"
+    """Fetch Museum of Science events from its Drupal event-listing JSON API.
+
+    The /events page is an Angular app; this endpoint returns a JSON envelope
+    whose `results[].event_listing` values are pre-rendered HTML fragments.
+    """
+    url = (
+        "https://www.mos.org/api/v1/event-listing/event_detail/96+101/all/all/all/all"
+        "?items_per_page=100&sort_by=date_asc"
+    )
+    now = datetime.now(timezone.utc)
+    cutoff = now + timedelta(days=30)
     events: list[Event] = []
 
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, follow_redirects=True) as client:
         try:
             resp = await client.get(url)
             resp.raise_for_status()
+            data = resp.json()
         except Exception as exc:
             logger.warning("Museum of Science fetch failed: %s", exc)
             return []
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-    for card in soup.select("article, .event-card, .views-row, [class*='event'], .card, .listing-item")[:30]:
-        title_el = card.select_one("h2, h3, h4, .title, [class*='title']")
+    for row in data.get("results", []):
+        frag = row.get("event_listing") if isinstance(row, dict) else None
+        if not frag:
+            continue
+        card = BeautifulSoup(frag, "html.parser")
+        title_el = card.select_one("h3.listing-item__title a, h3 a")
         if not title_el:
             continue
         title = title_el.get_text(strip=True)
-        if not title or len(title) < 3:
+        href = title_el.get("href", "")
+        if not title:
             continue
 
-        link_el = card.select_one("a[href]")
-        event_url = ""
-        if link_el:
-            href = link_el.get("href", "")
-            event_url = href if href.startswith("http") else f"https://www.mos.org{href}"
+        date_el = card.select_one(".field--name-field-date-time-info, [class*='date-time']")
+        start_time = _parse_mos_date(date_el.get_text(" ", strip=True)) if date_el else None
+        if not start_time:
+            continue
+        if start_time.replace(tzinfo=timezone.utc) > cutoff:
+            continue
 
-        date_el = card.select_one("time, .date, [class*='date']")
-        start_time = None
-        if date_el:
-            dt_attr = date_el.get("datetime") or date_el.get_text(strip=True)
-            start_time = parse_event_dt(dt_attr)
+        desc_el = card.select_one(".listing-item__summary")
+        description = desc_el.get_text(" ", strip=True)[:300] if desc_el else ""
+        cat_el = card.select_one(".listing-item__content-type, .taxonomy-tag")
+        category = cat_el.get_text(strip=True) if cat_el else "learning"
+        img_el = card.select_one("img[src]")
+        image_url = None
+        if img_el:
+            src = img_el["src"]
+            image_url = src if src.startswith("http") else f"https://www.mos.org{src}"
 
-        desc_el = card.select_one("p, .description, [class*='desc']")
-        description = desc_el.get_text(strip=True)[:300] if desc_el else ""
-
-        img_el = card.select_one("img")
-        image_url = img_el.get("src") if img_el else None
-
-        date_str = str(start_time.date()) if start_time else ""
         events.append(Event(
-            id=make_event_id("mos", title, date_str),
+            id=make_event_id("mos", title, str(start_time.date())),
             source=EventSource.ARTSBOSTON,
             title=title,
             description=description,
-            url=event_url,
+            url=href if href.startswith("http") else f"https://www.mos.org{href}",
             start_time=start_time,
             location_name="Museum of Science",
             location_address="1 Science Park, Boston, MA 02114",
             organizer="Museum of Science Boston",
             image_url=image_url,
-            category="learning",
+            category=category,
         ))
 
     logger.info("Museum of Science returned %d events", len(events))

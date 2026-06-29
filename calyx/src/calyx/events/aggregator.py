@@ -27,7 +27,7 @@ from calyx.events.museums import _fetch_ica, _fetch_mfa, _fetch_mit_list, _fetch
 from calyx.events.community import (
     fetch_bpl_events, fetch_coolidge_events,
     fetch_bowery_events, fetch_bso_events,
-    fetch_boston_gov_events, fetch_improv_asylum_events,
+    fetch_boston_gov_events,
 )
 from calyx.events.newsletters import extract_newsletter_events
 from calyx.events.outdoor import fetch_outdoor_events
@@ -376,8 +376,6 @@ async def discover_all_events(
         _run_source("Bowery Presents", fetch_bowery_events(settings)),
         # Performing arts
         _run_source("BSO", fetch_bso_events(settings)),
-        # Comedy
-        _run_source("Improv Asylum", fetch_improv_asylum_events(settings)),
         # City events
         _run_source("Boston.gov", fetch_boston_gov_events(settings)),
         # Outdoor
