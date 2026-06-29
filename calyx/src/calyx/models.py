@@ -81,6 +81,7 @@ class EventSource(str, Enum):
     BANDSINTOWN = "bandsintown"
     DICE = "dice"
     RESIDENT_ADVISOR = "resident_advisor"
+    BERKLEE = "berklee"
 
 
 class Event(BaseModel):

@@ -129,7 +129,7 @@ Tables: `users`, `runs`, `events`, `rankings`, `costs`, `source_stats`, `ingest_
 
 ### Event sources (13+)
 
-Eventbrite, Meetup (GraphQL), Ticketmaster, MIT Events (scraper), Harvard Events (Trumba API), The Boston Calendar / Do617 / ArtsBoston (scrapers), Luma, Songkick, Bandsintown, Dice.fm, Resident Advisor, Museums (ICA/MFA/MIT List), Outdoor (curated DCR/AMC spots), University (Northeastern, MassArt via Localist). Sources fail gracefully — missing API keys just skip that source.
+Eventbrite, Meetup (GraphQL), Ticketmaster, MIT Events (scraper), Harvard Events (Trumba API), The Boston Calendar / Do617 / ArtsBoston (scrapers), Luma, Songkick, Bandsintown, Dice.fm, Resident Advisor, Museums (ICA/MFA/MIT List), Outdoor (curated DCR/AMC spots), University (Northeastern, MassArt, BU, Suffolk, BC via Localist; Berklee via Drupal Views scraper). Sources fail gracefully — missing API keys just skip that source.
 
 ### Ranking system (two-pass)
 

@@ -15,6 +15,7 @@ import anthropic
 
 from calyx.config import Settings
 from calyx.events.bandsintown import fetch_bandsintown
+from calyx.events.berklee import fetch_berklee
 from calyx.events.geocoder import geocode_events
 from calyx.events.resident_advisor import fetch_resident_advisor
 from calyx.events.boston_calendar import fetch_boston_events
@@ -328,8 +329,8 @@ async def discover_all_events(
             EventSource.MIT,
             "Boston University", "Boston, MA 02215",
         )),
-        # NOTE: Tufts (Trumba), Brandeis (DNS), Emerson (403), Wellesley (not Localist),
-        # Berklee (not Localist) — all fail with Localist API. Removed until proper scrapers added.
+        # NOTE: Tufts (Trumba), Brandeis (DNS), Emerson (403), Wellesley (not Localist)
+        # all fail with Localist API. Berklee runs Drupal Views — added below via fetch_berklee.
         _run_source("Suffolk Events", _fetch_localist(
             "https://events.suffolk.edu", "Suffolk University",
             EventSource.MIT,
@@ -340,6 +341,8 @@ async def discover_all_events(
             EventSource.MIT,
             "Boston College", "Chestnut Hill, MA 02467",
         )),
+        # Berklee runs Drupal Views, not Localist — uses its own scraper
+        _run_source("Berklee", fetch_berklee(settings)),
         # Boston event sites
         _run_source("Boston Calendar", fetch_boston_events(settings)),
         _run_source("TimeOut Boston", fetch_timeout_boston(settings)),
