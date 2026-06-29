@@ -31,9 +31,7 @@ from calyx.events.community import (
 )
 from calyx.events.newsletters import extract_newsletter_events
 from calyx.events.outdoor import fetch_outdoor_events
-from calyx.events.songkick import fetch_songkick
 from calyx.events.ticketmaster import fetch_ticketmaster
-from calyx.events.timeout_boston import fetch_timeout_boston
 from calyx.events.university import _fetch_harvard, _fetch_localist, _fetch_trumba_school
 from calyx.models import CostRecord, Event, EventSource, SourceStat
 
@@ -309,7 +307,6 @@ async def discover_all_events(
         _run_source("Eventbrite", fetch_eventbrite(settings)),
         _run_source("Meetup", fetch_meetup(settings)),
         _run_source("Luma", fetch_luma(settings)),
-        _run_source("Songkick", fetch_songkick(settings)),
         _run_source("Ticketmaster", fetch_ticketmaster(settings, spotify_artists)),
         # University — individual schools
         # MIT runs Localist (the old HTML day-scraper was 429-throttled → ~2 events)
@@ -359,7 +356,8 @@ async def discover_all_events(
         )),
         # Boston event sites
         _run_source("Boston Calendar", fetch_boston_events(settings)),
-        _run_source("TimeOut Boston", fetch_timeout_boston(settings)),
+        # TimeOut Boston: page is now editorial (no JSON-LD), scraper returned
+        # city-name junk with no dates — retired 2026-06-29
         # Bandsintown: API requires auth (403) — disabled 2026-03-28
         # Dice.fm: no Boston coverage, all endpoints 404 — disabled 2026-03-28
         _run_source("Resident Advisor", fetch_resident_advisor(settings)),
@@ -396,6 +394,14 @@ async def discover_all_events(
 
     for name, events, error, duration in results:
         all_events.extend(events)
+        # Silent-rot detector: a source that returns events but none with a
+        # start_time is almost always a scraper matching nav/boilerplate after
+        # the site changed. Surface it instead of letting it look "healthy".
+        if error is None and events:
+            dated = sum(1 for e in events if e.start_time)
+            if dated == 0:
+                error = f"⚠ {len(events)} events but 0 have dates — likely stale scraper"
+                logger.warning("Source %s: %s", name, error)
         stats.append(
             SourceStat(
                 source_name=name,
