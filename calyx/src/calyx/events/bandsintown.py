@@ -1,18 +1,22 @@
-"""Bandsintown city events scraper — no API key required."""
+"""Bandsintown event source — per-artist endpoint, seeded from Spotify.
+
+The city/discover endpoints are auth-walled (403). The per-artist endpoint works
+unauthenticated with Bandsintown's public JS-widget app_id, so we fan out over
+the user's Spotify artists and keep their MA-area shows.
+"""
 
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
-import re
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 import httpx
-from bs4 import BeautifulSoup
 
 from calyx.config import Settings
 from calyx.events.common import make_event_id
-from calyx.models import Event, EventSource, EASTERN
+from calyx.models import Event, EventSource, parse_event_dt
 
 logger = logging.getLogger(__name__)
 
@@ -20,216 +24,81 @@ USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
-TIMEOUT = 30.0
-BANDSINTOWN_CITY_SLUG = "boston-ma"
+TIMEOUT = 20.0
+APP_ID = "js_127.0.0.1"  # Bandsintown's public JS-widget app_id (unauthenticated)
+MAX_ARTISTS = 40
 
 
-
-def _parse_bit_date(date_str: str) -> datetime | None:
-    """Parse Bandsintown date strings."""
-    if not date_str:
-        return None
-    date_str = date_str.strip()
-    formats = [
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%dT%H:%M:%SZ",
-        "%Y-%m-%dT%H:%M:%S%z",
-        "%Y-%m-%d",
-        "%a, %b %d, %Y",
-        "%B %d, %Y",
-    ]
-    for fmt in formats:
-        try:
-            dt = datetime.strptime(date_str, fmt)
-            if date_str.endswith("Z"):
-                dt = dt.replace(tzinfo=timezone.utc).astimezone(EASTERN)
-            return dt
-        except ValueError:
-            pass
-    return None
-
-
-async def _fetch_via_api(settings: Settings) -> list[Event]:
-    """Try the Bandsintown public discover API (no auth)."""
-    now = datetime.now(timezone.utc)
-    start_date = now.strftime("%Y-%m-%d")
-    end_date = (now + timedelta(days=14)).strftime("%Y-%m-%d")
-
-    # Bandsintown artist/city search uses app_id (any string works)
-    url = "https://rest.bandsintown.com/events/search"
-    params = {
-        "location": f"{settings.latitude},{settings.longitude}",
-        "radius": "25",
-        "date": f"{start_date},{end_date}",
-        "per_page": "50",
-        "app_id": "recom_events",
-    }
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
-
-    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        resp = await client.get(url, params=params, headers=headers)
-        resp.raise_for_status()
+async def _fetch_artist(client: httpx.AsyncClient, artist: str, now, cutoff) -> list[Event]:
+    url = f"https://rest.bandsintown.com/artists/{quote(artist, safe='')}/events"
+    try:
+        resp = await client.get(url, params={"app_id": APP_ID}, headers={"Accept": "application/json"})
+        if resp.status_code != 200:
+            return []
         data = resp.json()
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
 
     events: list[Event] = []
-    items = data if isinstance(data, list) else data.get("data", data.get("events", []))
-    for item in items:
-        title = item.get("title") or item.get("description") or ""
-        if not title:
-            # Build title from artists
-            artists = item.get("artists") or item.get("lineup") or []
-            if isinstance(artists, list):
-                names = [a.get("name", a) if isinstance(a, dict) else str(a) for a in artists[:3]]
-                title = ", ".join(names)
-        if not title:
-            continue
-        # Strip " @ Venue" suffix from title (Bandsintown API includes it)
-        if " @ " in title:
-            title = title.split(" @ ")[0].strip()
-
-        date_str = item.get("datetime") or item.get("starts_at") or item.get("date") or ""
-        start_time = _parse_bit_date(date_str)
-
+    for item in data:
         venue = item.get("venue") or {}
-        venue_name = venue.get("name", "") if isinstance(venue, dict) else str(venue)
-        venue_city = venue.get("city", "") if isinstance(venue, dict) else ""
+        if (venue.get("region") or "").upper() != "MA":
+            continue
+        start_time = parse_event_dt(item.get("datetime") or "")
+        if not start_time:
+            continue
+        start_aware = start_time if start_time.tzinfo else start_time.replace(tzinfo=timezone.utc)
+        if start_aware < now or start_aware > cutoff:
+            continue
 
-        artists = item.get("artists") or item.get("lineup") or []
-        organizer = None
-        if isinstance(artists, list) and artists:
-            names = [a.get("name", a) if isinstance(a, dict) else str(a) for a in artists[:5]]
-            organizer = ", ".join(names)
+        lineup = item.get("lineup") or []
+        title = (item.get("title") or "").strip() or " / ".join(lineup[:3]) or artist
+        addr = ", ".join(p for p in (
+            venue.get("name"), venue.get("city"), venue.get("region"), venue.get("postal_code"),
+        ) if p)
+        offers = item.get("offers") or []
+        url_out = item.get("url") or (offers[0].get("url") if offers else "")
 
         events.append(Event(
-            id=make_event_id("bandsintown", title, date_str),
+            id=make_event_id("bandsintown", title, item.get("datetime") or ""),
             source=EventSource.BANDSINTOWN,
             title=title,
-            url=item.get("url") or item.get("ticket_url") or "",
+            description=(item.get("description") or "")[:300],
+            url=url_out,
             start_time=start_time,
-            location_name=venue_name,
-            location_address=venue_city,
+            location_name=venue.get("name", ""),
+            location_address=addr,
+            organizer=", ".join(lineup[:5]) or artist,
+            image_url=(item.get("artist") or {}).get("image_url"),
             category="music",
-            organizer=organizer,
-            image_url=item.get("thumb_url") or item.get("image_url"),
         ))
-
     return events
 
 
-async def _fetch_via_scrape(settings: Settings) -> list[Event]:
-    """Scrape Bandsintown Boston city events page."""
-    url = f"https://www.bandsintown.com/c/{BANDSINTOWN_CITY_SLUG}"
-    headers = {
-        "User-Agent": USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-    now = datetime.now(timezone.utc)
-    cutoff = now + timedelta(days=14)
-
-    async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
-        resp = await client.get(url, headers=headers)
-        resp.raise_for_status()
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-    events: list[Event] = []
-    seen: set[str] = set()
-
-    # Look for JSON-LD structured data
-    for script in soup.find_all("script", type="application/ld+json"):
-        try:
-            data = json.loads(script.string or "")
-            items = data if isinstance(data, list) else [data]
-            for item in items:
-                if item.get("@type") not in ("MusicEvent", "Event"):
-                    continue
-                title = item.get("name", "")
-                if not title or title.lower() in seen:
-                    continue
-                seen.add(title.lower())
-
-                start_raw = item.get("startDate", "")
-                start_time = _parse_bit_date(start_raw)
-                if start_time:
-                    st = start_time
-                    if st.tzinfo is None:
-                        st = st.replace(tzinfo=timezone.utc)
-                    if not (now <= st <= cutoff):
-                        continue
-
-                loc = item.get("location") or {}
-                venue_name = loc.get("name", "") if isinstance(loc, dict) else ""
-                addr = loc.get("address", {}) if isinstance(loc, dict) else {}
-                venue_addr = addr.get("addressLocality", "") if isinstance(addr, dict) else str(addr)
-
-                performers = item.get("performer") or []
-                if isinstance(performers, dict):
-                    performers = [performers]
-                organizer = ", ".join(p.get("name", "") for p in performers[:5] if isinstance(p, dict)) or None
-
-                events.append(Event(
-                    id=make_event_id("bandsintown", title, start_raw),
-                    source=EventSource.BANDSINTOWN,
-                    title=title,
-                    url=item.get("url", "") or item.get("@id", ""),
-                    start_time=start_time,
-                    location_name=venue_name,
-                    location_address=venue_addr,
-                    category="music",
-                    organizer=organizer,
-                ))
-        except Exception:
-            pass
-
-    # Fallback: look for event cards in HTML
-    if not events:
-        for card in soup.find_all(attrs={"data-event-id": True}):
-            title_el = card.find(class_=re.compile(r"title|artist|event-name", re.I))
-            title = title_el.get_text(strip=True) if title_el else ""
-            if not title or title.lower() in seen:
-                continue
-            seen.add(title.lower())
-
-            date_el = card.find(class_=re.compile(r"date|time", re.I))
-            date_str = date_el.get_text(strip=True) if date_el else ""
-            start_time = _parse_bit_date(date_str)
-
-            venue_el = card.find(class_=re.compile(r"venue|location", re.I))
-            venue = venue_el.get_text(strip=True) if venue_el else ""
-
-            link = card.find("a", href=True)
-            evt_url = link["href"] if link else ""
-            if evt_url and evt_url.startswith("/"):
-                evt_url = "https://www.bandsintown.com" + evt_url
-
-            events.append(Event(
-                id=make_event_id("bandsintown", title, date_str),
-                source=EventSource.BANDSINTOWN,
-                title=title,
-                url=evt_url,
-                start_time=start_time,
-                location_name=venue,
-                category="music",
-            ))
-
-    return events
-
-
-async def fetch_bandsintown(settings: Settings) -> list[Event]:
-    """Fetch Boston music events from Bandsintown."""
-    # Try API first, fall back to scraping
-    try:
-        events = await _fetch_via_api(settings)
-        if events:
-            logger.info("Bandsintown API returned %d events", len(events))
-            return events
-    except Exception:
-        logger.debug("Bandsintown API failed, falling back to scrape")
-
-    try:
-        events = await _fetch_via_scrape(settings)
-        logger.info("Bandsintown scrape returned %d events", len(events))
-        return events
-    except Exception:
-        logger.exception("Bandsintown scrape failed")
+async def fetch_bandsintown(settings: Settings, spotify_artists: list[str] | None = None) -> list[Event]:
+    """Fetch MA-area shows for the user's Spotify artists via Bandsintown."""
+    if not spotify_artists:
+        logger.info("Bandsintown: no Spotify artists to seed — skipping")
         return []
+
+    now = datetime.now(timezone.utc)
+    cutoff = now + timedelta(days=60)
+    artists = spotify_artists[:MAX_ARTISTS]
+
+    async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, follow_redirects=True) as client:
+        results = await asyncio.gather(
+            *(_fetch_artist(client, a, now, cutoff) for a in artists),
+            return_exceptions=True,
+        )
+
+    by_id: dict[str, Event] = {}
+    for r in results:
+        if isinstance(r, list):
+            for ev in r:
+                by_id[ev.id] = ev
+
+    events = list(by_id.values())
+    logger.info("Bandsintown returned %d events (from %d artists)", len(events), len(artists))
+    return events

@@ -1,15 +1,22 @@
-"""Dice.fm event source — public API, no key required."""
+"""Dice.fm event source — parses the location browse page's Next.js state.
+
+The old api.dice.fm search endpoints are all 404 / auth-gated. The web app's
+`/browse/current-location/{lat}_{lng}` page server-renders events into
+`__NEXT_DATA__ → props.pageProps.events`, geo-resolved to the nearest metro hub.
+"""
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 
 import httpx
+from bs4 import BeautifulSoup
 
 from calyx.config import Settings
 from calyx.events.common import make_event_id
-from calyx.models import Event, EventSource, EASTERN
+from calyx.models import Event, EventSource, parse_event_dt
 
 logger = logging.getLogger(__name__)
 
@@ -20,154 +27,77 @@ USER_AGENT = (
 TIMEOUT = 30.0
 
 
-
-def _parse_dice_date(date_str: str) -> datetime | None:
-    if not date_str:
-        return None
-    # Dice uses ISO 8601 with ms and Z
-    for suffix in ("Z", ""):
-        s = date_str.strip().rstrip("Z")
-        for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
-            try:
-                dt = datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
-                return dt.astimezone(EASTERN)
-            except ValueError:
-                pass
-    return None
-
-
 async def fetch_dice(settings: Settings) -> list[Event]:
-    """Fetch Boston events from Dice.fm public API."""
+    """Fetch Boston-area Dice.fm events from the browse page hydration state."""
     now = datetime.now(timezone.utc)
-    cutoff = now + timedelta(days=14)
+    cutoff = now + timedelta(days=30)
+    url = f"https://dice.fm/browse/current-location/{settings.latitude}_{settings.longitude}"
 
-    # Dice public search API
-    url = "https://api.dice.fm/api/v1/events"
-    params = {
-        "types[]": "linkout,event",
-        "filter[location]": "Boston, MA",
-        "filter[from]": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "filter[to]": cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "filter[radius_in_meters]": "40000",
-        "page[size]": "50",
-        "sort": "date",
-    }
-    headers = {
-        "User-Agent": USER_AGENT,
-        "Accept": "application/json",
-        "x-api-key": "dice-public",
-    }
+    async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, follow_redirects=True) as client:
+        try:
+            resp = await client.get(url)
+            resp.raise_for_status()
+        except Exception as exc:
+            logger.warning("Dice.fm browse fetch failed: %s", exc)
+            return []
+
+    nd = BeautifulSoup(resp.text, "html.parser").select_one("#__NEXT_DATA__")
+    if not nd or not nd.string:
+        logger.warning("Dice.fm: __NEXT_DATA__ not found")
+        return []
+    try:
+        items = json.loads(nd.string)["props"]["pageProps"].get("events", [])
+    except (json.JSONDecodeError, KeyError):
+        logger.warning("Dice.fm: failed to parse pageProps.events")
+        return []
 
     events: list[Event] = []
+    for item in items:
+        title = (item.get("name") or "").strip()
+        if not title:
+            continue
 
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            resp = await client.get(url, params=params, headers=headers)
+        dates = item.get("dates") or {}
+        start_time = parse_event_dt(dates.get("event_start_date") or "")
+        if not start_time:
+            continue
+        start_aware = start_time if start_time.tzinfo else start_time.replace(tzinfo=timezone.utc)
+        if start_aware < now or start_aware > cutoff:
+            continue
 
-            if resp.status_code not in (200, 201):
-                # Try alternate endpoint
-                alt_url = "https://api.dice.fm/api/v2/events/search"
-                alt_params = {
-                    "query": "Boston",
-                    "location_lat": str(settings.latitude),
-                    "location_lng": str(settings.longitude),
-                    "radius_km": "25",
-                    "from_date": now.strftime("%Y-%m-%d"),
-                    "to_date": cutoff.strftime("%Y-%m-%d"),
-                    "limit": "50",
-                }
-                resp = await client.get(alt_url, params=alt_params, headers=headers)
-                if resp.status_code not in (200, 201):
-                    logger.info("Dice.fm API returned %d — skipping", resp.status_code)
-                    return []
+        venues = item.get("venues") or []
+        venue = venues[0] if venues else {}
 
-            data = resp.json()
+        price = None
+        p = item.get("price") or {}
+        if p.get("amount"):
+            price = f"${p['amount'] / 100:.0f}"
 
-        # Handle different response shapes
-        items = []
-        if isinstance(data, list):
-            items = data
-        elif isinstance(data, dict):
-            items = data.get("data", data.get("events", data.get("items", [])))
+        lineup = (item.get("summary_lineup") or {}).get("top_artists") or []
+        organizer = ", ".join(a.get("name", "") for a in lineup[:5] if a.get("name")) or None
 
-        for item in items:
-            # Unwrap if nested
-            if isinstance(item, dict) and "event" in item:
-                item = item["event"]
+        images = item.get("images") or {}
+        image_url = images.get("landscape") or images.get("square") or images.get("portrait")
 
-            title = item.get("name") or item.get("title") or ""
-            if not title:
-                continue
+        tags = item.get("tags_types") or []
+        category = tags[0].get("value") if tags and isinstance(tags[0], dict) else "music"
 
-            date_str = (
-                item.get("date") or
-                item.get("start_date") or
-                item.get("event_date") or
-                item.get("starts_at") or ""
-            )
-            start_time = _parse_dice_date(date_str)
-
-            venue = item.get("venue") or {}
-            venue_name = venue.get("name", "") if isinstance(venue, dict) else str(venue)
-            venue_addr = ""
-            if isinstance(venue, dict):
-                venue_addr = venue.get("address", "") or venue.get("city", "")
-
-            # Price
-            price = None
-            ticket_types = item.get("ticket_types") or []
-            if isinstance(ticket_types, list) and ticket_types:
-                prices = [t.get("price", {}) for t in ticket_types if isinstance(t, dict)]
-                amounts = [p.get("face_value", p.get("total", 0)) for p in prices if isinstance(p, dict) and p]
-                amounts = [a for a in amounts if a]
-                if amounts:
-                    min_p = min(amounts) / 100  # Dice stores in cents
-                    price = f"From ${min_p:.0f}"
-            if not price:
-                raw_price = item.get("price") or item.get("min_price")
-                if raw_price:
-                    price = str(raw_price)
-
-            # Lineup
-            lineup = item.get("lineup_details") or item.get("artists") or []
-            organizer = None
-            if isinstance(lineup, list) and lineup:
-                names = []
-                for l in lineup[:5]:
-                    if isinstance(l, dict):
-                        names.append(l.get("name", l.get("artist_name", "")))
-                    elif isinstance(l, str):
-                        names.append(l)
-                organizer = ", ".join(n for n in names if n) or None
-
-            image_url = None
-            images = item.get("images") or item.get("image")
-            if isinstance(images, list) and images:
-                image_url = images[0].get("url") if isinstance(images[0], dict) else images[0]
-            elif isinstance(images, str):
-                image_url = images
-
-            evt_url = item.get("url") or item.get("dice_url") or ""
-            if evt_url and not evt_url.startswith("http"):
-                evt_url = f"https://dice.fm/event/{evt_url}"
-
-            events.append(Event(
-                id=make_event_id("dice", title, date_str),
-                source=EventSource.DICE,
-                title=title,
-                description=item.get("description", "")[:500],
-                url=evt_url,
-                start_time=start_time,
-                location_name=venue_name,
-                location_address=venue_addr,
-                price=price,
-                organizer=organizer,
-                image_url=image_url,
-                category=item.get("genre") or item.get("category") or "music",
-            ))
-
-    except Exception:
-        logger.exception("Dice.fm fetch failed")
+        perm = item.get("perm_name") or ""
+        events.append(Event(
+            id=make_event_id("dice", title, dates.get("event_start_date") or ""),
+            source=EventSource.DICE,
+            title=title,
+            description=(item.get("about") or {}).get("description", "")[:500],
+            url=f"https://dice.fm/event/{perm}" if perm else "",
+            start_time=start_time,
+            end_time=parse_event_dt(dates.get("event_end_date") or ""),
+            location_name=venue.get("name", ""),
+            location_address=venue.get("address", ""),
+            price=price,
+            organizer=organizer,
+            image_url=image_url,
+            category=category,
+        ))
 
     logger.info("Dice.fm returned %d events", len(events))
     return events

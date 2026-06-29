@@ -358,8 +358,10 @@ async def discover_all_events(
         _run_source("Boston Calendar", fetch_boston_events(settings)),
         # TimeOut Boston: page is now editorial (no JSON-LD), scraper returned
         # city-name junk with no dates — retired 2026-06-29
-        # Bandsintown: API requires auth (403) — disabled 2026-03-28
-        # Dice.fm: no Boston coverage, all endpoints 404 — disabled 2026-03-28
+        # Bandsintown: per-artist endpoint seeded from the user's Spotify artists
+        _run_source("Bandsintown", fetch_bandsintown(settings, spotify_artists)),
+        # Dice.fm: browse-page Next.js hydration state (api endpoints are dead)
+        _run_source("Dice", fetch_dice(settings)),
         _run_source("Resident Advisor", fetch_resident_advisor(settings)),
         # Museums — individual venues
         _run_source("ICA Boston", _fetch_ica(settings)),
