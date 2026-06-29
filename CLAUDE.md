@@ -129,7 +129,7 @@ Tables: `users`, `runs`, `events`, `rankings`, `costs`, `source_stats`, `ingest_
 
 ### Event sources (13+)
 
-Eventbrite (JSON-LD scrape), Meetup (GraphQL), Ticketmaster, Harvard/Tufts/Brandeis (Trumba JSON), The Boston Calendar / Do617 / ArtsBoston (scrapers), Luma, Songkick, Bandsintown, Dice.fm, Resident Advisor (area 530), Museums (ICA/MFA/MIT List), BPL (BiblioCommons API), Outdoor (curated DCR/AMC spots), University (MIT, Northeastern, MassArt, BU, Suffolk, BC via Localist; Berklee via Drupal Views scraper). Sources fail gracefully — missing API keys just skip that source.
+Eventbrite (JSON-LD scrape), Meetup (Next.js __APOLLO_STATE__), Ticketmaster, Harvard/Tufts/Brandeis (Trumba JSON), The Boston Calendar / Do617 / ArtsBoston (scrapers), Luma, Bandsintown (per-artist, Spotify-seeded), Dice.fm (Next.js browse state), Resident Advisor (area 530), Museums (ICA/MFA/MIT List/Gardner/Harvard Art/MoS), BPL (BiblioCommons API), Bowery Presents (AXS JSON), BSO (Algolia), Coolidge, Boston.gov, Outdoor (curated DCR/AMC spots), University (MIT, Northeastern, MassArt, BU, Suffolk, BC via Localist; Berklee via Drupal Views scraper). Sources fail gracefully — missing API keys just skip that source. The aggregator flags silent rot: any source returning events but 0 with dates gets a warning in its SourceStat (visible on /admin/sources).
 
 ### Ranking system (two-pass)
 
