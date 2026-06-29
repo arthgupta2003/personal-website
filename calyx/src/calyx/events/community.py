@@ -106,16 +106,66 @@ async def _scrape_events_page(
 # ── Boston Public Library ────────────────────────────────────────────────────
 
 async def fetch_bpl_events(settings: Settings) -> list[Event]:
-    """Scrape Boston Public Library events."""
-    return await _scrape_events_page(
-        url="https://www.bpl.org/events/",
-        source_id="bpl",
-        venue_name="Boston Public Library",
-        venue_address="700 Boylston St, Boston, MA 02116",
-        organizer="Boston Public Library",
-        category="learning",
-        base_url="https://www.bpl.org",
-    )
+    """Fetch Boston Public Library events from the BiblioCommons JSON API.
+
+    bpl.org/events is now a JS-rendered BiblioCommons SPA; the public gateway
+    API returns clean structured events (title, start/end, location, description).
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = now + timedelta(days=30)
+    url = "https://gateway.bibliocommons.com/v2/libraries/bpl/events"
+    params = {"limit": 100, "startDate": now.strftime("%Y-%m-%d")}
+
+    async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, follow_redirects=True) as client:
+        try:
+            resp = await client.get(url, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            logger.warning("BPL BiblioCommons fetch failed: %s", exc)
+            return []
+
+    entities = data.get("entities", {})
+    locations = entities.get("locations", {})
+    events: list[Event] = []
+
+    for ev_id, ev in entities.get("events", {}).items():
+        defn = ev.get("definition", {})
+        if defn.get("isCancelled"):
+            continue
+        title = (defn.get("title") or "").strip()
+        if not title:
+            continue
+        start_time = parse_event_dt(defn.get("start") or "")
+        if not start_time:
+            continue
+        start_aware = start_time if start_time.tzinfo else start_time.replace(tzinfo=timezone.utc)
+        if start_aware < now or start_aware > cutoff:
+            continue
+
+        loc = locations.get(str(defn.get("branchLocationId") or ""), {})
+        venue = loc.get("name") or defn.get("nonBranchLocationId") or "Boston Public Library"
+
+        description = defn.get("description") or ""
+        if "<" in description:
+            description = BeautifulSoup(description, "html.parser").get_text(" ", strip=True)
+
+        events.append(Event(
+            id=make_event_id("bpl", title, defn.get("start") or ""),
+            source=EventSource.ARTSBOSTON,
+            title=title,
+            description=description[:500],
+            url=f"https://bpl.bibliocommons.com/events/{ev_id}",
+            start_time=start_time,
+            end_time=parse_event_dt(defn.get("end") or ""),
+            location_name=venue,
+            location_address="700 Boylston St, Boston, MA 02116",
+            organizer="Boston Public Library",
+            category="learning",
+        ))
+
+    logger.info("BPL BiblioCommons returned %d events", len(events))
+    return events
 
 
 # ── Brattle Theatre ─────────────────────────────────────────────────────────

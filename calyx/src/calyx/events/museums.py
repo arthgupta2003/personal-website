@@ -152,7 +152,7 @@ async def _fetch_mfa(settings: Settings) -> list[Event]:
 
 async def _fetch_mit_list(settings: Settings) -> list[Event]:
     """Scrape MIT List Visual Arts Center events."""
-    url = "https://listart.mit.edu/events-programs"
+    url = "https://listart.mit.edu/calendar"
     events: list[Event] = []
 
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, follow_redirects=True) as client:
@@ -164,8 +164,8 @@ async def _fetch_mit_list(settings: Settings) -> list[Event]:
             return []
 
     soup = BeautifulSoup(resp.text, "html.parser")
-    for card in soup.select(".views-row, article, .event, [class*='event']")[:20]:
-        title_el = card.select_one("h2, h3, .title, [class*='title']")
+    for card in soup.select(".card--event"):
+        title_el = card.select_one("h2, h3, .card__title, [class*='title']")
         if not title_el:
             continue
         title = title_el.get_text(strip=True)
@@ -178,11 +178,11 @@ async def _fetch_mit_list(settings: Settings) -> list[Event]:
             href = link_el.get("href", "")
             event_url = href if href.startswith("http") else f"https://listart.mit.edu{href}"
 
-        date_el = card.select_one("time, .date, [class*='date']")
+        # MIT List exposes a machine-readable ISO datetime on the card's <time> element
+        date_el = card.select_one("time")
         start_time = None
         if date_el:
-            dt_attr = date_el.get("datetime") or date_el.get_text(strip=True)
-            start_time = parse_event_dt(dt_attr)
+            start_time = parse_event_dt(date_el.get("datetime") or date_el.get_text(strip=True))
 
         desc_el = card.select_one("p, .description, .field-body")
         description = desc_el.get_text(strip=True)[:300] if desc_el else ""

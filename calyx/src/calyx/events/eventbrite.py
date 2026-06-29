@@ -89,63 +89,77 @@ async def _fetch_via_api(settings: Settings) -> list[Event]:
 # ── Scrape fallback ───────────────────────────────────────────────────────────
 
 async def _fetch_via_scrape(settings: Settings) -> list[Event]:
-    """Scrape the public Eventbrite search page."""
-    url = f"https://www.eventbrite.com/d/ma--cambridge/events/"
+    """Scrape the public Eventbrite search page via its JSON-LD ItemList.
+
+    The HTML card markup changes constantly, but Eventbrite embeds a stable
+    schema.org ItemList of Events (with startDate/endDate/location) in a
+    <script type="application/ld+json"> block — drive off that instead.
+    """
+    import json
+    import re
+
+    url = "https://www.eventbrite.com/d/ma--cambridge/events/"
     headers = {"User-Agent": USER_AGENT}
 
-    events: list[Event] = []
     async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
         resp = await client.get(url, headers=headers)
         resp.raise_for_status()
 
-    soup = BeautifulSoup(resp.text, "lxml")
-
-    # Eventbrite renders event cards in various class schemes; try common selectors
-    cards = soup.select("div.search-event-card-wrapper, section.event-card-details, article[data-testid]")
-    if not cards:
-        # broader fallback
-        cards = soup.select("a[data-event-id], div[data-testid='event-card']")
-
     now = datetime.now(timezone.utc)
     cutoff = now + timedelta(days=14)
+    events: list[Event] = []
 
-    for card in cards:
-        link_tag = card.find("a", href=True)
-        event_url = link_tag["href"] if link_tag else ""
-        if event_url and not event_url.startswith("http"):
-            event_url = "https://www.eventbrite.com" + event_url
-
-        title_tag = card.find(["h2", "h3", "p"], class_=lambda c: c and "event-card__title" in c) or card.find(["h2", "h3"])
-        title = title_tag.get_text(strip=True) if title_tag else ""
-        if not title:
+    for block in re.findall(
+        r'<script type="application/ld\+json">(.*?)</script>', resp.text, re.DOTALL
+    ):
+        try:
+            data = json.loads(block)
+        except json.JSONDecodeError:
             continue
-
-        date_tag = card.find("p", class_=lambda c: c and "date" in str(c).lower()) or card.find("time")
-        date_str = ""
-        if date_tag:
-            date_str = date_tag.get("datetime", "") or date_tag.get_text(strip=True)
-        start_time = parse_event_dt(date_str)
-
-        if start_time and start_time > cutoff:
+        if not isinstance(data, dict):
             continue
+        for entry in data.get("itemListElement", []):
+            item = entry.get("item", {}) if isinstance(entry, dict) else {}
+            title = (item.get("name") or "").strip()
+            if not title:
+                continue
+            start_raw = item.get("startDate") or ""
+            start_time = parse_event_dt(start_raw)
+            if not start_time:
+                continue
+            start_aware = start_time if start_time.tzinfo else start_time.replace(tzinfo=timezone.utc)
+            if start_aware < now.replace(hour=0, minute=0) or start_aware > cutoff:
+                continue
 
-        location_tag = card.find("p", class_=lambda c: c and "location" in str(c).lower())
-        location = location_tag.get_text(strip=True) if location_tag else ""
+            loc = item.get("location") or {}
+            if isinstance(loc, dict):
+                location_name = loc.get("name") or ""
+                addr = loc.get("address")
+                if isinstance(addr, dict):
+                    location_address = addr.get("streetAddress") or addr.get("addressLocality") or ""
+                else:
+                    location_address = addr or ""
+            else:
+                location_name, location_address = str(loc), ""
 
-        img_tag = card.find("img", src=True)
-        image_url = img_tag["src"] if img_tag else None
+            image = item.get("image")
+            image_url = image if isinstance(image, str) else None
 
-        events.append(
-            Event(
-                id=make_event_id("eventbrite", title,date_str),
-                source=EventSource.EVENTBRITE,
-                title=title,
-                url=event_url,
-                start_time=start_time,
-                location_name=location,
-                image_url=image_url,
+            events.append(
+                Event(
+                    id=make_event_id("eventbrite", title, start_raw),
+                    source=EventSource.EVENTBRITE,
+                    title=title,
+                    description=(item.get("description") or "")[:500],
+                    url=item.get("url") or "",
+                    start_time=start_time,
+                    end_time=parse_event_dt(item.get("endDate") or ""),
+                    location_name=location_name,
+                    location_address=location_address,
+                    is_online=item.get("eventAttendanceMode") == "https://schema.org/OnlineEventAttendanceMode",
+                    image_url=image_url,
+                )
             )
-        )
 
     return events
 
@@ -154,13 +168,19 @@ async def _fetch_via_scrape(settings: Settings) -> list[Event]:
 
 async def fetch_eventbrite(settings: Settings) -> list[Event]:
     """Fetch events from Eventbrite (API if token available, otherwise scrape)."""
-    try:
-        if settings.eventbrite_token:
+    if settings.eventbrite_token:
+        try:
             logger.info("Fetching Eventbrite events via API")
-            return await _fetch_via_api(settings)
-        else:
-            logger.info("Fetching Eventbrite events via scraping (no token)")
-            return await _fetch_via_scrape(settings)
+            api_events = await _fetch_via_api(settings)
+            if api_events:
+                return api_events
+            logger.info("Eventbrite API returned nothing, falling back to scrape")
+        except Exception:
+            logger.warning("Eventbrite API failed, falling back to scrape", exc_info=True)
+
+    try:
+        logger.info("Fetching Eventbrite events via JSON-LD scrape")
+        return await _fetch_via_scrape(settings)
     except Exception:
         logger.exception("Eventbrite fetch failed")
         return []

@@ -14,8 +14,8 @@ from calyx.models import EASTERN, Event, EventSource
 logger = logging.getLogger(__name__)
 
 TIMEOUT = 30.0
-# RA area IDs: 6=Boston/New England, try broader if few results
-RA_AREA_IDS = [6]
+# RA area IDs: 530=Boston (verified). Area 6 returned 0 results (was wrong).
+RA_AREA_IDS = [530]
 
 GRAPHQL_QUERY = """
 query EventListings($filters: FilterInputDtoInput, $pageSize: Int) {
@@ -128,8 +128,8 @@ async def fetch_resident_advisor(settings: Settings) -> list[Event]:
                     end_time = _parse_ra_date(date_raw, end_raw)
 
                     venue = ev.get("venue") or {}
-                    venue_name = venue.get("name", "")
-                    venue_addr = venue.get("address", "")
+                    venue_name = venue.get("name") or ""
+                    venue_addr = venue.get("address") or ""
 
                     artists = ev.get("artists") or []
                     organizer = None

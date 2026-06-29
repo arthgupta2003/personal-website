@@ -34,7 +34,7 @@ from calyx.events.outdoor import fetch_outdoor_events
 from calyx.events.songkick import fetch_songkick
 from calyx.events.ticketmaster import fetch_ticketmaster
 from calyx.events.timeout_boston import fetch_timeout_boston
-from calyx.events.university import _fetch_mit, _fetch_harvard, _fetch_localist
+from calyx.events.university import _fetch_harvard, _fetch_localist, _fetch_trumba_school
 from calyx.models import CostRecord, Event, EventSource, SourceStat
 
 logger = logging.getLogger(__name__)
@@ -312,7 +312,12 @@ async def discover_all_events(
         _run_source("Songkick", fetch_songkick(settings)),
         _run_source("Ticketmaster", fetch_ticketmaster(settings, spotify_artists)),
         # University — individual schools
-        _run_source("MIT Events", _fetch_mit(settings)),
+        # MIT runs Localist (the old HTML day-scraper was 429-throttled → ~2 events)
+        _run_source("MIT Events", _fetch_localist(
+            "https://calendar.mit.edu", "MIT",
+            EventSource.MIT,
+            "MIT Campus", "Cambridge, MA 02139",
+        )),
         _run_source("Harvard Events", _fetch_harvard(settings)),
         _run_source("Northeastern", _fetch_localist(
             "https://calendar.northeastern.edu", "Northeastern University",
@@ -343,6 +348,15 @@ async def discover_all_events(
         )),
         # Berklee runs Drupal Views, not Localist — uses its own scraper
         _run_source("Berklee", fetch_berklee(settings)),
+        # Tufts & Brandeis run Trumba (same as Harvard) — reuse the Trumba fetcher
+        _run_source("Tufts", _fetch_trumba_school(
+            "tufts", "Tufts University", EventSource.HARVARD,
+            "Tufts University", "Medford, MA 02155",
+        )),
+        _run_source("Brandeis", _fetch_trumba_school(
+            "brandeis-university", "Brandeis University", EventSource.HARVARD,
+            "Brandeis University", "Waltham, MA 02453",
+        )),
         # Boston event sites
         _run_source("Boston Calendar", fetch_boston_events(settings)),
         _run_source("TimeOut Boston", fetch_timeout_boston(settings)),
