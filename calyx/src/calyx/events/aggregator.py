@@ -397,7 +397,8 @@ async def discover_all_events(
         # Silent-rot detector: a source that returns events but none with a
         # start_time is almost always a scraper matching nav/boilerplate after
         # the site changed. Surface it instead of letting it look "healthy".
-        if error is None and events:
+        # (Outdoor is curated evergreen spots — intentionally dateless.)
+        if error is None and events and name not in ("Outdoor",):
             dated = sum(1 for e in events if e.start_time)
             if dated == 0:
                 error = f"⚠ {len(events)} events but 0 have dates — likely stale scraper"

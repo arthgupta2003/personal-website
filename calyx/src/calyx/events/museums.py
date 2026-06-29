@@ -28,10 +28,34 @@ TIMEOUT = 30.0
 
 # ── ICA Boston ────────────────────────────────────────────────────────────────
 
+def _parse_ica_date(text: str) -> datetime | None:
+    """Parse ICA date like "Thu, Jul 2, 5–9 PM" (abbrev month, no year) → datetime."""
+    m = re.search(r"([A-Z][a-z]{2})\s+(\d{1,2})", text)
+    if not m:
+        return None
+    now = datetime.now(timezone.utc)
+    try:
+        dt = datetime.strptime(f"{m.group(1)} {m.group(2)} {now.year}", "%b %d %Y")
+    except ValueError:
+        return None
+    if dt.replace(tzinfo=timezone.utc) < now - timedelta(days=2):
+        dt = dt.replace(year=now.year + 1)
+    tm = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(AM|PM)", text)
+    if tm:
+        hour = int(tm.group(1)) % 12
+        if tm.group(3).upper() == "PM":
+            hour += 12
+        dt = dt.replace(hour=hour, minute=int(tm.group(2) or 0))
+    return dt
+
+
 async def _fetch_ica(settings: Settings) -> list[Event]:
-    """Scrape ICA Boston events page."""
+    """Scrape ICA Boston events (the calendar lists events in `.node-event` cards)."""
     url = "https://www.icaboston.org/events"
+    now = datetime.now(timezone.utc)
+    cutoff = now + timedelta(days=30)
     events: list[Event] = []
+    seen: set[str] = set()
 
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, follow_redirects=True) as client:
         try:
@@ -42,39 +66,34 @@ async def _fetch_ica(settings: Settings) -> list[Event]:
             return []
 
     soup = BeautifulSoup(resp.text, "html.parser")
-    # ICA uses article cards with class names
-    for card in soup.select("article, .event-card, .views-row, [class*='event']")[:30]:
-        title_el = card.select_one("h2, h3, .title, [class*='title']")
+    for card in soup.select(".node-event"):
+        title_el = card.select_one("h3, .field-name-title")
         if not title_el:
             continue
         title = title_el.get_text(strip=True)
         if not title or len(title) < 3:
             continue
 
-        link_el = card.select_one("a[href]")
-        event_url = ""
-        if link_el:
-            href = link_el.get("href", "")
-            event_url = href if href.startswith("http") else f"https://www.icaboston.org{href}"
+        date_el = card.select_one(".event-date-display, .field-name-event-date")
+        start_time = _parse_ica_date(date_el.get_text(" ", strip=True)) if date_el else None
+        if not start_time or start_time.replace(tzinfo=timezone.utc) > cutoff:
+            continue
 
-        date_el = card.select_one("time, .date, [class*='date']")
-        start_time = None
-        if date_el:
-            dt_attr = date_el.get("datetime") or date_el.get_text(strip=True)
-            start_time = parse_event_dt(dt_attr)
+        link_el = card.select_one('a[href*="/events/"]')
+        event_url = link_el.get("href", "") if link_el else ""
+        if event_url and not event_url.startswith("http"):
+            event_url = f"https://www.icaboston.org{event_url}"
+        if event_url in seen:
+            continue
+        seen.add(event_url)
 
-        desc_el = card.select_one("p, .description, .summary, [class*='desc']")
-        description = desc_el.get_text(strip=True)[:300] if desc_el else ""
+        img_el = card.select_one("img[src], img[data-src]")
+        image_url = (img_el.get("src") or img_el.get("data-src")) if img_el else None
 
-        img_el = card.select_one("img")
-        image_url = img_el.get("src") if img_el else None
-
-        date_str = str(start_time.date()) if start_time else ""
         events.append(Event(
-            id=make_event_id("ica", title, date_str),
+            id=make_event_id("ica", title, str(start_time.date())),
             source=EventSource.ARTSBOSTON,
             title=title,
-            description=description,
             url=event_url,
             start_time=start_time,
             location_name="ICA Boston",
