@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from datetime import datetime, timezone
 
 import anthropic
@@ -454,11 +455,29 @@ _PREFILTER_SYSTEM = """\
 You are a fast relevance screener. Given a user interest profile and a list of events, \
 return only the event IDs that have ANY relevance to the user's interests (score >= 30/100). \
 Be inclusive — it's better to pass through borderline events than to miss good ones. \
+ALWAYS keep major public or seasonal events (fireworks, parades, festivals, city-wide \
+celebrations, holiday spectaculars) even if they don't match the listed interests — \
+they're high-FOMO social occasions worth surfacing. \
 Skip only events that are clearly irrelevant (wrong audience, completely mismatched interests, corporate events for non-employees, kids events for adults, etc.).
 
 Return ONLY valid JSON (no markdown):
 {"keep": ["event_id_1", "event_id_2", ...]}
 """
+
+# Marquee / seasonal public events that should never be dropped by the cheap
+# relevance prefilter — they rarely match niche taste keywords but are exactly
+# the high-FOMO occasions worth surfacing. These bypass the prefilter and are
+# judged by the full ranker (which weighs urgency/social/discovery + season).
+_MARQUEE_RE = re.compile(
+    r"\b(fireworks?|parade|harborfest|first night|tree lighting|"
+    r"marathon|spectacular)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_marquee_event(ev: Event) -> bool:
+    """True for unmistakably major public/seasonal events."""
+    return bool(_MARQUEE_RE.search(ev.title or ""))
 
 
 def _prefilter_events(
@@ -552,17 +571,19 @@ def rank_events(
         )
 
     # Pre-filter 2: fast haiku relevance pass (only if large enough to justify cost)
-    # Exempt always-available events (no start_time, e.g. outdoor spots) — they'd
-    # get filtered out by Haiku since they look like "places" not "events"
+    # Exempt (a) always-available events (no start_time, e.g. outdoor spots) — they'd
+    # get filtered out by Haiku since they look like "places" not "events" — and
+    # (b) marquee/seasonal public events (fireworks, parades, festivals), which
+    # rarely match niche taste but are exactly what we don't want to silently drop.
     prefilter_discarded: list[Event] = []
     prefilter_costs: list[CostRecord] = []
     if use_prefilter and len(events) > 150:
-        always_available = [ev for ev in events if ev.start_time is None]
-        filterable = [ev for ev in events if ev.start_time is not None]
+        exempt = [ev for ev in events if ev.start_time is None or _is_marquee_event(ev)]
+        filterable = [ev for ev in events if ev.start_time is not None and not _is_marquee_event(ev)]
         filterable, prefilter_discarded, prefilter_costs = _prefilter_events(
             profile, filterable, client, prefilter_model
         )
-        events = filterable + always_available  # always-available skip prefilter
+        events = filterable + exempt  # exempt events skip the prefilter
 
     # Build lookup (include skipped so they can be returned as score=0)
     events_by_id: dict[str, Event] = {ev.id: ev for ev in events}
@@ -707,10 +728,14 @@ def rank_events(
             # Check category
             if ranked_ev.event.category:
                 action = action or steer_map.get(f"category:{ranked_ev.event.category.lower()}")
-            # Check keyword in title
-            title_lower = ranked_ev.event.title.lower()
+            # Check keyword in title OR venue/location name. Many events (e.g.
+            # club shows at The Middle East) carry the band name as the title and
+            # the venue only in location_name, so matching title alone misses them.
+            haystack = ranked_ev.event.title.lower()
+            if ranked_ev.event.location_name:
+                haystack += " " + ranked_ev.event.location_name.lower()
             for key, act in steer_map.items():
-                if key.startswith("keyword:") and key[8:] in title_lower:
+                if key.startswith("keyword:") and key[8:] in haystack:
                     action = act
                     break
 
