@@ -32,6 +32,9 @@ _BC_DATE_RE = re.compile(
     r"(?:,\s+\d{4})?(?:\s+\d{1,2}:\d{2}[ap])?)"
 )
 
+# "goes until MM/DD" marks an ongoing/multi-day listing on The Boston Calendar
+_BC_ONGOING_RE = re.compile(r"goes until\s+(\d{1,2})/(\d{1,2})")
+
 _BC_DATE_FORMATS = (
     "%b %d, %Y %I:%M%p",   # "Mar 07, 2026 5:00AM" (after we normalize a→AM)
     "%b %d, %Y %H:%M",     # "Mar 07, 2026 17:00"
@@ -103,6 +106,21 @@ async def _fetch_boston_calendar(client: httpx.AsyncClient) -> list[Event]:
         date_str = date_match.group(1) if date_match else ""
         start_time = _parse_bc_date(date_str) if date_str else parse_event_dt(date_str)
 
+        # "goes until MM/DD" marks an ongoing/multi-day listing (beer gardens,
+        # restaurants, "Now Open" venues, summer concert *series*). The Boston
+        # Calendar stamps these with the *current* date, so without this they'd
+        # masquerade as a concrete "today @ midnight" event every day we scrape.
+        # Treat them as ongoing (start_time=None → email's undated/ongoing bucket).
+        ongoing_match = _BC_ONGOING_RE.search(container_text)
+        until_label = ""
+        if ongoing_match:
+            start_time = None
+            mm, dd = int(ongoing_match.group(1)), int(ongoing_match.group(2))
+            try:
+                until_label = datetime(now.year, mm, dd).strftime("through %b %-d")
+            except ValueError:
+                until_label = ""
+
         # Skip events in the past (more than 1 day ago) or too far in the future
         if start_time:
             st_utc = start_time.replace(tzinfo=timezone.utc) if start_time.tzinfo is None else start_time
@@ -115,8 +133,13 @@ async def _fetch_boston_calendar(client: httpx.AsyncClient) -> list[Event]:
             after_date = container_text[date_match.end():].strip()
             # Take the first line-like chunk (up to next date pattern or end)
             loc_part = after_date.split("\n")[0].strip(" |·-–—")
+            # Drop the "goes until MM/DD" fragment that bleeds into the location
+            loc_part = _BC_ONGOING_RE.sub("", loc_part).strip(" |·-–—")
             if loc_part and len(loc_part) < 200:
                 location = loc_part
+
+        # Surface the run-end date for ongoing listings so it's not lost
+        display_title = f"{title} ({until_label})" if until_label else title
 
         # Image
         img_tag = container.find("img", src=True)
@@ -130,7 +153,7 @@ async def _fetch_boston_calendar(client: httpx.AsyncClient) -> list[Event]:
             Event(
                 id=make_event_id("boston_calendar", title, date_str),
                 source=EventSource.BOSTON_CALENDAR,
-                title=title,
+                title=display_title,
                 description="",
                 url=event_url,
                 start_time=start_time,
