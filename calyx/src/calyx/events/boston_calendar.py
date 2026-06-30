@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -68,101 +69,144 @@ def _parse_bc_date(raw: str) -> datetime | None:
 
 # ── The Boston Calendar ───────────────────────────────────────────────────────
 
-async def _fetch_boston_calendar(client: httpx.AsyncClient) -> list[Event]:
-    """Scrape thebostoncalendar.com/events for events."""
-    url = "https://www.thebostoncalendar.com/events"
-    headers = {"User-Agent": USER_AGENT}
+BC_LOOKAHEAD_DAYS = 14
 
-    resp = await client.get(url, headers=headers)
-    resp.raise_for_status()
 
-    soup = BeautifulSoup(resp.text, "lxml")
-    events: list[Event] = []
+def _parse_bc_card(h3_a, target_day: datetime, now: datetime, cutoff: datetime) -> Event | None:
+    """Parse one h3>a card from a Boston Calendar day-page into an Event.
 
-    now = datetime.now(timezone.utc)
-    cutoff = now + timedelta(days=14)
+    *target_day* is the calendar day whose page we're on; each day-page also
+    lists other days' events near the top, so single-day events are kept only
+    when their parsed date matches *target_day*.
+    """
+    container = h3_a.find_parent("div")
+    if container is None:
+        return None
 
-    # Find every parent div that contains an h3 > a (event title link)
-    seen_titles: set[str] = set()
-    for h3_a in soup.select("h3 a[href]"):
-        container = h3_a.find_parent("div")
-        if container is None:
-            continue
+    title = h3_a.get_text(strip=True)
+    if not title or len(title) < 3:
+        return None
 
-        title = h3_a.get_text(strip=True)
-        if not title or len(title) < 3:
-            continue
-        if title in seen_titles:
-            continue
-        seen_titles.add(title)
+    href = h3_a["href"]
+    event_url = href if href.startswith("http") else f"https://www.thebostoncalendar.com{href}"
 
-        # URL
-        href = h3_a["href"]
-        event_url = href if href.startswith("http") else f"https://www.thebostoncalendar.com{href}"
+    container_text = container.get_text(" ", strip=True)
+    date_match = _BC_DATE_RE.search(container_text)
+    date_str = date_match.group(1) if date_match else ""
+    start_time = _parse_bc_date(date_str) if date_str else parse_event_dt(date_str)
 
-        # Extract date from container text using regex
-        container_text = container.get_text(" ", strip=True)
-        date_match = _BC_DATE_RE.search(container_text)
-        date_str = date_match.group(1) if date_match else ""
-        start_time = _parse_bc_date(date_str) if date_str else parse_event_dt(date_str)
+    # "goes until MM/DD" marks an ongoing/multi-day listing (beer gardens,
+    # restaurants, "Now Open" venues, summer concert *series*). The Boston
+    # Calendar stamps these with each day-page's date, so without this they'd
+    # masquerade as a concrete "today @ midnight" event on every page.
+    # Treat them as ongoing (start_time=None → email's undated/ongoing bucket).
+    ongoing_match = _BC_ONGOING_RE.search(container_text)
+    until_label = ""
+    if ongoing_match:
+        start_time = None
+        mm, dd = int(ongoing_match.group(1)), int(ongoing_match.group(2))
+        try:
+            until_label = datetime(now.year, mm, dd).strftime("through %b %-d")
+        except ValueError:
+            until_label = ""
 
-        # "goes until MM/DD" marks an ongoing/multi-day listing (beer gardens,
-        # restaurants, "Now Open" venues, summer concert *series*). The Boston
-        # Calendar stamps these with the *current* date, so without this they'd
-        # masquerade as a concrete "today @ midnight" event every day we scrape.
-        # Treat them as ongoing (start_time=None → email's undated/ongoing bucket).
-        ongoing_match = _BC_ONGOING_RE.search(container_text)
-        until_label = ""
-        if ongoing_match:
-            start_time = None
-            mm, dd = int(ongoing_match.group(1)), int(ongoing_match.group(2))
-            try:
-                until_label = datetime(now.year, mm, dd).strftime("through %b %-d")
-            except ValueError:
-                until_label = ""
+    if ongoing_match:
+        # Ongoing listings repeat on every day-page; capture them once (from the
+        # first page) and give them a date-free id so they dedupe across pages.
+        if target_day.date() != now.date():
+            return None
+        id_date = ""
+    else:
+        # Keep only events actually scheduled for this target day, in-window.
+        if start_time is None or start_time.date() != target_day.date():
+            return None
+        if start_time < now - timedelta(days=1) or start_time > cutoff:
+            return None
+        id_date = start_time.date().isoformat()
 
-        # Skip events in the past (more than 1 day ago) or too far in the future
-        if start_time:
-            st_utc = start_time.replace(tzinfo=timezone.utc) if start_time.tzinfo is None else start_time
-            if st_utc < now - timedelta(days=1) or st_utc > cutoff:
-                continue
+    # Location: text after the date match, before the next obvious boundary
+    location = ""
+    if date_match:
+        after_date = container_text[date_match.end():].strip()
+        # Take the first line-like chunk (up to next date pattern or end)
+        loc_part = after_date.split("\n")[0].strip(" |·-–—")
+        # Drop the "goes until MM/DD" fragment that bleeds into the location
+        loc_part = _BC_ONGOING_RE.sub("", loc_part).strip(" |·-–—")
+        if loc_part and len(loc_part) < 200:
+            location = loc_part
 
-        # Location: text after the date match, before the next obvious boundary
-        location = ""
-        if date_match:
-            after_date = container_text[date_match.end():].strip()
-            # Take the first line-like chunk (up to next date pattern or end)
-            loc_part = after_date.split("\n")[0].strip(" |·-–—")
-            # Drop the "goes until MM/DD" fragment that bleeds into the location
-            loc_part = _BC_ONGOING_RE.sub("", loc_part).strip(" |·-–—")
-            if loc_part and len(loc_part) < 200:
-                location = loc_part
+    # Surface the run-end date for ongoing listings so it's not lost
+    display_title = f"{title} ({until_label})" if until_label else title
 
-        # Surface the run-end date for ongoing listings so it's not lost
-        display_title = f"{title} ({until_label})" if until_label else title
+    img_tag = container.find("img", src=True)
+    image_url = img_tag["src"] if img_tag else None
 
-        # Image
-        img_tag = container.find("img", src=True)
-        image_url = img_tag["src"] if img_tag else None
+    price_tag = container.find(class_=lambda c: c and "price" in str(c).lower())
+    price = price_tag.get_text(strip=True) if price_tag else None
 
-        # Price
-        price_tag = container.find(class_=lambda c: c and "price" in str(c).lower())
-        price = price_tag.get_text(strip=True) if price_tag else None
+    return Event(
+        id=make_event_id("boston_calendar", title, id_date),
+        source=EventSource.BOSTON_CALENDAR,
+        title=display_title,
+        description="",
+        url=event_url,
+        start_time=start_time,
+        location_name=location,
+        location_address="Boston, MA",
+        price=price,
+        image_url=image_url,
+    )
 
-        events.append(
-            Event(
-                id=make_event_id("boston_calendar", title, date_str),
-                source=EventSource.BOSTON_CALENDAR,
-                title=display_title,
-                description="",
-                url=event_url,
-                start_time=start_time,
-                location_name=location,
-                location_address="Boston, MA",
-                price=price,
-                image_url=image_url,
-            )
+
+async def _fetch_bc_day(
+    client: httpx.AsyncClient, target_day: datetime, now: datetime, cutoff: datetime
+) -> list[Event]:
+    """Fetch and parse a single Boston Calendar day-page."""
+    if target_day.date() == now.date():
+        url = "https://www.thebostoncalendar.com/events"
+    else:
+        url = (
+            "https://www.thebostoncalendar.com/events"
+            f"?day={target_day.day}&month={target_day.month}&year={target_day.year}"
         )
+    resp = await client.get(url, headers={"User-Agent": USER_AGENT})
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "lxml")
+    out: list[Event] = []
+    for h3_a in soup.select("h3 a[href]"):
+        ev = _parse_bc_card(h3_a, target_day, now, cutoff)
+        if ev is not None:
+            out.append(ev)
+    return out
+
+
+async def _fetch_boston_calendar(client: httpx.AsyncClient) -> list[Event]:
+    """Scrape thebostoncalendar.com, walking forward day-by-day.
+
+    The default /events page only shows *today's* events, so we fetch each of
+    the next BC_LOOKAHEAD_DAYS day-pages to surface future events (the Pops 4th
+    of July fireworks, Harborfest, etc.) that the single-page scrape never saw.
+    """
+    now = datetime.now()  # naive local (server is in Boston/Eastern)
+    cutoff = now + timedelta(days=BC_LOOKAHEAD_DAYS)
+    days = [now + timedelta(days=i) for i in range(BC_LOOKAHEAD_DAYS)]
+
+    results = await asyncio.gather(
+        *(_fetch_bc_day(client, d, now, cutoff) for d in days),
+        return_exceptions=True,
+    )
+
+    events: list[Event] = []
+    seen_ids: set[str] = set()
+    for res in results:
+        if isinstance(res, BaseException):
+            logger.warning("Boston Calendar day fetch failed: %s", res)
+            continue
+        for ev in res:
+            if ev.id in seen_ids:
+                continue
+            seen_ids.add(ev.id)
+            events.append(ev)
 
     logger.info("The Boston Calendar returned %d events", len(events))
     return events
