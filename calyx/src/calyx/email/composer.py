@@ -6,7 +6,7 @@ import logging
 import math
 import re as _re
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from jinja2 import Environment
 
@@ -246,6 +246,22 @@ _DIGEST_TEMPLATE = _env.from_string(
     </div>
     {% endif %}
 
+    {# --- ON THE HORIZON --- #}
+    {% if horizon %}
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid #f3f4f6;">
+      <p style="margin:0 0 2px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#9ca3af;">&#9733; On the horizon</p>
+      <p style="margin:0 0 14px;font-size:12px;color:#9ca3af;">Bigger events further out &mdash; save the date.</p>
+      {% for r in horizon %}
+      <div style="padding:10px 0;border-bottom:1px solid #f0f0f0;">
+        <p style="margin:0 0 2px;font-size:14px;font-weight:700;line-height:1.3;">
+          {% if r.event.url %}<a href="{{ r.event.url }}" style="color:#1a1a1a;text-decoration:none;">{{ r.event.title }}</a>{% else %}{{ r.event.title }}{% endif %}
+        </p>
+        <p style="margin:0;font-size:12px;color:#888;">{{ r.event.start_time | format_dt }}{% if r.event.location_name %} &middot; {{ r.event.location_name }}{% endif %}{% if r.event.price %} &middot; {{ r.event.price }}{% endif %}</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
   </td></tr>
 
   <!-- FOOTER -->
@@ -292,8 +308,29 @@ def compose_email(
 
     kept = sorted([r for r in ranked_events if r.keep], key=lambda r: r.score, reverse=True)
 
-    # Top 10 overall recommendations
-    top_recs = kept[:10]
+    # "This week" window: today through +7 days. This is a WEEKLY digest, so the
+    # top picks / free / browse-by-day sections are scoped to the coming week.
+    # Bigger events further out get a separate "On the horizon" teaser instead of
+    # hijacking the top picks (which are labeled "this week").
+    _week_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    _week_end = _week_start + timedelta(days=7)
+
+    def _naive_start(r: RankedEvent) -> datetime | None:
+        dt = r.event.start_time
+        if dt is None:
+            return None
+        return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+    def _in_week(r: RankedEvent) -> bool:
+        dt = _naive_start(r)
+        return dt is not None and _week_start <= dt < _week_end
+
+    def _beyond_week(r: RankedEvent) -> bool:
+        dt = _naive_start(r)
+        return dt is not None and dt >= _week_end
+
+    # Top 10 recommendations — dated events happening THIS WEEK only.
+    top_recs = [r for r in kept if _in_week(r)][:10]
 
     # Clubs / classes / memberships (not already in top 10, cap at 5)
     top_ids = {id(r) for r in top_recs}
@@ -302,12 +339,39 @@ def compose_email(
         if r.event_type in ("club", "class") and id(r) not in top_ids
     ][:5]
 
-    # Remaining events organized by day
+    # Remaining events organized by day (this week only)
     shown_ids = top_ids | {id(r) for r in clubs_classes}
     remaining = [r for r in kept if id(r) not in shown_ids and r.event_type == "event"]
 
-    dated = [r for r in remaining if r.event.start_time is not None]
+    dated = [r for r in remaining if _in_week(r)]
     undated = [r for r in remaining if r.event.start_time is None]
+
+    # On the horizon — top-scoring events beyond this week (save-the-date).
+    # Dedupe near-identical listings (same act from multiple sources) by a
+    # normalized title prefix so we don't show e.g. Ariana Grande five times.
+    _HORIZON_STOP = {"the", "a", "an", "tour", "world", "north", "america", "live",
+                     "presents", "show", "feat", "with", "and", "na", "part", "tickets",
+                     "at", "in", "of", "on", "us", "2026"}
+
+    def _artist_key(title: str) -> str:
+        # First two significant word-tokens — merges "Kehlani" with
+        # "THE KEHLANI WORLD TOUR" and "Jack Harlow" with "Jack Harlow - Monica Tour".
+        toks = [t for t in _re.findall(r"[a-z0-9]+", title.lower()) if t not in _HORIZON_STOP]
+        return " ".join(toks[:2])
+
+    horizon: list[RankedEvent] = []
+    _horizon_seen: set[str] = set()
+    for r in kept:  # score-sorted desc
+        if not _beyond_week(r) or r.event_type != "event":
+            continue
+        key = _artist_key(r.event.title)
+        if not key or key in _horizon_seen:
+            continue
+        _horizon_seen.add(key)
+        horizon.append(r)
+        if len(horizon) >= 6:
+            break
+    horizon.sort(key=lambda r: _naive_start(r) or datetime.max)  # chronological
 
     # Group by day
     day_groups: dict[str, list[RankedEvent]] = defaultdict(list)
@@ -354,10 +418,10 @@ def compose_email(
 
     free_picks = [
         r for r in kept
-        if id(r) not in shown_ids_all and _is_free(r) and r.score >= 30
+        if id(r) not in shown_ids_all and _is_free(r) and r.score >= 30 and _in_week(r)
     ][:4]
 
-    subject = f"Your Week: {len(top_recs)} top picks, {len(kept)} events total ({week_of})"
+    subject = f"Your Week: {len(top_recs)} top picks ({week_of})"
 
     # Pre-compute distance strings for all events
     dist_filter = _make_dist_filter(home_lat, home_lon)
@@ -392,6 +456,7 @@ def compose_email(
         by_day=by_day,
         undated=undated,
         free_picks=free_picks,
+        horizon=horizon,
         bucket_suggestions=bucket_suggestions or [],
         total_cost=total_cost,
         tokens_in=tokens_in,
